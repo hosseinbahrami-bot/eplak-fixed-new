@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <EditText
+        android:id="@+id/editTextTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="عنوان گزارش"
+        android:layout_marginBottom="12dp" />
+
+    <EditText
+        android:id="@+id/editTextDescription"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="توضیحات"
+        android:minLines="4"
+        android:layout_marginBottom="12dp" />
+
+    <EditText
+        android:id="@+id/editTextCategory"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="دسته‌بندی"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/buttonSaveReport"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ثبت گزارش" />
+</LinearLayout>

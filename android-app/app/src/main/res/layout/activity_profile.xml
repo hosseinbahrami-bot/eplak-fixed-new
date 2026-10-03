@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <EditText
+        android:id="@+id/editTextName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="نام و نام خانوادگی"
+        android:layout_marginBottom="12dp" />
+
+    <EditText
+        android:id="@+id/editTextAddress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="آدرس"
+        android:layout_marginBottom="12dp" />
+
+    <EditText
+        android:id="@+id/editTextNid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="کد ملی"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/buttonSaveProfile"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ذخیره پروفایل" />
+</LinearLayout>

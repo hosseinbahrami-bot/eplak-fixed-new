@@ -1,0 +1,153 @@
+<!--
+  views/login.html — مرجع/مستندسازی صفحات: ورود و تایید کد
+
+  توجه مهم: این فایل صرفاً برای مرجع و مستندسازی ساختار است و
+  به‌صورت مستقیم توسط مرورگر بارگذاری نمی‌شود. در فایل اصلی
+  app_01.html همه‌ی ۲۲ صفحه (screen) داخل یک سند HTML واحد
+  (index.html) قرار دارند و جابجایی بین آن‌ها با تابع showScreen()
+  در core/router.js و با تغییر کلاس CSS انجام می‌شود (بدون تغییر
+  آدرس URL و بدون fetch). این روش عیناً حفظ شده تا رفتار و ظاهر
+  اپلیکیشن اصلی به‌هیچ‌وجه تغییر نکند.
+-->
+
+<!-- ===== screen-login.html ===== -->
+  <div class="screen active" id="screen-login">
+    <div class="bg-city">
+      <div class="bg-orb orb-1"></div>
+      <div class="bg-orb orb-2"></div>
+      <div class="bg-orb orb-3"></div>
+    </div>
+
+    <!-- City SVG Skyline -->
+    <svg class="city-skyline" viewBox="0 0 390 250" preserveAspectRatio="xMidYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Stars -->
+      <circle cx="50" cy="20" r="1.5" fill="white" opacity="0.6"/>
+      <circle cx="120" cy="10" r="1" fill="white" opacity="0.8"/>
+      <circle cx="200" cy="5" r="1.5" fill="white" opacity="0.5"/>
+      <circle cx="300" cy="15" r="1" fill="white" opacity="0.7"/>
+      <circle cx="350" cy="8" r="1.5" fill="white" opacity="0.6"/>
+      <circle cx="80" cy="35" r="1" fill="white" opacity="0.4"/>
+      <circle cx="260" cy="30" r="1" fill="white" opacity="0.6"/>
+      <!-- Water/lake reflection -->
+      <ellipse cx="195" cy="230" rx="180" ry="30" fill="rgba(0,80,120,0.3)"/>
+      <!-- Moon -->
+      <circle cx="60" cy="40" r="18" fill="#C8E0F0" opacity="0.9"/>
+      <circle cx="68" cy="35" r="14" fill="#0d2040" opacity="0.85"/>
+      <!-- Modern towers -->
+      <rect x="20" y="120" width="30" height="130" fill="rgba(0,60,80,0.8)"/>
+      <rect x="22" y="125" width="6" height="8" fill="rgba(0,201,167,0.3)"/>
+      <rect x="32" y="125" width="6" height="8" fill="rgba(0,201,167,0.2)"/>
+      <rect x="22" y="140" width="6" height="8" fill="rgba(100,180,255,0.3)"/>
+      <rect x="32" y="140" width="6" height="8" fill="rgba(0,201,167,0.3)"/>
+      <!-- Dome mosque -->
+      <path d="M155 250 L155 170 Q195 130 235 170 L235 250 Z" fill="rgba(0,50,80,0.7)"/>
+      <ellipse cx="195" cy="168" rx="40" ry="40" fill="rgba(0,60,90,0.8)"/>
+      <rect x="192" y="128" width="6" height="30" fill="rgba(0,80,100,0.8)"/>
+      <path d="M192 128 Q195 120 198 128 Z" fill="rgba(0,201,167,0.6)"/>
+      <!-- Tall buildings -->
+      <rect x="240" y="100" width="45" height="150" fill="rgba(0,50,70,0.85)"/>
+      <rect x="244" y="108" width="8" height="8" fill="rgba(100,180,255,0.4)"/>
+      <rect x="256" y="108" width="8" height="8" fill="rgba(100,180,255,0.3)"/>
+      <rect x="268" y="108" width="8" height="8" fill="rgba(0,201,167,0.4)"/>
+      <rect x="244" y="122" width="8" height="8" fill="rgba(0,201,167,0.3)"/>
+      <rect x="256" y="122" width="8" height="8" fill="rgba(100,180,255,0.4)"/>
+      <rect x="268" y="122" width="8" height="8" fill="rgba(100,180,255,0.2)"/>
+      <rect x="244" y="136" width="8" height="8" fill="rgba(0,201,167,0.4)"/>
+      <rect x="244" y="150" width="8" height="8" fill="rgba(100,180,255,0.3)"/>
+      <!-- Modern skyscraper -->
+      <rect x="300" y="70" width="50" height="180" fill="rgba(0,45,65,0.9)"/>
+      <rect x="310" y="75" width="10" height="10" fill="rgba(0,201,167,0.5)"/>
+      <rect x="325" y="75" width="10" height="10" fill="rgba(100,180,255,0.4)"/>
+      <rect x="310" y="90" width="10" height="10" fill="rgba(100,180,255,0.3)"/>
+      <rect x="325" y="90" width="10" height="10" fill="rgba(0,201,167,0.4)"/>
+      <rect x="310" y="105" width="10" height="10" fill="rgba(0,201,167,0.3)"/>
+      <rect x="325" y="105" width="10" height="10" fill="rgba(100,180,255,0.5)"/>
+      <!-- Trees -->
+      <ellipse cx="110" cy="215" rx="20" ry="25" fill="rgba(0,80,50,0.7)"/>
+      <rect x="108" y="220" width="4" height="30" fill="rgba(0,50,30,0.8)"/>
+      <ellipse cx="150" cy="220" rx="15" ry="20" fill="rgba(0,90,60,0.7)"/>
+      <!-- Ground -->
+      <rect x="0" y="230" width="390" height="20" fill="rgba(0,40,60,0.6)"/>
+      <!-- Reflection glow -->
+      <rect x="0" y="230" width="390" height="3" fill="rgba(0,201,167,0.15)"/>
+    </svg>
+
+    <div class="gradient-overlay"></div>
+
+    <div class="screen-content" style="justify-content: space-between; padding-bottom: 30px;">
+      <!-- Theme toggle -->
+      <div style="position: absolute; top: 16px; left: 20px; z-index: 30;">
+        <div class="theme-toggle">
+          <button class="active">☀️</button>
+          <button>🌙</button>
+        </div>
+      </div>
+
+      <!-- Logo -->
+      <div class="logo-main">
+        <span class="fa-text">ای‌پلاک</span>
+        <span class="en-text">eplak</span>
+        <p class="subtitle">سامانه هوشمند الکترونیک پلاک<br>هر پلاک یک مطالبه</p>
+      </div>
+
+      <!-- Login form -->
+      <div class="login-card" style="margin-bottom: 20px;">
+        <label style="font-size:14px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:10px; text-align:right;">شماره موبایل</label>
+        <div class="input-wrapper">
+          <span class="input-icon">📱</span>
+          <input type="tel" id="loginPhoneInput" class="input-field" placeholder="09xxxxxxxx" style="direction:ltr; text-align:left;" maxlength="11">
+        </div>
+        <div style="height:14px;"></div>
+        <button class="btn-teal" onclick="sendOtp()">
+          <span style="font-size:18px;">←</span>
+          <span>دریافت کد تایید</span>
+        </button>
+        <div class="security-note">
+          <span>✅</span>
+          <span>اطلاعات شما محفوظ و امن است</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<!-- ===== screen-otp.html ===== -->
+  <div class="screen" id="screen-otp">
+    <div class="bg-city">
+      <div class="bg-orb orb-1"></div>
+      <div class="bg-orb orb-2"></div>
+    </div>
+    <div style="background:var(--bg-screen); position:absolute; inset:0; z-index:2;"></div>
+
+    <div class="top-header" style="position:relative;z-index:20;">
+      <button class="notif-btn" onclick="showScreen('screen-login')">→</button>
+      <div style="font-size:16px; font-weight:800;">تایید شماره موبایل</div>
+      <div style="width:40px;"></div>
+    </div>
+
+    <div class="screen-content" style="position:relative;z-index:10; justify-content:center; gap:18px; padding:0 16px 30px;">
+      <div style="text-align:center;">
+        <div style="width:64px; height:64px; background:rgba(0,201,167,0.12); border:2px solid rgba(0,201,167,0.3); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:28px; margin:0 auto 14px;">🔐</div>
+        <h2 style="font-size:17px; font-weight:800;">کد تایید را وارد کنید</h2>
+        <p style="font-size:13px; color:var(--text-muted); margin-top:6px;">کد ۴ رقمی به شماره <span id="otpPhoneDisplay" style="color:var(--teal); direction:ltr; display:inline-block;">09120000000</span> پیامک شد</p>
+      </div>
+
+      <div class="login-card">
+        <div class="otp-inputs-row">
+          <input type="tel" inputmode="numeric" autocomplete="one-time-code" maxlength="1" class="otp-box" oninput="otpAutoNext(this)" onkeydown="otpKeyDown(this, event)" onpaste="otpPaste(event)">
+          <input type="tel" inputmode="numeric" maxlength="1" class="otp-box" oninput="otpAutoNext(this)" onkeydown="otpKeyDown(this, event)">
+          <input type="tel" inputmode="numeric" maxlength="1" class="otp-box" oninput="otpAutoNext(this)" onkeydown="otpKeyDown(this, event)">
+          <input type="tel" inputmode="numeric" maxlength="1" class="otp-box" oninput="otpAutoNext(this)" onkeydown="otpKeyDown(this, event)">
+        </div>
+
+        <div style="height:16px;"></div>
+        <button class="btn-teal" onclick="verifyOtp()">
+          <span>تایید و ورود</span>
+        </button>
+
+        <div style="text-align:center; margin-top:14px; font-size:13px; color:var(--text-muted);">
+          <span id="otpTimerText">ارسال مجدد کد تا ۰۰:۳۰</span>
+          <a href="javascript:void(0)" id="otpResendLink" onclick="resendOtp()" style="color:var(--teal); font-weight:700; display:none;">ارسال مجدد کد</a>
+        </div>
+      </div>
+    </div>
+  </div>

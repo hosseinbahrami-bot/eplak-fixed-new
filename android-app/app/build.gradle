@@ -1,0 +1,100 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'kotlin-kapt'
+}
+
+android {
+    namespace 'com.example.eplakfixed'
+    compileSdk 36
+    buildToolsVersion"36.0.0"
+
+    defaultConfig {
+        applicationId 'com.example.eplakfixed'
+        minSdk 24
+        targetSdk 36
+        versionCode 2
+        versionName '2.0'
+
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+def webAssetsDir = file("$buildDir/generated/webAssets")
+
+tasks.register('syncWebAssets', Sync) {
+    from('../../') {
+        include 'index.html'
+        include 'app.js'
+        include 'core/**'
+        include 'modules/**'
+        include 'views/**'
+        include 'assets/**'
+    }
+    into(webAssetsDir)
+}
+
+android.sourceSets.main.assets.srcDirs = [webAssetsDir]
+tasks.named('preBuild').configure { dependsOn tasks.named('syncWebAssets') }
+
+/* فایربیس (اعلان گوشی برای اپ اندروید).
+   پلاگین google-services فقط وقتی اعمال می‌شود که فایل google-services.json
+   در پوشه‌ی app باشد؛ پس اگر هنوز پروژه‌ی فایربیس ساخته نشده باشد،
+   ساخت APK با خطا متوقف نمی‌شود (اعلان فایربیس فقط غیرفعال می‌ماند). */
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+    logger.lifecycle('EplakFCM: google-services.json پیدا شد — اعلان فایربیس فعال می‌شود.')
+} else {
+    logger.lifecycle('EplakFCM: google-services.json نیست — اعلان فایربیس غیرفعال است (سایر امکانات سالم).')
+}
+
+dependencies {
+    // Firebase Cloud Messaging
+    implementation platform('com.google.firebase:firebase-bom:33.7.0')
+    implementation 'com.google.firebase:firebase-messaging'
+
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2'
+
+    // Room
+    implementation 'androidx.room:room-runtime:2.6.0'
+    implementation 'androidx.room:room-ktx:2.6.0'
+    kapt 'androidx.room:room-compiler:2.6.0'
+
+    // Retrofit & OkHttp (همراه پشتیبانی از Redirect)
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:5.0.0-alpha.11'
+
+    // Coroutines
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+
+    // Testing
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}

@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">ای‌پلاک</string>
+    <string name="submit">ثبت</string>
+    <string name="name_hint">نام</string>
+    <string name="phone_hint">تلفن</string>
+    <string name="address_hint">آدرس</string>
+    <string name="save_success">اطلاعات با موفقیت ارسال شد</string>
+    <string name="save_error">خطا در ارسال اطلاعات</string>
+</resources>

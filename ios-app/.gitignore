@@ -1,0 +1,9 @@
+# پوشه‌ی Web هر بار با ios-app/sync-web.sh از ریشه‌ی پروژه ساخته می‌شود؛ در گیت نمی‌ماند
+Eplak/Web/
+
+# خروجی‌های ساخت و فایل‌های شخصی Xcode
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store

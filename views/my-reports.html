@@ -1,0 +1,447 @@
+<!--
+  ============================================================
+  my-reports.html - صفحه گزارش‌های من
+  نمایش لیست گزارش‌های ثبت‌شده توسط کاربر با فیلتر وضعیت
+  ============================================================
+-->
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>گزارش‌های من - ای‌پلاک</title>
+  
+  <style>
+    /* ===== همان استایل‌های اصلی ===== */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    :root {
+      --teal: #00c9a7;
+      --teal-dark: #0a8f7a;
+      --bg-grad1: #0f172a;
+      --bg-grad2: #1e293b;
+      --bg-screen: rgba(15, 23, 42, 0.92);
+      --text-muted: #94a3b8;
+      --dark-200: #334155;
+      --dark-300: #475569;
+      --dark-400: #64748b;
+      --dark-500: #94a3b8;
+      --dark-600: #cbd5e1;
+      --dark-700: #e2e8f0;
+      --dark-800: #f1f5f9;
+      --success: #22c55e;
+      --success-bg: #1a3a2a;
+      --warning: #f59e0b;
+      --warning-bg: #3a2a1a;
+      --danger: #ef4444;
+      --danger-bg: #3a1a1a;
+      --info: #3b82f6;
+      --info-bg: #1a2a3a;
+      --radius-md: 12px;
+      --radius-xl: 20px;
+      --radius-full: 9999px;
+      --font-family: 'Tahoma', 'Segoe UI', Tahoma, Arial, sans-serif;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background: var(--bg-grad1);
+      color: #f1f5f9;
+      direction: rtl;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    .bg-city {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background: linear-gradient(180deg, var(--bg-grad1) 0%, var(--bg-grad2) 100%);
+    }
+    .bg-orb {
+      position: fixed;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .orb-1 {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(0, 201, 167, 0.15) 0%, transparent 70%);
+      top: -100px;
+      right: -100px;
+    }
+    .orb-2 {
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.10) 0%, transparent 70%);
+      bottom: -80px;
+      left: -80px;
+    }
+
+    .top-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .notif-btn {
+      background: rgba(255,255,255,0.06);
+      border: none;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #f1f5f9;
+      font-size: 18px;
+      cursor: pointer;
+      transition: 0.3s;
+      touch-action: manipulation;
+    }
+    .notif-btn:hover, .notif-btn:active {
+      background: rgba(255,255,255,0.12);
+    }
+
+    .screen-content {
+      flex: 1;
+      padding: 10px 16px 80px;
+      position: relative;
+      z-index: 10;
+      overflow-y: auto;
+    }
+
+    /* ===== FILTER CHIPS ===== */
+    .filter-chips {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 4px 0 12px;
+      flex-wrap: nowrap;
+      -webkit-overflow-scrolling: touch;
+    }
+    .filter-chip {
+      padding: 8px 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+      font-family: var(--font-family);
+      touch-action: manipulation;
+      min-height: 36px;
+    }
+    .filter-chip.active {
+      background: var(--teal);
+      color: white;
+      border-color: var(--teal);
+    }
+    .filter-chip:hover, .filter-chip:active {
+      border-color: var(--teal);
+      color: var(--teal);
+    }
+    .filter-chip.active:hover, .filter-chip.active:active {
+      color: white;
+    }
+
+    /* ===== REPORT ITEM ===== */
+    .report-item {
+      padding: 16px;
+      background: rgba(255,255,255,0.05);
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 12px;
+      transition: all 0.3s ease;
+    }
+    .report-item:hover {
+      border-color: rgba(255,255,255,0.15);
+    }
+    .report-item:active {
+      transform: scale(0.98);
+    }
+
+    .status-pending {
+      color: var(--warning);
+      background: var(--warning-bg);
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-progress {
+      color: var(--info);
+      background: var(--info-bg);
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-done {
+      color: var(--success);
+      background: var(--success-bg);
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .btn-outline-teal {
+      margin-top:10px;
+      background:transparent;
+      border:1px solid var(--teal);
+      color:var(--teal);
+      border-radius:8px;
+      padding:8px 14px;
+      font-size:12px;
+      font-weight:600;
+      cursor:pointer;
+      width:100%;
+      font-family:var(--font-family);
+      touch-action: manipulation;
+      transition: 0.3s;
+    }
+    .btn-outline-teal:hover, .btn-outline-teal:active {
+      background: var(--teal);
+      color: white;
+    }
+
+    .btn-teal {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+      color: white;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.3s;
+      touch-action: manipulation;
+      min-height: 50px;
+      font-family: var(--font-family);
+    }
+    .btn-teal:hover, .btn-teal:active {
+      opacity: 0.85;
+      transform: translateY(-1px);
+    }
+
+    .empty-state {
+      text-align:center;
+      padding:50px 20px;
+      color:var(--text-muted);
+    }
+    .empty-state .icon { font-size:40px; margin-bottom:10px; }
+
+    .bottom-pad { height:20px; }
+
+    /* ===== NAV BAR ===== */
+    .nav-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 0 12px;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255,255,255,0.06);
+      z-index: 30;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.3s;
+      padding: 4px 12px;
+      touch-action: manipulation;
+      font-family: var(--font-family);
+    }
+    .nav-item svg { width: 24px; height: 24px; }
+    .nav-item.active { color: var(--teal); }
+    .nav-item:hover, .nav-item:active { color: var(--teal); }
+
+    @media (max-width: 480px) {
+      .top-header { padding: 12px 16px; }
+      .screen-content { padding: 8px 12px 80px; }
+      .filter-chip { font-size: 12px; padding: 6px 14px; }
+      .report-item { padding: 14px; }
+      .nav-item { padding: 2px 8px; }
+      .nav-item svg { width: 20px; height: 20px; }
+      .nav-item { font-size: 9px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-city">
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+  </div>
+
+  <!-- ===== TOP HEADER ===== -->
+  <div class="top-header">
+    <button class="notif-btn" onclick="window.location.href='profile.html'" aria-label="بازگشت">→</button>
+    <div style="font-size:16px; font-weight:800;">📋 گزارش‌های من</div>
+    <button class="notif-btn" onclick="window.location.href='add-report.html'" aria-label="گزارش جدید">➕</button>
+  </div>
+
+  <!-- ===== CONTENT ===== -->
+  <div class="screen-content">
+
+    <!-- فیلترها -->
+    <div class="filter-chips">
+      <button class="filter-chip active" onclick="filterReports(this, 'all')">همه</button>
+      <button class="filter-chip" onclick="filterReports(this, 'pending')">🕐 در انتظار</button>
+      <button class="filter-chip" onclick="filterReports(this, 'progress')">🔄 در حال بررسی</button>
+      <button class="filter-chip" onclick="filterReports(this, 'done')">✅ انجام شده</button>
+    </div>
+
+    <!-- لیست گزارش‌ها -->
+    <div id="reportsList">
+
+      <div class="report-item" data-status="pending">
+        <div style="display:flex; justify-content:space-between; align-items:start;">
+          <div>
+            <div style="font-weight:700; font-size:15px;">مشکل در سیستم مالی</div>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">کد: #RPT-1403-001</div>
+            <div style="font-size:12px; color:var(--text-muted);">تاریخ: ۱۴۰۳/۰۱/۱۵</div>
+          </div>
+          <span class="status-pending">🕐 در انتظار</span>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+          <span style="font-size:11px; background:rgba(255,255,255,0.05); padding:2px 10px; border-radius:12px;">مالی</span>
+          <span style="font-size:11px; background:rgba(255,255,255,0.05); padding:2px 10px; border-radius:12px;">حسابداری</span>
+        </div>
+        <button class="btn-outline-teal" onclick="showReportDetail('RPT-1403-001')">مشاهده جزئیات</button>
+      </div>
+
+      <div class="report-item" data-status="progress">
+        <div style="display:flex; justify-content:space-between; align-items:start;">
+          <div>
+            <div style="font-weight:700; font-size:15px;">درخواست تعویض کنتور</div>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">کد: #RPT-1403-002</div>
+            <div style="font-size:12px; color:var(--text-muted);">تاریخ: ۱۴۰۳/۰۱/۱۴</div>
+          </div>
+          <span class="status-progress">🔄 در حال بررسی</span>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+          <span style="font-size:11px; background:rgba(255,255,255,0.05); padding:2px 10px; border-radius:12px;">آب و فاضلاب</span>
+          <span style="font-size:11px; background:rgba(255,255,255,0.05); padding:2px 10px; border-radius:12px;">فنی</span>
+        </div>
+        <button class="btn-outline-teal" onclick="showReportDetail('RPT-1403-002')">مشاهده جزئیات</button>
+      </div>
+
+      <div class="report-item" data-status="done">
+        <div style="display:flex; justify-content:space-between; align-items:start;">
+          <div>
+            <div style="font-weight:700; font-size:15px;">تعمیر ترانس برق</div>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">کد: #RPT-1403-003</div>
+            <div style="font-size:12px; color:var(--text-muted);">تاریخ: ۱۴۰۳/۰۱/۱۰</div>
+          </div>
+          <span class="status-done">✅ انجام شده</span>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+          <span style="font-size:11px; background:rgba(255,255,255,0.05); padding:2px 10px; border-radius:12px;">برق</span>
+          <span style="font-size:11px; background:rgba(255,255,255,0.05); padding:2px 10px; border-radius:12px;">عمرانی</span>
+        </div>
+        <button class="btn-outline-teal" onclick="showReportDetail('RPT-1403-003')">مشاهده جزئیات</button>
+      </div>
+    </div>
+
+    <!-- حالت خالی -->
+    <div id="emptyState" style="display:none;">
+      <div class="empty-state">
+        <div class="icon">📭</div>
+        <p style="font-size:13px;">هیچ گزارشی ثبت نکرده‌اید</p>
+        <button class="btn-teal" onclick="window.location.href='add-report.html'" style="margin-top:16px; max-width:200px; margin-left:auto; margin-right:auto;">ثبت گزارش جدید</button>
+      </div>
+    </div>
+
+    <div class="bottom-pad"></div>
+  </div>
+
+  <!-- ===== NAV BAR ===== -->
+  <div class="nav-bar">
+    <button class="nav-item" onclick="window.location.href='profile.html'">پروفایل</button>
+    <button class="nav-item" onclick="window.location.href='index.html'">خانه</button>
+    <button class="nav-item active" onclick="window.location.href='my-reports.html'">گزارش‌ها</button>
+    <button class="nav-item" onclick="window.location.href='tracking.html'">پیگیری</button>
+  </div>
+
+  <script>
+    // ===== فیلتر گزارش‌ها =====
+    function filterReports(el, status) {
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+
+      const items = document.querySelectorAll('.report-item');
+      let visible = 0;
+
+      items.forEach(item => {
+        const itemStatus = item.dataset.status;
+        if (status === 'all' || itemStatus === status) {
+          item.style.display = '';
+          visible++;
+        } else {
+          item.style.display = 'none';
+        }
+      });
+
+      document.getElementById('emptyState').style.display = visible === 0 ? '' : 'none';
+    }
+
+    // ===== نمایش جزئیات گزارش =====
+    function showReportDetail(code) {
+      showToast('📋 نمایش گزارش: ' + code);
+    }
+
+    // ===== Toast =====
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.textContent = msg;
+      Object.assign(toast.style, {
+        position: 'fixed',
+        bottom: '100px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: 'rgba(0,0,0,0.8)',
+        color: '#fff',
+        padding: '12px 24px',
+        borderRadius: '12px',
+        fontSize: '14px',
+        zIndex: '9999',
+        fontFamily: 'Tahoma, sans-serif',
+        maxWidth: '90%',
+        textAlign: 'center',
+        backdropFilter: 'blur(10px)',
+        border: '1px solid rgba(255,255,255,0.1)'
+      });
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2500);
+    }
+  </script>
+
+</body>
+</html>

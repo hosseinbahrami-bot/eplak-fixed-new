@@ -1,0 +1,16 @@
+shared/config.php
+data/
+
+# فایل‌های آپلودی کاربران (عکس/فیلم گزارش‌ها و تصاویر اخبار) — داده‌ی زمان اجراست، در گیت ذخیره نمی‌شود
+uploads/
+
+# کلید سرویس فایربیس (FCM) هرگز نباید در گیت باشد؛ فقط در پنل ادمین → تنظیمات وارد می‌شود
+*firebase-adminsdk*.json
+*-service-account.json
+eplak-fcm-service-account.json
+
+# خروجی ساخت PWA مستقل (tools/build-pwa.sh) و ابزارهای آزمون CI — هر بار ساخته می‌شوند
+pwa-dist/
+pwa-evidence/
+eplak-pwa.zip
+tools/node_modules/

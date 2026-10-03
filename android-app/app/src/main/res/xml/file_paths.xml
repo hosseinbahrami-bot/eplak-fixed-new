@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- مسیرهایی که FileProvider می‌تواند به‌صورت content:// در اختیار برنامه‌ی
+     دوربین بگذارد:
+       • camera/ → فایل عکسی که با دوربین گوشی گرفته می‌شود (EXTRA_OUTPUT)
+       • picked/ → کپی فایل‌های انتخاب‌شده از گالری که به WebView داده می‌شود -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="eplak_camera" path="camera/" />
+    <cache-path name="eplak_picked" path="picked/" />
+    <cache-path name="eplak_cache" path="." />
+</paths>

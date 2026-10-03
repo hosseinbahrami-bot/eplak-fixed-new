@@ -1,0 +1,133 @@
+# ============================================================================
+#  eplak-fixed — تنظیمات سرور (Apache)
+#  هدف ۱: تغییرات پنل و اپ «فوراً» روی سایت دیده شود (جلوگیری از کش شدن
+#          نسخه‌ی قدیمی index.html و فایل‌های JS توسط مرورگر و اپ اندروید).
+#  هدف ۲: بستن دسترسی مستقیم به پوشه‌های داخلی و فایل‌های حساس.
+#  اگر هاست از این فایل پشتیبانی نکند (AllowOverride None)، بی‌اثر است و
+#  چیزی خراب نمی‌کند.
+# ============================================================================
+
+# --- پیش‌فرض صفحه‌ی اول -----------------------------------------------------
+DirectoryIndex index.php index.html
+
+# --- کدگذاری و امنیت پایه --------------------------------------------------
+AddDefaultCharset UTF-8
+
+# فایل‌های حساس و مخفی قابل دانلود نباشند (مثل .env، دیتابیس، پشتیبان‌ها)
+# نکته: *.json عمداً بسته نشده چون manifest.json برای نصب اپ (PWA) لازم است؛
+#        فقط فایل‌های حساس شناخته‌شده بسته می‌شوند.
+<FilesMatch "(^\.|\.(sqlite|sqlite3|db|sql|log|ini|bak|old|orig|swp|lock|yml|yaml|sh)$)">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+<FilesMatch "^(composer|package|package-lock)\.json$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# راهنماها و مستندات داخلی هم از وب قابل خواندن نباشند
+<FilesMatch "\.(md|markdown)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# ابزار قدیمیِ rescue-db.php حذف شده است: رمز نداشت و هر کسی می‌توانست با آن
+# اطلاعات اتصال دیتابیس سایت (shared/config.php) را بازنویسی کند. Extract کردن
+# بسته‌ی تازه فایل‌های قدیمیِ روی هاست را پاک نمی‌کند؛ پس اگر نسخه‌ی قدیمی آن
+# هنوز آنجا مانده باشد، این قاعده دسترسی وب به آن را می‌بندد.
+# (فایل را از cPanel → File Manager هم پاک کنید؛ این فقط کمربند ایمنی است.)
+<FilesMatch "^rescue-db\.php$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# --- پوشه‌های داخلی: هیچ دسترسی مستقیمی از مرورگر نداشته باشند -------------
+<IfModule mod_alias.c>
+  RedirectMatch 404 ^/.*/(data|shared|docs|android-app|backend)(/|$)
+  RedirectMatch 404 ^/.*/(admin/includes)(/|$)
+</IfModule>
+
+# --- کش: قالب‌ها همیشه تازه، فایل‌های ایستا با بازبینی ---------------------
+<IfModule mod_headers.c>
+  # صفحات اصلی (اپ، پنل ادمین، API) هرگز کش نشوند تا آخرین نسخه دیده شود
+  <FilesMatch "\.(html|php)$">
+    Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+
+  # کاشی‌های نقشه (api/tiles.php): کش یک‌روزه در مرورگر/اپ تا هر بار دوباره
+  # نگیرد (خودِ فایل هم همین هدر را می‌فرستد؛ این بلوک جلوی «no-store» بالا را می‌گیرد)
+  <FilesMatch "^tiles\.php$">
+    Header set Cache-Control "public, max-age=86400"
+    Header unset Pragma
+    Header unset Expires
+  </FilesMatch>
+
+  # سرویس‌ورکر باید بدون کش بررسی شود تا نسخه‌ی تازه‌اش فعال شود
+  <FilesMatch "^sw\.js$">
+    Header set Cache-Control "no-cache, must-revalidate, max-age=0"
+    Header set Service-Worker-Allowed "/"
+  </FilesMatch>
+
+  # CSS/JS: کش کوتاه + اجبار به بازبینی (نسخه‌بندی با ?v= هم وجود دارد)
+  <FilesMatch "\.(css|js)$">
+    Header set Cache-Control "public, max-age=300, must-revalidate"
+  </FilesMatch>
+
+  # تصاویر و فونت‌ها: کش بلندمدت
+  <FilesMatch "\.(png|jpe?g|webp|gif|svg|ico|woff2?|ttf|eot)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+</IfModule>
+
+# --- فشرده‌سازی -------------------------------------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript application/javascript application/json image/svg+xml
+</IfModule>
+
+# --- نوع فایل‌های پیوست گزارش‌ها (عکس و فیلم) ------------------------------
+<IfModule mod_mime.c>
+  AddType image/jpeg .jpg .jpeg
+  AddType image/png .png
+  AddType image/webp .webp
+  AddType image/heic .heic
+  AddType video/mp4 .mp4
+  AddType video/webm .webm
+  AddType video/quicktime .mov
+  AddType video/3gpp .3gp
+</IfModule>
+
+# --- سقف حجم آپلود عکس/فیلم گزارش‌ها ---------------------------------------
+# اگر هاست اجازه دهد، این مقادیر بالاتر از پیش‌فرض ۲ مگابایت قرار می‌گیرند.
+<IfModule mod_php.c>
+  php_value upload_max_filesize 64M
+  php_value post_max_size 200M
+  php_value max_file_uploads 12
+</IfModule>
+<IfModule mod_php7.c>
+  php_value upload_max_filesize 64M
+  php_value post_max_size 200M
+  php_value max_file_uploads 12
+</IfModule>

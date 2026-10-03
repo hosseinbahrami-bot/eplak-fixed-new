@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "817151129705",
+    "project_id": "eplak-63c74",
+    "storage_bucket": "eplak-63c74.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:817151129705:android:420ad3f325811d63bf4af8",
+        "android_client_info": {
+          "package_name": "com.example.eplakfixed"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFVqjX2HaEk-ew6JuZctX-ny4EXeAQXXs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- مجوزهای دسترسی -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- نمایش اعلان روی گوشی (اندروید ۱۳ و بالاتر این اجازه را باید کاربر بدهد) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- موقعیت مکانی: برای بخش «موقعیت» در ثبت درخواست — GPS گوشی.
+         اندروید ۶ و بالاتر این اجازه را هنگام استفاده از کاربر می‌پرسد. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- دوربین و میکروفون: کاربر باید بتواند «داخل اپ» عکس بگیرد و فیلم ضبط کند
+         و همان را با گزارش بارگذاری کند. اجازه‌اش هنگام نخستین استفاده از
+         کاربر پرسیده می‌شود (اندروید ۶ و بالاتر). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- گوشی بدون GPS / بدون دوربین هم بتواند اپ را نصب کند -->
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!-- «نقشه و اماکن شهری»: تشخیص نصب بودن برنامه‌ی نشان (Neshan) برای مسیریابی.
+         از اندروید ۱۱ بدون این بخش، گوشی نصب بودن برنامه‌های دیگر را نشان نمی‌دهد. -->
+    <queries>
+        <package android:name="org.rajman.neshan.traffic.tehran.navigator" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.EplakFixed"
+        android:usesCleartextTraffic="true"
+        tools:targetApi="31">
+
+        <!-- Activity اصلی (صفحه شروع) -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- بدون این فیلتر، اندروید برای اعلان‌های فایربیس که
+                 click_action دارند مقصدی پیدا نمی‌کند و اعلان در حالت
+                 «بسته بودن کامل اپ» اصلاً نمایش داده نمی‌شود. -->
+            <intent-filter>
+                <action android:name="OPEN_MAIN_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- دریافت اعلان‌های فایربیس (وقتی اپ در پس‌زمینه یا بسته است) -->
+        <service
+            android:name=".EplakMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- FileProvider: آدرس امنِ فایل عکس/فیلمی که با دوربین گوشی گرفته می‌شود
+             تا بین اپ و برنامه‌ی دوربین رد و بدل شود (بدون آن، روی اندروید ۷+
+             گرفتن عکس با خطای FileUriExposedException شکست می‌خورد). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <activity android:name=".LoginActivity" android:exported="false" />
+        <activity android:name=".HomeActivity" android:exported="false" />
+        <activity android:name=".PaymentActivity" android:exported="false" />
+        <activity android:name=".ProfileActivity" android:exported="false" />
+        <activity android:name=".ReportActivity" android:exported="false" />
+        <!-- (سرویس اعلان فایربیس در بالا ثبت شده است) -->
+
+    </application>
+
+</manifest>
