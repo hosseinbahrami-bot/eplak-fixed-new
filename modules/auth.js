@@ -54,7 +54,7 @@
     const input = document.getElementById('loginPhoneInput');
     const rawVal = (input ? input.value : '').trim().toLowerCase();
     if (rawVal === 'admin' || rawVal === 'panel' || rawVal === 'modir' || rawVal === 'مدیر') {
-      window.location.href = '/admin';
+      window.location.href = window.EPLAK_ADMIN_URL || 'admin';
       return;
     }
     const phone = toEnglishDigits((input ? input.value : '') || '').trim();

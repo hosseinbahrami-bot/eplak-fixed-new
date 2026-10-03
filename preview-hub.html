@@ -347,11 +347,11 @@
         <i class="fas fa-bolt"></i>
         <span>ورود سریع مدیر</span>
       </button>
-      <a href="/" target="_blank" class="btn-action" title="باز کردن اپ شهروندی در تب جدید">
+      <a href="./" target="_blank" class="btn-action" title="باز کردن اپ شهروندی در تب جدید">
         <i class="fas fa-external-link-alt"></i>
         <span>اپ مستقیم</span>
       </a>
-      <a href="/admin/login.php" target="_blank" class="btn-action" title="باز کردن پنل مدیریت در تب جدید">
+      <a href="admin/login.php" target="_blank" class="btn-action" title="باز کردن پنل مدیریت در تب جدید">
         <i class="fas fa-external-link-alt"></i>
         <span>ادمین مستقیم</span>
       </a>
@@ -363,13 +363,13 @@
     <!-- View 1: Citizen Mobile App -->
     <div id="pane-app" class="view-pane active">
       <div class="mobile-frame-wrap">
-        <iframe id="iframe-app-single" src="/" title="اپلیکیشن شهروندی ای‌پلاک"></iframe>
+        <iframe id="iframe-app-single" src="./" title="اپلیکیشن شهروندی ای‌پلاک"></iframe>
       </div>
     </div>
 
     <!-- View 2: Municipality Admin Panel -->
     <div id="pane-admin" class="view-pane">
-      <iframe id="iframe-admin-single" src="/admin/login.php" title="پنل مدیریت شهرداری ای‌پلاک"></iframe>
+      <iframe id="iframe-admin-single" src="admin/login.php" title="پنل مدیریت شهرداری ای‌پلاک"></iframe>
     </div>
 
     <!-- View 3: Side-by-Side Split View -->
@@ -382,7 +382,7 @@
             <i class="fas fa-sync-alt"></i> تازه‌سازی
           </button>
         </div>
-        <iframe id="iframe-admin-split" src="/admin/login.php" title="پنل مدیریت شهرداری ای‌پلاک"></iframe>
+        <iframe id="iframe-admin-split" src="admin/login.php" title="پنل مدیریت شهرداری ای‌پلاک"></iframe>
       </div>
 
       <!-- Right: Mobile Citizen App -->
@@ -394,7 +394,7 @@
           </button>
         </div>
         <div class="app-box">
-          <iframe id="iframe-app-split" src="/" title="اپلیکیشن شهروندی ای‌پلاک"></iframe>
+          <iframe id="iframe-app-split" src="./" title="اپلیکیشن شهروندی ای‌پلاک"></iframe>
         </div>
       </div>
     </div>
@@ -421,8 +421,8 @@
       // Auto login in both admin frames
       const adminSingle = document.getElementById('iframe-admin-single');
       const adminSplit = document.getElementById('iframe-admin-split');
-      if (adminSingle) adminSingle.src = '/admin/login.php';
-      if (adminSplit) adminSplit.src = '/admin/login.php';
+      if (adminSingle) adminSingle.src = 'admin/login.php';
+      if (adminSplit) adminSplit.src = 'admin/login.php';
       switchView('admin');
     }
   </script>

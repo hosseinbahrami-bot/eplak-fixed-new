@@ -1,11 +1,12 @@
 <?php
 /* admin router for dedicated live preview */
+require_once dirname(__DIR__) . '/shared/paths.php';
 $uri = urldecode(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH));
 
 // If accessing root, redirect to the login page (absolute path — the
 // preview proxy does not resolve relative Location values)
 if ($uri === '/' || $uri === '') {
-    header('Location: /admin/login.php');
+    header('Location: ' . eplakUrl('/admin/login.php'));
     exit;
 }
 

@@ -2,6 +2,7 @@
 if (!defined('EPLAK_ROOT')) {
     define('EPLAK_ROOT', dirname(__DIR__));
 }
+require_once __DIR__ . '/paths.php';
 
 function eplakIsHttpsRequest(): bool {
     if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
@@ -127,14 +128,10 @@ function eplakRedirect(string $target): void {
     if (preg_match('#^(https?:)?//#i', $target)) {
         $target = 'index.php';
     }
-    /* مسیر نسبی را به مسیر مطلق (از ریشه) تبدیل می‌کنیم؛ برخی پروکسی/پیش‌نمایش‌ها
-       Location نسبی را درست حل نمی‌کنند و کاربر را به‌جای پنل ادمین به ریشه‌ی
-       اپ می‌فرستند (مثلاً «index.php» به‌جای /admin/index.php). */
     if ($target === '' || $target[0] !== '/') {
-        $path = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/');
-        $dir  = rtrim(dirname($path), '/');
-        $target = $dir . '/' . $target;
+        $target = '/admin/' . ltrim($target, '/');
     }
+    $target = eplakUrl($target);
     /* اگر مرورگر کوکی نشست را نپذیرد (مثلاً پیش‌نمایش جاسازی‌شده/iframe)،
        شناسه نشست را در نشانی مقصد هم می‌بریم تا نشست بعد از هدایت حفظ شود؛
        در حالت عادی (کوکی فعال) نشانی بدون تغییر می‌ماند. */

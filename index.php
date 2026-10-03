@@ -1,9 +1,10 @@
 <?php
 // eplak-fixed/index.php — هدایت هوشمند درخواست‌ها
+require_once __DIR__ . '/shared/paths.php';
 $uri = $_SERVER['REQUEST_URI'] ?? '';
 
 if (isset($_GET['eplak_admin']) || isset($_GET['admin']) || strpos($uri, 'eplak_admin') !== false) {
-    header('Location: /admin/index.php' . (isset($_GET['eplak_admin']) ? '?eplak_admin=' . urlencode($_GET['eplak_admin']) : ''));
+    header('Location: ' . eplakUrl('/admin/index.php') . (isset($_GET['eplak_admin']) ? '?eplak_admin=' . urlencode($_GET['eplak_admin']) : ''));
     exit;
 }
 

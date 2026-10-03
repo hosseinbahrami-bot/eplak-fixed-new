@@ -3,6 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<script>
+  (function () {
+    var path = window.location.pathname.replace(/\/+$/, '');
+    if (/\/index\.(?:html|php)$/i.test(path)) path = path.replace(/\/[^/]+$/, '');
+    window.EPLAK_BASE_PATH = path;
+    window.EPLAK_ADMIN_URL = path + '/admin';
+  })();
+</script>
 <title>ای‌پلاک - شهرداری ورامین</title>
 <meta name="description" content="سامانه یکپارچه خدمات شهری، ثبت گزارش‌های مردمی و مدیریت درخواست‌ها">
 
@@ -3133,7 +3141,7 @@ window.triggerHaptic = function(style) {
         var val = (e.target.value || '').trim().toLowerCase();
         if (val === 'admin' || val === 'panel' || val === 'modir' || val === 'مدیر') {
           e.preventDefault();
-          window.location.href = '/admin';
+          window.location.href = window.EPLAK_ADMIN_URL;
         }
       }
       return;
@@ -3141,7 +3149,7 @@ window.triggerHaptic = function(style) {
     keyBuffer += (e.key || '').toLowerCase();
     if (keyBuffer.length > 10) keyBuffer = keyBuffer.slice(-10);
     if (keyBuffer.endsWith('admin') || keyBuffer.endsWith('modir')) {
-      window.location.href = '/admin';
+      window.location.href = window.EPLAK_ADMIN_URL;
     }
   });
 
@@ -3155,7 +3163,7 @@ window.triggerHaptic = function(style) {
         logoTaps++;
         if (logoTimer) clearTimeout(logoTimer);
         if (logoTaps >= 3) {
-          window.location.href = '/admin';
+          window.location.href = window.EPLAK_ADMIN_URL;
           logoTaps = 0;
         } else {
           logoTimer = setTimeout(function () { logoTaps = 0; }, 800);

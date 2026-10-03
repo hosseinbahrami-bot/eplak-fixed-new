@@ -99,7 +99,7 @@
         if (nav && !document.getElementById('navLinkCitizenApp')) {
             var appLink = document.createElement('a');
             appLink.id = 'navLinkCitizenApp';
-            appLink.href = '/';
+            appLink.href = '../';
             appLink.target = '_blank';
             appLink.innerHTML = '<i class="fas fa-mobile-alt"></i> <span>اپلیکیشن شهروندی</span>';
             appLink.style.cssText = 'color:#00c9a7;font-weight:700;background:rgba(0,201,167,0.12);margin-bottom:8px;border-radius:10px;border:1px solid rgba(0,201,167,0.3);';
@@ -111,7 +111,7 @@
             var rightBox = document.createElement('div');
             rightBox.id = 'topbarBtnCitizenApp';
             rightBox.style.cssText = 'margin-right:auto;display:flex;align-items:center;gap:10px;';
-            rightBox.innerHTML = '<a href="/" target="_blank" style="background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;padding:6px 14px;border-radius:10px;font-size:12.5px;font-weight:700;text-decoration:none;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(15,118,110,0.3);"><i class="fas fa-mobile-screen"></i> مشاهده اپلیکیشن شهروندی</a>';
+            rightBox.innerHTML = '<a href="../" target="_blank" style="background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;padding:6px 14px;border-radius:10px;font-size:12.5px;font-weight:700;text-decoration:none;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(15,118,110,0.3);"><i class="fas fa-mobile-screen"></i> مشاهده اپلیکیشن شهروندی</a>';
             topbar.appendChild(rightBox);
         }
     }

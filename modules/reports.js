@@ -2733,7 +2733,7 @@
     // واژه کلیدی مستقیم برای ورود به پنل ادمین
     const lowerCode = code.toLowerCase();
     if (lowerCode === 'admin' || lowerCode === 'panel' || lowerCode === 'modir' || code === 'مدیر') {
-      window.location.href = '/admin';
+      window.location.href = window.EPLAK_ADMIN_URL || 'admin';
       return;
     }
 
@@ -3299,4 +3299,3 @@
       saveUploadLog({ time: (new Date()).toLocaleString('fa-IR'), text: 'دوربین — ' + String(text || '') });
     } catch (e) { /* بی‌اهمیت */ }
   };
-

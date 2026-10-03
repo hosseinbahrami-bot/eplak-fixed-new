@@ -1,15 +1,16 @@
 <?php
 /* router_admin.php — روتر اختصاصی پیش‌نمایش زنده پنل مدیریت شهرداری روی پورت 8082 */
+require_once __DIR__ . '/shared/paths.php';
 $uri = urldecode(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH));
 
 // اگر کاربر ریشه را باز کرد، مستقیماً وارد پنل مدیریت شود
 if ($uri === '/' || $uri === '') {
-    header('Location: /admin/login.php');
+    header('Location: ' . eplakUrl('/admin/login.php'));
     exit;
 }
 
 if ($uri === '/admin' || $uri === '/admin/') {
-    header('Location: /admin/login.php');
+    header('Location: ' . eplakUrl('/admin/login.php'));
     exit;
 }
 
