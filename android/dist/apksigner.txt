@@ -1,0 +1,17 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=Eplak App, OU=Eplak, O=Eplak, L=Varamin, ST=Tehran, C=IR
+Signer #1 certificate SHA-256 digest: 1a61dea0bf77e9e7fe06f5ebfecb3d6e1f34ac4ab45478de29225196d9b67d0c
+Signer #1 certificate SHA-1 digest: f2becad43a2e6f755897e579a4b898d5c5d141c5
+Signer #1 certificate MD5 digest: d293865b3d4cc8c14293d7bebf349e10
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 2048
+Signer #1 public key SHA-256 digest: 1da440a2a2b34fca2f486d569edbd0e25c3d190cdf7209ab5d3f94da9cf3c72d
+Signer #1 public key SHA-1 digest: 9296ed6dd0431d47763d638f43c108bb241b4ed7
+Signer #1 public key MD5 digest: 4c3aad1cac820972052dcc72cdcfbf21
