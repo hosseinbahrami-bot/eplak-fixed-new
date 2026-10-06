@@ -1,0 +1,82 @@
+name: آزمون‌های خودکار (Regression)
+
+# ============================================================================
+#  همه‌ی آزمون‌های خودکار پروژه (tools/dev/run-regression.sh) با هر تغییر در کد.
+#  این اجرا هیچ فایلی نمی‌سازد و منتشر نمی‌کند؛ فقط «سالم بودن کد» را نشان می‌دهد:
+#  syntax · notify · app · otp · pushcrypto · fcm · backend · security · online
+#  geo · upload · tiles · push · places · placesadmin · ios · pwa
+#  (ساخت APK/IPA/PWA کارِ ورک‌فلوهای android-apk.yml، ios-ipa.yml و pwa.yml است.)
+# ============================================================================
+
+on:
+  push:
+    branches: [main, 'arena/**']
+    paths:
+      - 'index.html'
+      - 'index.php'
+      - 'app.js'
+      - 'core/**'
+      - 'modules/**'
+      - 'views/**'
+      - 'assets/**'
+      - 'api/**'
+      - 'admin/**'
+      - 'shared/**'
+      - 'backend/**'
+      - 'android-app/**'
+      - 'ios-app/**'
+      - 'tools/**'
+      - 'manifest.json'
+      - 'sw.js'
+      - '.htaccess'
+      - 'docs/**'
+      - 'README.md'
+      - '.github/workflows/**'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'کدام آزمون؟ (all، fcm، syntax، places، placesadmin، security، ios، pwa، …)'
+        required: false
+        default: 'all'
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: آزمون‌های خودکار
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: نصب Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: اجرا
+        run: |
+          set -euo pipefail
+          TARGET="${{ github.event.inputs.target || 'all' }}"
+          echo "→ آزمون‌های خودکار: ${TARGET}"
+          bash tools/dev/run-regression.sh "$TARGET" 2>&1 | tee regression.log
+          {
+            echo '### 🧪 آزمون‌های خودکار'
+            echo
+            echo '```'
+            grep -E '^(✅|❌|────────|[A-Z]+: [0-9]+ passed)' regression.log | tail -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: آپلود لاگ کامل
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-log
+          path: regression.log
+          if-no-files-found: ignore
+          retention-days: 14

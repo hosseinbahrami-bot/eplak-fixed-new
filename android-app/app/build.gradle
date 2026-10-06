@@ -4,6 +4,32 @@ plugins {
     id 'kotlin-kapt'
 }
 
+/* ── شماره‌ی نسخه ────────────────────────────────────────────────────────────
+   پیش‌فرض همان 2.0 است؛ در CI (ورک‌فلوی android-apk.yml) با -PeplakVersionName و
+   -PeplakVersionCode شماره‌ی یکتا داده می‌شود تا بفهمید کدام ساخت روی گوشی است
+   (تنظیمات گوشی → برنامه‌ها → ای‌پلاک → آخرین نسخه). */
+def appVersionCode = (project.findProperty('eplakVersionCode') ?: '2').toString().toInteger()
+def appVersionName = (project.findProperty('eplakVersionName') ?: '2.0').toString()
+
+/* ── کلید امضای release ──────────────────────────────────────────────────────
+   کلید و رمزها در android-app/keystore.properties است (فایل کلید: eplak-release.p12).
+   اگر کلید در مخزن نباشد (مثلاً روی دستگاهی که تازه clone کرده)، ساخت release بدون
+   امضا انجام می‌شود و فقط APK «debug» قابل نصب است؛ در CI کلید بارِ اول ساخته و بعد
+   در مخزن گذاشته می‌شود تا امضای همه‌ی نسخه‌ها یکی بماند. */
+def ksProps = new Properties()
+def ksPropsFile = rootProject.file('keystore.properties')
+if (ksPropsFile.exists()) {
+    ksPropsFile.withInputStream { ksProps.load(it) }
+}
+def ksPath = ksProps.getProperty('storeFile')
+def ksFile = ksPath ? rootProject.file(ksPath) : null
+def ksReady = ksFile != null && ksFile.exists() && ksProps.getProperty('storePassword')
+if (ksReady) {
+    logger.lifecycle("EplakSign: کلید امضای release پیدا شد (${ksFile.name}) — APK امضاشده ساخته می‌شود.")
+} else {
+    logger.lifecycle('EplakSign: کلید امضا (android-app/eplak-release.p12) نیست — release بدون امضا ساخته می‌شود.')
+}
+
 android {
     namespace 'com.example.eplakfixed'
     compileSdk 36
@@ -13,8 +39,8 @@ android {
         applicationId 'com.example.eplakfixed'
         minSdk 24
         targetSdk 36
-        versionCode 2
-        versionName '2.0'
+        versionCode appVersionCode
+        versionName appVersionName
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
@@ -23,8 +49,22 @@ android {
         buildConfig true
     }
 
+    signingConfigs {
+        release {
+            if (ksReady) {
+                storeFile ksFile
+                storePassword ksProps.getProperty('storePassword')
+                keyAlias ksProps.getProperty('keyAlias')
+                keyPassword ksProps.getProperty('keyPassword')
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (ksReady) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

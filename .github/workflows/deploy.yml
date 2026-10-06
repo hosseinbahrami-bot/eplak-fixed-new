@@ -1,0 +1,130 @@
+name: Deploy site to host (FTP)
+
+# ============================================================================
+#  آپلود خودکار «بسته‌ی سایت و پنل» روی هاست — فقط وقتی ادغام در main انجام شود
+#  و فقط وقتی secret های FTP در مخزن باشد (Settings ← Secrets and variables ← Actions):
+#     FTP_HOST · FTP_USER · FTP_PASS · FTP_DIR (اختیاری؛ پیش‌فرض eplak-fixed)
+#
+#  چه چیزی آپلود می‌شود؟ همان بسته‌ای که tools/build-update-package.sh می‌سازد
+#  (eplak-fixed-update.zip) — یعنی فقط کد سایت و پنل. داده‌ی سایت (data/، uploads/،
+#  shared/config.php) و فایل‌های CI/اپ هرگز آپلود نمی‌شوند؛ برای اطمینان، پیش از آپلود
+#  این پوشه‌ها از پوشه‌ی موقت پاک می‌شوند.
+#
+#  اگر secret ها نباشند، job بدون خطا رد می‌شود و راهنما را در خلاصه می‌نویسد.
+# ============================================================================
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'index.php'
+      - 'app.js'
+      - 'core/**'
+      - 'modules/**'
+      - 'views/**'
+      - 'assets/**'
+      - 'api/**'
+      - 'admin/**'
+      - 'shared/**'
+      - 'backend/**'
+      - 'manifest.json'
+      - 'sw.js'
+      - '.htaccess'
+      - 'tools/build-update-package.sh'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+env:
+  HOST_DIR: eplak-fixed
+
+permissions:
+  contents: read
+
+jobs:
+  ftp:
+    name: آپلود بسته‌ی سایت روی هاست
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.ref == 'refs/heads/main'
+    env:
+      FTP_HOST: ${{ secrets.FTP_HOST }}
+      FTP_USER: ${{ secrets.FTP_USER }}
+      FTP_PASS: ${{ secrets.FTP_PASS }}
+      FTP_DIR: ${{ secrets.FTP_DIR }}
+    steps:
+      - name: بررسی secret های FTP
+        id: guard
+        run: |
+          set -uo pipefail
+          if [ -z "${FTP_HOST:-}" ] || [ -z "${FTP_USER:-}" ] || [ -z "${FTP_PASS:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### ⏳ آپلود خودکار روی هاست رد شد"
+              echo
+              echo "secret های FTP در مخزن نیستند. برای روشن کردنش:"
+              echo "Settings ← Secrets and variables ← Actions ← New repository secret:"
+              echo "\`FTP_HOST\`، \`FTP_USER\`، \`FTP_PASS\` و (اختیاری) \`FTP_DIR\`."
+              echo
+              echo "تا آن موقع، بسته‌ی سایت را دستی آپلود کنید: \`bash tools/build-update-package.sh\`"
+              echo "سپس \`eplak-fixed-update.zip\` را در cPanel → File Manager روی \`public_html/eplak-fixed\` Extract کنید."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "FTP_DIR=${FTP_DIR:-$HOST_DIR}" >> "$GITHUB_ENV"
+
+      - name: دریافت کد
+        if: steps.guard.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+
+      - name: ساخت بسته‌ی سایت و آماده‌سازی پوشه‌ی آپلود
+        if: steps.guard.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          bash tools/build-update-package.sh
+          rm -rf staging
+          mkdir -p staging
+          unzip -q eplak-fixed-update.zip -d staging
+          # فایل‌های CI و اپ و داده هیچ‌وقت روی هاست نمی‌روند (حتی اگر اشتباهی داخل بسته باشند)
+          cd staging
+          rm -rf ios-app android-app pwa-dist pwa-evidence tools .github .git .vscode node_modules
+          rm -rf data uploads shared/config.php test-fixtures
+          cd ..
+          echo "UPLOAD_FILES=$(find staging -type f | wc -l | tr -d ' ')" >> "$GITHUB_ENV"
+          echo "UPLOAD_SIZE=$(du -sh staging | cut -f1)" >> "$GITHUB_ENV"
+
+      - name: آپلود با FTP (فایل‌به‌فایل، با ساخت پوشه‌ها)
+        if: steps.guard.outputs.enabled == 'true'
+        run: |
+          set -uo pipefail
+          TARGET="${FTP_DIR:-$HOST_DIR}"
+          FAIL=0; DONE=0
+          while IFS= read -r f; do
+            rel="${f#staging/}"
+            if curl -sS --fail --ftp-create-dirs --connect-timeout 20 --max-time 300 \
+                 -T "$f" -u "${FTP_USER}:${FTP_PASS}" "ftp://${FTP_HOST}/${TARGET}/${rel}"; then
+              DONE=$((DONE + 1))
+            else
+              FAIL=$((FAIL + 1)); echo "❌ آپلود ناموفق: ${rel}"
+            fi
+          done < <(find staging -type f | sort)
+          echo "→ ${DONE} فایل آپلود شد؛ ${FAIL} مورد ناموفق"
+          {
+            echo "### 🌐 آپلود روی هاست"
+            echo
+            echo "| مورد | مقدار |"
+            echo "|---|---|"
+            echo "| پوشه‌ی مقصد | \`${TARGET}\` |"
+            echo "| فایل‌ها | ${UPLOAD_FILES:-?} (${UPLOAD_SIZE:-?}) |"
+            echo "| آپلودشده | ${DONE} |"
+            echo "| ناموفق | ${FAIL} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$FAIL" -eq 0 ] || exit 1
+
+      - name: پایش زنده‌ی سایت پس از آپلود (گزارشی)
+        if: steps.guard.outputs.enabled == 'true'
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          bash tools/live-check.sh || true

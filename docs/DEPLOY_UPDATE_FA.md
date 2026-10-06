@@ -157,7 +157,7 @@
 
 ### ۶-۴) دانلود و نصب APK تازه (بدون Android Studio)
 **لینک ثابت دانلود:**
-`https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk`
+`https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk`
 
 یا صفحه‌ی Releases → بخش Assets → `eplak-app.apk`
 

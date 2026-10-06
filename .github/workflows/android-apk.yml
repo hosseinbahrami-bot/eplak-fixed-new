@@ -1,0 +1,289 @@
+name: Build Android APK
+
+# ============================================================================
+#  ساخت APK در ابر گیت‌هاب (بدون نیاز به Android Studio روی دستگاه خودتان)
+#
+#  چه وقتی راه می‌افتد؟ هر تغییر در فایل‌های وب/اپ (همان‌هایی که داخل APK کپی می‌شوند)
+#  یا هر تغییر در android-app/ — و دستی از تب Actions.
+#
+#  چه چیزی می‌سازد؟
+#    • dist/eplak-app.apk  — نسخه‌ی release، امضاشده و قابل نصب روی گوشی
+#    • dist/eplak-app.apk.sha256 — اثرانگشت فایل
+#    • artifact «eplak-apk» (تب Actions) و پیوست به صفحه‌ی Releases
+#
+#  امضا: android-app/eplak-release.p12 + android-app/keystore.properties.
+#  اگر کلید در مخزن نباشد (بار اول)، همین ورک‌فلو آن را با keytool می‌سازد، APK را با آن
+#  امضا می‌کند و خودِ کلید را در artifact «eplak-signing-key» بیرون می‌دهد تا در مخزن
+#  گذاشته شود؛ از آن پس کلید ثابت می‌ماند و نسخه‌ی تازه روی نسخه‌ی نصب‌شده به‌روز می‌شود.
+#
+#  شاخص «همگام‌سازی اماکنِ پنل با اپ» (PLACES_SYNC_CODE): اثرانگشتِ پاسخِ api/places.php
+#  روی سرور زنده. اپ این پاسخ را با applyRemote روی فهرست پیش‌فرض اعمال می‌کند و در کلید
+#  eplak_places_remote_v1 نگه می‌دارد؛ پس اگر ادمین مکانی را از پنل عوض کند، APK تازه
+#  لازم نیست ساخته شود — این شاخص فقط می‌گوید در لحظه‌ی ساخت، داده‌ی پنل چه نسخه‌ای بود.
+# ============================================================================
+
+on:
+  push:
+    branches: [main, 'arena/**']
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - 'core/**'
+      - 'modules/**'
+      - 'views/**'
+      - 'assets/**'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'android-app/**'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+env:
+  RELEASE_TAG: v2.0-eplak-update
+  APK_NAME: eplak-app.apk
+  PLACES_API: https://eplak.ir/eplak-fixed/api/places.php
+  BUILD_TOOLS: 36.0.0
+  PLACES_SYNC_CODE: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ساخت APK (release، امضاشده)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: نصب JDK 17 (همان نسخه‌ای که android-app/gradle/gradle-daemon-jvm.properties می‌خواهد)
+        uses: actions/setup-java@v4
+        with:
+          distribution: oracle
+          java-version: '17'
+
+      - name: نصب Android SDK (cmdline-tools)
+        uses: android-actions/setup-android@v3
+
+      - name: نصب platform-tools، platform 36 و build-tools
+        run: |
+          set -euo pipefail
+          (yes | sdkmanager --licenses) >/dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;${BUILD_TOOLS}"
+          echo "BT_DIR=${ANDROID_HOME:-${ANDROID_SDK_ROOT}}/build-tools/${BUILD_TOOLS}" >> "$GITHUB_ENV"
+          java -version
+
+      - name: کش Gradle (ساخت‌های بعدی سریع‌تر)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-jdk17-${{ hashFiles('android-app/**/*.gradle', 'android-app/gradle/**', 'android-app/gradle.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-jdk17-
+            gradle-${{ runner.os }}-
+
+      - name: شماره‌ی نسخه‌ی این ساخت
+        run: |
+          set -euo pipefail
+          APP_VERSION="2.0.${GITHUB_RUN_NUMBER}"
+          APP_VERSION_CODE="$((2000 + GITHUB_RUN_NUMBER))"
+          echo "APP_VERSION=${APP_VERSION}" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=${APP_VERSION_CODE}" >> "$GITHUB_ENV"
+          echo "COMMIT_SHORT=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "نسخه: ${APP_VERSION} (versionCode ${APP_VERSION_CODE}) — کامیت $(git rev-parse --short HEAD)"
+
+      - name: کلید امضای release (اگر در مخزن نیست، همین‌جا ساخته می‌شود)
+        run: |
+          set -euo pipefail
+          cd android-app
+          KS_FILE="$(sed -n 's/^storeFile=//p' keystore.properties | tr -d '\r')"
+          KS_ALIAS="$(sed -n 's/^keyAlias=//p' keystore.properties | tr -d '\r')"
+          KS_PASS="$(sed -n 's/^storePassword=//p' keystore.properties | tr -d '\r')"
+          if [ -f "$KS_FILE" ]; then
+            echo "→ کلید امضا از مخزن خوانده می‌شود: android-app/${KS_FILE}"
+            echo "KEYSTORE_SOURCE=repo" >> "$GITHUB_ENV"
+          else
+            echo "→ کلید امضا در مخزن نیست؛ یک کلید PKCS12 تازه ساخته می‌شود (بار اول)"
+            keytool -genkeypair -storetype PKCS12 -keystore "$KS_FILE" \
+              -alias "$KS_ALIAS" -keyalg RSA -keysize 2048 -validity 10950 \
+              -storepass "$KS_PASS" -keypass "$KS_PASS" \
+              -dname "CN=Eplak App, OU=Eplak, O=Eplak, L=Varamin, ST=Tehran, C=IR"
+            echo "KEYSTORE_SOURCE=generated" >> "$GITHUB_ENV"
+          fi
+          # اثرانگشت کلید (برای اطمینان از یکی بودن امضا در ساخت‌های بعدی)؛ رمز چاپ نمی‌شود
+          mkdir -p ../dist
+          keytool -list -v -keystore "$KS_FILE" -storepass "$KS_PASS" \
+            | grep -E 'Alias name|Valid|SHA256:|SHA1:' | sed 's/^[[:space:]]*/  /' > ../dist/keystore-fingerprint.txt
+          cat ../dist/keystore-fingerprint.txt
+
+      - name: بیرون دادن کلید ساخته‌شده (فقط بار اول؛ بعد از آن کلید در مخزن است)
+        if: env.KEYSTORE_SOURCE == 'generated'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eplak-signing-key
+          path: android-app/eplak-release.p12
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: شاخص همگام‌سازی اماکنِ پنل با اپ (PLACES_SYNC_CODE)
+        run: |
+          set -euo pipefail
+          # پاسخ api/places.php از سرور زنده خوانده می‌شود؛ اگر سرور در دسترس نبود،
+          # اثرانگشتِ «داده‌ی خالی» ثبت می‌شود تا ساخت متوقف نشود.
+          curl -fsSL --max-time 30 "$PLACES_API" -o /tmp/places.json || echo '{}' > /tmp/places.json
+          PLACES_SYNC_CODE="$(python3 - <<'PY'
+          import hashlib, json
+          try:
+              with open('/tmp/places.json', encoding='utf-8') as f:
+                  d = json.load(f)
+          except Exception:
+              d = {}
+          # همان چیزی که اپ با applyRemote می‌گیرد و در eplak_places_remote_v1 نگه می‌دارد
+          v = str(d.get('v', '')).strip()
+          if v:
+              print(v[:12])
+          else:
+              body = json.dumps(d, ensure_ascii=False, sort_keys=True).encode('utf-8')
+              print(hashlib.sha256(body).hexdigest()[:12])
+          PY
+          )"
+          PLACES_COUNT="$(python3 - <<'PY' || echo '?'
+          import json
+          try:
+              with open('/tmp/places.json', encoding='utf-8') as f:
+                  d = json.load(f)
+          except Exception:
+              d = {}
+          if not isinstance(d, dict):
+              d = {}
+          print('%d/%d/%d' % (len(d.get('custom') or []), len(d.get('overrides') or {}), len(d.get('hidden') or [])))
+          PY
+          )"
+          echo "PLACES_SYNC_CODE=${PLACES_SYNC_CODE}" >> "$GITHUB_ENV"
+          echo "PLACES_SYNC_DETAIL=${PLACES_COUNT}" >> "$GITHUB_ENV"
+          echo "→ PLACES_SYNC_CODE = ${PLACES_SYNC_CODE} (افزوده/اصلاح/پنهان از پنل: ${PLACES_COUNT})"
+
+      - name: ساخت APK با Gradle
+        run: |
+          set -euo pipefail
+          cd android-app
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease \
+            -PeplakVersionName="${APP_VERSION}" \
+            -PeplakVersionCode="${APP_VERSION_CODE}"
+
+      - name: بازرسی APK (امضا، نسخه، مجوزها) و کپی در dist/
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APK="$(find android-app/app/build/outputs/apk -type f -name '*.apk' -path '*release*' | head -1 || true)"
+          if [ -z "$APK" ]; then
+            echo "❌ APK ساخته نشد؛ خروجی‌های Gradle:"
+            find android-app/app/build/outputs -type f | head -30
+            exit 1
+          fi
+          cp "$APK" "dist/${APK_NAME}"
+          "${BT_DIR}/apksigner" verify --print-certs --verbose "dist/${APK_NAME}" | tee dist/apksigner.txt
+          if ! grep -q 'Signer #1 certificate' dist/apksigner.txt; then
+            echo '❌ APK امضا نشده است (کلید امضا پیدا نشد)'; exit 1
+          fi
+          "${BT_DIR}/aapt2" dump badging "dist/${APK_NAME}" > dist/badging.txt
+          head -4 dist/badging.txt
+          ( cd dist && sha256sum "${APK_NAME}" | awk '{print $1}' > "${APK_NAME}.sha256" )
+          echo "APK_SHA256=$(cat "dist/${APK_NAME}.sha256")" >> "$GITHUB_ENV"
+          {
+            echo "# مشخصات ساخت APK ای‌پلاک"
+            echo
+            echo "| مورد | مقدار |"
+            echo "|---|---|"
+            echo "| فایل | ${APK_NAME} |"
+            echo "| نسخه | ${APP_VERSION} (versionCode ${APP_VERSION_CODE}) |"
+            echo "| اندازه | $(du -h "dist/${APK_NAME}" | cut -f1) |"
+            echo "| کامیت | ${COMMIT_SHORT} |"
+            echo "| شاخه | ${GITHUB_REF_NAME} |"
+            echo "| اثرانگشت SHA-256 | $(cat "dist/${APK_NAME}.sha256") |"
+            echo "| شاخص همگام‌سازی اماکن (PLACES_SYNC_CODE) | ${PLACES_SYNC_CODE} |"
+            echo "| منبع کلید امضا | ${KEYSTORE_SOURCE} |"
+            echo "| تاریخ ساخت | $(date -u '+%Y-%m-%d %H:%M UTC') |"
+          } > dist/build-info.md
+          cat dist/build-info.md
+
+      - name: خلاصه‌ی اجرا
+        run: |
+          {
+            echo "### 📱 APK ای‌پلاک ساخته شد"
+            echo
+            echo "| مورد | مقدار |"
+            echo "|---|---|"
+            echo "| نسخه | \`${APP_VERSION}\` (versionCode \`${APP_VERSION_CODE}\`) |"
+            echo "| کامیت | \`${COMMIT_SHORT}\` |"
+            echo "| اندازه | $(du -h "dist/${APK_NAME}" | cut -f1) |"
+            echo "| امضا | ${KEYSTORE_SOURCE} — $(grep -m1 'SHA256:' dist/keystore-fingerprint.txt | sed 's/^ *//') |"
+            echo "| شاخص همگام‌سازی اماکنِ پنل (PLACES_SYNC_CODE) | \`${PLACES_SYNC_CODE}\` |"
+            echo
+            echo "فایل‌ها: artifact **eplak-apk** و صفحه‌ی Releases (برچسب \`${RELEASE_TAG}\`)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: آپلود artifact (eplak-apk)
+        uses: actions/upload-artifact@v4
+        with:
+          name: eplak-apk
+          path: |
+            dist/eplak-app.apk
+            dist/eplak-app.apk.sha256
+            dist/build-info.md
+            dist/apksigner.txt
+            dist/keystore-fingerprint.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: پیوست APK به صفحه‌ی Releases
+        id: release
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.0-eplak-update
+          name: ای‌پلاک — نسخه‌ی ۲.۰ (APK · IPA · PWA)
+          target_commitish: ${{ github.sha }}
+          files: |
+            dist/eplak-app.apk
+            dist/eplak-app.apk.sha256
+          fail_on_unmatched_files: false
+          body: |
+            آخرین ساخت خودکار ای‌پلاک.
+
+            | مورد | مقدار |
+            |---|---|
+            | نسخه‌ی اپ اندروید | `${{ env.APP_VERSION }}` (versionCode `${{ env.APP_VERSION_CODE }}`) |
+            | کامیت | `${{ env.COMMIT_SHORT }}` |
+            | شاخص همگام‌سازی اماکنِ پنل با اپ (PLACES_SYNC_CODE) | `${{ env.PLACES_SYNC_CODE }}` |
+            | اثرانگشت APK (SHA-256) | `${{ env.APK_SHA256 }}` |
+
+            **نصب روی گوشی:** `eplak-app.apk` را دانلود کنید → اجازه‌ی «نصب از منابع نامشخص» → نصب.
+            اگر پیام «App not installed» دیدید، نسخه‌ی قبلی را پاک کنید و دوباره نصب کنید
+            (کلید امضا با نسخه‌های مخزن قبلی `eplak-fixed` یکی نیست).
+
+            🍎 `eplak-app-unsigned.ipa` و 🌍 بسته‌ی PWA از ورک‌فلوهای `Build iOS IPA` و `Build PWA package`
+            به همین صفحه اضافه می‌شوند.
+
+      - name: بررسی انتشار در Releases
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          if gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' 2>/dev/null | grep -q "${APK_NAME}"; then
+            echo "✅ ${APK_NAME} روی صفحه‌ی Releases (برچسب ${RELEASE_TAG}) هست." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo
+              echo "⚠️ پیوست خودکار به Releases انجام نشد (احتمالاً مجوز نوشتنِ توکن اجرا: "
+              echo "Settings ← Actions ← General ← Workflow permissions ← Read and write)."
+              echo "فایل‌ها در artifact **eplak-apk** همین اجرا هستند."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

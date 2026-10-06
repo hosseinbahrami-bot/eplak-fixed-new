@@ -1,7 +1,7 @@
 /* pwa.test.mjs — «نسخه PWA»: manifest، تگ‌های iOS/اندروید، نسخه‌ی ایستا و انتشار روی GitHub Pages
    ---------------------------------------------------------------------------
    PWA همان سایت است (manifest.json + sw.js + آیکون‌ها) و لینک مستقیمش روی GitHub Pages است
-   (https://hosseinbahrami-bot.github.io/eplak-fixed/)؛ کاربر هیچ فایل zipی دریافت نمی‌کند. این آزمون می‌سنجد:
+   (https://hosseinbahrami-bot.github.io/eplak-fixed-new/)؛ کاربر هیچ فایل zipی دریافت نمی‌کند. این آزمون می‌سنجد:
      ۱) manifest.json معتبر است و آیکون‌هایش واقعاً هستند و اندازه‌ی اعلام‌شده را دارند
         (شرط نصب در Chrome/اندروید)، و index.html تگ‌های نصب روی iOS را دارد
         (apple-touch-icon ۱۸۰، حالت تمام‌صفحه، نوار وضعیت، viewport-fit)
@@ -188,7 +188,7 @@ const gated = pages.steps.filter((st) => st.id !== 'check');
 ok('همه‌ی مراحل بعد از بررسی فقط وقتی Pages روشن است اجرا می‌شوند', gated.length >= 8 && gated.every((st) => /steps\.check\.outputs\.enabled == 'true'/.test(String(st.if || ''))));
 ok('پس از انتشار، همان آزمون دودی روی آدرس واقعیِ منتشرشده اجرا می‌شود (PWA_URL = page_url)',
   /PWA_URL: \$\{\{ steps\.deployment\.outputs\.page_url \}\}/.test(wfText) && wfText.indexOf('actions/deploy-pages') < wfText.indexOf('node tools/pwa-smoke.mjs pwa-dist pages-evidence'));
-ok('آدرس نهایی PWA در ورک‌فلو https://hosseinbahrami-bot.github.io/eplak-fixed/ است', wf.env.PAGES_URL === 'https://hosseinbahrami-bot.github.io/eplak-fixed/');
+ok('آدرس نهایی PWA در ورک‌فلو https://hosseinbahrami-bot.github.io/eplak-fixed-new/ است', wf.env.PAGES_URL === 'https://hosseinbahrami-bot.github.io/eplak-fixed-new/');
 ok('هیچ zip و هیچ پیوست به Releases در ورک‌فلوی PWA نیست؛ و secretی لازم نیست', !/eplak-pwa/.test(wfText) && !/gh release upload/.test(wfText) && !/secrets\./.test(wfText));
 ok('عکس‌ها فقط وقتی پیام کامیت «[evidence]» دارد به برچسب گیت می‌روند (برچسب‌های آزمایشی روی هر اجرا جمع نمی‌شوند)',
   (wfText.match(/contains\(github\.event\.head_commit\.message, '\[evidence\]'\)/g) || []).length === 3);
@@ -219,7 +219,7 @@ console.log('— ۵) راهنما و README');
 const faDoc = exists('docs/IOS_PWA_FA.md') ? read('docs/IOS_PWA_FA.md') : '';
 const enDoc = exists('docs/IOS_PWA_EN.md') ? read('docs/IOS_PWA_EN.md') : '';
 const readme = read('README.md');
-const PAGES = 'https://hosseinbahrami-bot.github.io/eplak-fixed/';
+const PAGES = 'https://hosseinbahrami-bot.github.io/eplak-fixed-new/';
 ok('راهنمای فارسی: لینک مستقیم GitHub Pages، آدرس هاست، مراحل روشن کردن Pages، نصب با Safari/Chrome',
   [PAGES, 'https://eplak.ir/eplak-fixed/', 'Settings ← Pages', 'GitHub Actions', 'Re-run all jobs', 'Safari', 'Chrome', 'افزودن به صفحه اصلی'].every((t) => faDoc.includes(t)));
 ok('راهنمای انگلیسی: direct GitHub Pages link, host address, steps to switch Pages on, install with Safari/Chrome',
@@ -228,7 +228,7 @@ ok('راهنمای فارسی و انگلیسی: محدودیت environment (ش�
 ok('هیچ‌جا (README، راهنماها، پایش) فایل zip برای PWA داده نمی‌شود',
   ![readme, faDoc, enDoc, read('tools/live-check.sh'), read('docs/DEPLOY_UPDATE_FA.md'), read('docs/DEPLOY_UPDATE_EN.md')].some((t) => /eplak-pwa/.test(t)));
 ok('README لینک مستقیم PWA را دارد', readme.includes(PAGES) && /PWA/.test(readme));
-ok('پایش زنده (live-check) وضعیت GitHub Pages را می‌سنجد', read('tools/live-check.sh').includes('hosseinbahrami-bot.github.io/eplak-fixed') && /PAGES_UP/.test(read('tools/live-check.sh')));
+ok('پایش زنده (live-check) وضعیت GitHub Pages را می‌سنجد', read('tools/live-check.sh').includes('hosseinbahrami-bot.github.io/eplak-fixed-new') && /PAGES_UP/.test(read('tools/live-check.sh')));
 
 console.log('\n' + '='.repeat(52));
 console.log(`PWA: ${pass} passed, ${fail} failed`);

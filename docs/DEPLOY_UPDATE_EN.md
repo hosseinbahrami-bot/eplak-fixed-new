@@ -10,11 +10,11 @@ changes **appear on the real site**.
 Download the update package (one file):
 
 - **Direct link:**
-  `https://github.com/hosseinbahrami-bot/eplak-fixed/raw/main/eplak-fixed-update.zip`
+  `https://github.com/hosseinbahrami-bot/eplak-fixed-new/raw/main/eplak-fixed-update.zip`
 - or open the file page and click **Download**:
-  `https://github.com/hosseinbahrami-bot/eplak-fixed/blob/main/eplak-fixed-update.zip`
+  `https://github.com/hosseinbahrami-bot/eplak-fixed-new/blob/main/eplak-fixed-update.zip`
 - Release page with the same link and notes:
-  `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/tag/v2.0-eplak-update`
+  `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/tag/v2.0-eplak-update`
 
 The package contains **code only**. These are intentionally NOT inside it and
 will not be overwritten: `data/` (database), `uploads/` (citizens' photos and
@@ -182,7 +182,7 @@ automatically and produces a new APK **with the Firebase code and config baked i
 
 ### 6.1.4) Downloading and installing the fresh APK (no Android Studio)
 **Stable download link:**
-`https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk`
+`https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk`
 
 (or the Releases page → Assets → `eplak-app.apk`). On the phone: download →
 allow “install from unknown sources” → install. If you see “App not installed”,

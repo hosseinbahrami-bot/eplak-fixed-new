@@ -22,12 +22,12 @@ version can do, and what has not yet been tried on a real phone.
 
 | | Link |
 |---|---|
-| 🌍 **PWA — direct link (GitHub Pages)** | **https://hosseinbahrami-bot.github.io/eplak-fixed/** (after Pages is switched on once; section 3.1) |
+| 🌍 **PWA — direct link (GitHub Pages)** | **https://hosseinbahrami-bot.github.io/eplak-fixed-new/** (after Pages is switched on once; section 3.1) |
 | 🌐 **PWA on your own host** | **https://eplak.ir/eplak-fixed/** — up right now and installable |
-| 🍎 iOS app (unsigned IPA) | `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app-unsigned.ipa` (+ the `.sha256` file) |
-| 🧰 Xcode project (for anyone with a Mac) | `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-ios-project.zip` |
-| 📱 Android app | `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk` |
-| 🗂️ Everything | [Releases page](https://github.com/hosseinbahrami-bot/eplak-fixed/releases/tag/v2.0-eplak-update) |
+| 🍎 iOS app (unsigned IPA) | `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app-unsigned.ipa` (+ the `.sha256` file) |
+| 🧰 Xcode project (for anyone with a Mac) | `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-ios-project.zip` |
+| 📱 Android app | `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk` |
+| 🗂️ Everything | [Releases page](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/tag/v2.0-eplak-update) |
 
 The PWA has no file to download; it is just an address.
 
@@ -36,7 +36,7 @@ The PWA has no file to download; it is just an address.
 ## 3) PWA
 
 ### 3.1) Direct link on GitHub Pages
-Address: **https://hosseinbahrami-bot.github.io/eplak-fixed/**
+Address: **https://hosseinbahrami-bot.github.io/eplak-fixed-new/**
 
 This is the same web app (exactly the files the APK and IPA contain) and it talks to the main Eplak server
 (`https://eplak.ir/eplak-fixed/api`); so sign-in with the verification code, reports, notifications and city places all come from that server.

@@ -1,0 +1,244 @@
+name: Build iOS IPA
+
+# ============================================================================
+#  ساخت اپ iOS روی macOS (شبیه‌ساز + دستگاه واقعی) و پیوست به همان صفحه‌ی Releases
+#
+#  چرا macOS؟ کامپایل Swift و بسته‌بندی .app فقط با Xcode ممکن است؛ پس این ورک‌فلو روی
+#  رانر macos اجرا می‌شود. هیچ secret و هیچ حساب توسعه‌دهنده‌ی اپل لازم نیست:
+#  هر دو ساخت «بدون امضا» هستند (امضای کد غیرفعال است) و خروجی
+#  «eplak-app-unsigned.ipa» با Sideloadly / AltStore / Xcode و Apple ID خودِ کاربر
+#  روی آیفون نصب می‌شود (docs/IOS_PWA_FA.md).
+#
+#  مراحل:
+#    ۱) ios-app/sync-web.sh — همان فایل‌های وبِ APK داخل Eplak/Web کپی می‌شود
+#    ۲) ساخت برای شبیه‌ساز + آزمون دودی روی iPhone واقعیِ شبیه‌سازی‌شده
+#       (ios-app/ci/simulator-smoke.sh: پینگ سرور، نقشه، «موقعیت من»، لینک نشان)
+#    ۳) ساخت برای دستگاه واقعی (arm64) و بسته‌بندی Payload → IPA
+#    ۴) بازرسی IPA (ساختار، باینری، Info.plist، فایل‌های وب، اثرانگشت)
+#    ۵) پیوست به Releases (eplak-app-unsigned.ipa + eplak-ios-project.zip)
+# ============================================================================
+
+on:
+  push:
+    branches: [main, 'arena/**']
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - 'core/**'
+      - 'modules/**'
+      - 'views/**'
+      - 'assets/**'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'ios-app/**'
+      - '.github/workflows/ios-ipa.yml'
+  workflow_dispatch:
+
+env:
+  RELEASE_TAG: v2.0-eplak-update
+  IPA_NAME: eplak-app-unsigned.ipa
+  PROJECT_ZIP: eplak-ios-project.zip
+  XCODE_PROJECT: ios-app/Eplak.xcodeproj
+  XCODE_SCHEME: Eplak
+  BUNDLE_ID: ir.eplak.app
+
+permissions:
+  contents: write
+
+jobs:
+  ipa:
+    name: ساخت IPA (بدون امضا) + آزمون روی شبیه‌ساز
+    runs-on: macos-14
+    timeout-minutes: 75
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: نسخه‌ی Xcode و شبیه‌سازهای موجود
+        run: |
+          set -euo pipefail
+          xcode-select -p
+          xcodebuild -version
+          xcrun simctl list runtimes | grep -i ios | head -5
+          sw_vers
+
+      - name: شماره‌ی نسخه‌ی این ساخت
+        run: |
+          set -euo pipefail
+          echo "APP_VERSION=2.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          echo "APP_BUILD=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          echo "COMMIT_SHORT=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: کپی فایل‌های وب داخل پروژه‌ی iOS (همان مجموعه‌ی APK)
+        run: |
+          set -euo pipefail
+          bash ios-app/sync-web.sh
+          test -f ios-app/Eplak/Web/index.html
+          test -f ios-app/Eplak/Web/core/storage.js
+
+      - name: ساخت برای شبیه‌ساز iPhone (بدون امضا)
+        run: |
+          set -euo pipefail
+          xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios-app/build-sim \
+            MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$APP_BUILD" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: آزمون دودی اپ روی شبیه‌ساز iPhone (گزارشی؛ IPA را متوقف نمی‌کند)
+        id: smoke
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          APP="ios-app/build-sim/Build/Products/Release-iphonesimulator/Eplak.app"
+          test -d "$APP"
+          bash ios-app/ci/simulator-smoke.sh "$APP" ios-app/sim-evidence
+
+      - name: ساخت برای دستگاه واقعی arm64 (بدون امضا)
+        run: |
+          set -euo pipefail
+          xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ios-app/build-device \
+            MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$APP_BUILD" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: بازرسی IPA و بسته‌بندی Payload
+        run: |
+          set -euo pipefail
+          APP="ios-app/build-device/Build/Products/Release-iphoneos/Eplak.app"
+          mkdir -p dist
+          test -d "$APP" || { echo "❌ Eplak.app ساخته نشد"; exit 1; }
+
+          echo "— باینری اپ:"
+          file "$APP/Eplak"
+          file "$APP/Eplak" | grep -q arm64 || { echo "❌ باینری arm64 نیست"; exit 1; }
+
+          echo "— Info.plist:"
+          PLIST="$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST"
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$PLIST"
+          for k in NSCameraUsageDescription NSMicrophoneUsageDescription NSPhotoLibraryUsageDescription NSLocationWhenInUseUsageDescription; do
+            /usr/libexec/PlistBuddy -c "Print :$k" "$PLIST" >/dev/null || { echo "❌ مجوز $k در Info.plist نیست"; exit 1; }
+          done
+
+          echo "— فایل‌های وبِ داخل اپ:"
+          test -f "$APP/Web/index.html"
+          test -f "$APP/Web/core/storage.js"
+          test -f "$APP/Web/modules/city-map.js"
+          WEB_FILES=$(find "$APP/Web" -type f | wc -l | tr -d ' ')
+          echo "   $WEB_FILES فایل وب داخل Eplak.app/Web"
+
+          echo "— بسته‌بندی Payload → IPA:"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP" "Payload/Eplak.app"
+          zip -qry "dist/${IPA_NAME}" Payload
+          rm -rf Payload
+
+          echo "— بازرسی ساختار IPA:"
+          unzip -Z1 "dist/${IPA_NAME}" | head -5
+          unzip -Z1 "dist/${IPA_NAME}" | grep -q '^Payload/Eplak.app/Eplak$' || { echo "❌ Payload/Eplak.app/Eplak در IPA نیست"; exit 1; }
+          unzip -Z1 "dist/${IPA_NAME}" | grep -q '^Payload/Eplak.app/Web/index.html$' || { echo "❌ فایل‌های وب در IPA نیست"; exit 1; }
+          if unzip -Z1 "dist/${IPA_NAME}" | grep -q '_CodeSignature'; then
+            echo "   ⚠️ امضایی در IPA دیده شد (باید بدون امضا باشد) — برای نصب با Sideloadly/AltStore دوباره امضا می‌شود"
+          else
+            echo "   ✅ بدون امضا (برای Sideloadly / AltStore / Xcode)"
+          fi
+
+          ( cd dist && shasum -a 256 "${IPA_NAME}" | awk '{print $1}' > "${IPA_NAME}.sha256" )
+          echo "IPA_SHA256=$(cat "dist/${IPA_NAME}.sha256")" >> "$GITHUB_ENV"
+          echo "IPA_SIZE=$(du -h "dist/${IPA_NAME}" | cut -f1)" >> "$GITHUB_ENV"
+          echo "IPA_WEB_FILES=${WEB_FILES}" >> "$GITHUB_ENV"
+          ls -lh dist
+
+      - name: بسته‌ی پروژه‌ی Xcode (برای کسی که مک دارد)
+        run: |
+          set -euo pipefail
+          zip -qry "dist/${PROJECT_ZIP}" ios-app \
+            -x 'ios-app/build-sim/*' 'ios-app/build-device/*' 'ios-app/sim-evidence/*' \
+               '*/xcuserdata/*' '*/DerivedData/*' '*/.DS_Store'
+          ( cd dist && shasum -a 256 "${PROJECT_ZIP}" | awk '{print $1}' > "${PROJECT_ZIP}.sha256" )
+          ls -lh "dist/${PROJECT_ZIP}"
+
+      - name: نتیجه‌ی آزمون دودی و خلاصه‌ی اجرا
+        if: always()
+        run: |
+          {
+            echo "### 🍎 اپ iOS ای‌پلاک ساخته شد (بدون امضا)"
+            echo
+            echo "| مورد | مقدار |"
+            echo "|---|---|"
+            echo "| فایل | \`${IPA_NAME}\` |"
+            echo "| نسخه | \`${APP_VERSION}\` (build \`${APP_BUILD}\`) |"
+            echo "| اندازه | ${IPA_SIZE:-?} |"
+            echo "| فایل‌های وب داخل اپ | ${IPA_WEB_FILES:-?} |"
+            echo "| کامیت | \`${COMMIT_SHORT}\` |"
+            echo "| اثرانگشت SHA-256 | \`${IPA_SHA256:-?}\` |"
+            echo
+            if [ "${{ steps.smoke.outcome }}" = "success" ]; then
+              echo "✅ آزمون دودی روی شبیه‌ساز iPhone موفق بود (صفحه، پینگ سرور، نقشه، «موقعیت من»، لینک نشان)."
+            else
+              echo "⚠️ آزمون دودی روی شبیه‌ساز موفق نبود (${{ steps.smoke.outcome }}) — ساخت IPA انجام شد؛"
+              echo "جزئیات در artifact **eplak-ios-evidence** و لاگ همین اجرا."
+            fi
+            echo
+            echo "**نصب روی آیفون:** با Sideloadly یا AltStore یا Xcode و Apple ID خودتان"
+            echo "(راهنما: \`docs/IOS_PWA_FA.md\`). چون IPA بدون امضا است، اعلانِ «برنامه بسته» ندارد."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: آپلود artifact (IPA + پروژه‌ی Xcode)
+        uses: actions/upload-artifact@v4
+        with:
+          name: eplak-ipa
+          path: |
+            dist/eplak-app-unsigned.ipa
+            dist/eplak-app-unsigned.ipa.sha256
+            dist/eplak-ios-project.zip
+            dist/eplak-ios-project.zip.sha256
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: آپلود شواهد آزمون شبیه‌ساز (عکس‌ها و نتیجه‌ی خودآزمون)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: eplak-ios-evidence
+          path: ios-app/sim-evidence
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: پیوست IPA به همان صفحه‌ی Releases که APK
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" \
+              --title "ای‌پلاک — نسخه‌ی ۲.۰ (APK · IPA · PWA)" \
+              --notes "ساخت خودکار: APK اندروید، IPA بدون امضای iOS و بسته‌ی PWA." \
+              --target "$GITHUB_SHA" || true
+          gh release upload "$RELEASE_TAG" \
+            "dist/${IPA_NAME}" \
+            "dist/${IPA_NAME}.sha256" \
+            "dist/${PROJECT_ZIP}" \
+            "dist/${PROJECT_ZIP}.sha256" \
+            --clobber
+          echo "✅ به Releases پیوست شد: $RELEASE_TAG"
+
+      - name: بررسی انتشار در Releases
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          if gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' 2>/dev/null | grep -q "${IPA_NAME}"; then
+            echo "✅ ${IPA_NAME} روی صفحه‌ی Releases (برچسب ${RELEASE_TAG}) هست." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "⚠️ پیوست خودکار به Releases انجام نشد (مجوز نوشتنِ توکن اجرا را ببینید: Settings ← Actions ← General ← Workflow permissions ← Read and write). فایل‌ها در artifact **eplak-ipa** همین اجرا هستند." >> "$GITHUB_STEP_SUMMARY"
+          fi

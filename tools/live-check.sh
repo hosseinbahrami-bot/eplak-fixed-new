@@ -362,7 +362,7 @@ else
   say "| sw.js (سرویس‌ورکر و اعلان) | $CODE_SWJS | ❌ نیست یا قدیمی است |"; PWA_OK="no"
   ISSUES+=("sw.js روی سایت درست جواب نمی‌دهد؛ PWA نصب نمی‌شود و اعلان وب کار نمی‌کند")
 fi
-PAGES_SITE="https://hosseinbahrami-bot.github.io/eplak-fixed"
+PAGES_SITE="https://hosseinbahrami-bot.github.io/eplak-fixed-new"
 CODE_PAGES=$(grab "$PAGES_SITE/manifest.json" "$TMP/pages-manifest.json")
 PAGES_UP="no"
 if [ "$CODE_PAGES" = "200" ] && grep -q '"standalone"' "$TMP/pages-manifest.json" 2>/dev/null; then PAGES_UP="yes"; fi
@@ -383,8 +383,8 @@ say ""
 
 # ── ۶) لینک‌های دانلود روی گیت‌هاب ────────────────────────────────────────
 hdr "۶) لینک‌های دانلود (گیت‌هاب)"
-ZIP_URL="https://github.com/hosseinbahrami-bot/eplak-fixed/raw/main/eplak-fixed-update.zip"
-REL_BASE="https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update"
+ZIP_URL="https://github.com/hosseinbahrami-bot/eplak-fixed-new/raw/main/eplak-fixed-update.zip"
+REL_BASE="https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update"
 APK_URL="$REL_BASE/eplak-app.apk"
 IPA_URL="$REL_BASE/eplak-app-unsigned.ipa"
 XPROJ_URL="$REL_BASE/eplak-ios-project.zip"
@@ -412,7 +412,7 @@ say "> لینک‌ها: بسته‌ی سایت ← \`$ZIP_URL\` • اپ اند�
 # ── ۷) وضعیت فایل APK منتشرشده (از روی صفحه‌ی Releases) ───────────────────
 hdr "۷) اپ اندروید منتشرشده"
 REL_JSON="$TMP/release.json"
-gh api "repos/hosseinbahrami-bot/eplak-fixed/releases/tags/v2.0-eplak-update" > "$REL_JSON" 2>/dev/null || echo '{}' > "$REL_JSON"
+gh api "repos/hosseinbahrami-bot/eplak-fixed-new/releases/tags/v2.0-eplak-update" > "$REL_JSON" 2>/dev/null || echo '{}' > "$REL_JSON"
 
 APK_SIZE=$(python3 - "$REL_JSON" <<'PYEOF' 2>/dev/null || echo 0
 import json, sys

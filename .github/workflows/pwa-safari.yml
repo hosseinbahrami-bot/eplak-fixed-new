@@ -1,0 +1,74 @@
+name: PWA in Safari (iPhone simulator)
+
+# ============================================================================
+#  PWA ای‌پلاک داخل Safari واقعیِ iPhone (شبیه‌ساز، روی macOS)
+#
+#  این ورک‌فلو فقط «کشیده شدن درست صفحه داخل WebKit» را نشان می‌دهد (عکس در سه لحظه)،
+#  چون «افزودن به صفحه اصلی» و اعلان Web Push را نمی‌شود روی شبیه‌ساز خودکار سنجید.
+#  روی ساخت APK/IPA اثری ندارد: فقط با تغییر فایل‌های خودش راه می‌افتد.
+# ============================================================================
+
+on:
+  push:
+    branches: [main, 'arena/**']
+    paths:
+      - '.github/workflows/pwa-safari.yml'
+      - 'tools/safari-pwa.sh'
+  workflow_dispatch:
+
+env:
+  PWA_LIVE_URL: https://eplak.ir/eplak-fixed/
+
+permissions:
+  contents: write
+
+jobs:
+  safari:
+    name: PWA داخل Safari شبیه‌ساز iPhone
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: شبیه‌ساز و نسخه‌ی Xcode
+        run: |
+          set -euo pipefail
+          xcode-select -p
+          xcrun simctl list runtimes | grep -i ios | head -5
+
+      - name: باز کردن PWA داخل Safari و گرفتن عکس (tools/safari-pwa.sh)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          bash tools/safari-pwa.sh "$PWA_LIVE_URL" safari-evidence
+
+      - name: خلاصه
+        if: always()
+        run: |
+          {
+            echo "### 🧭 PWA داخل Safari شبیه‌ساز iPhone"
+            echo
+            echo "آدرس سنجیده‌شده: $PWA_LIVE_URL"
+            echo
+            echo "عکس‌ها در artifact **safari-evidence** (سه لحظه: ۳۰، ۶۰ و ۹۰ ثانیه پس از باز شدن)."
+            echo "نصب واقعی روی آیفون: Safari ← اشتراک‌گذاری ← «افزودن به صفحه اصلی»."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: آپلود عکس‌ها
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: safari-evidence
+          path: safari-evidence
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: گذاشتن عکس‌ها روی برچسب گیت (فقط وقتی پیام کامیت «[evidence]» دارد)
+        if: always() && contains(github.event.head_commit.message, '[evidence]')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash tools/ci/push-evidence.sh safari-evidence "safari-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"

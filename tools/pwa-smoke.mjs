@@ -14,7 +14,7 @@
    از صفحه عکس هم می‌گیرد.
 
    استفاده:  node tools/pwa-smoke.mjs [پوشه‌ی pwa-dist] [پوشه‌ی خروجی]
-   اگر PWA_URL داده شود (مثلاً https://hosseinbahrami-bot.github.io/eplak-fixed/) به‌جای سرور محلی،
+   اگر PWA_URL داده شود (مثلاً https://hosseinbahrami-bot.github.io/eplak-fixed-new/) به‌جای سرور محلی،
    همان آدرسِ واقعیِ منتشرشده سنجیده می‌شود (ورک‌فلو پس از انتشار روی GitHub Pages این کار را می‌کند).
    اگر همراهش PWA_KIND=host باشد، آدرس خودِ سایت روی هاست است (https://eplak.ir/eplak-fixed/): همان
    دامنه‌ی سرور، پس API نسبی است و پیکربندیِ «نسخه‌ی ایستا» (EPLAK_STATIC_PWA، آدرس پیوست‌ها) لازم نیست.

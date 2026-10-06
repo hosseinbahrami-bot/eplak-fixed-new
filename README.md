@@ -6,11 +6,11 @@
 
 | فایل | توضیح | لینک دانلود |
 |---|---|---|
-| 📱 **اپ اندروید** | فایل نصب گوشی (`eplak-app.apk`) — نسخه‌ی آخر همیشه: [صفحه‌ی Releases](https://github.com/hosseinbahrami-bot/eplak-fixed/releases) | **[دانلود APK](https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk)** |
-| 🍎 **اپ iOS (آیفون)** | فایل نصب بدون امضا (`eplak-app-unsigned.ipa`) — با Sideloadly / AltStore / Xcode و Apple ID خودتان نصب می‌شود؛ راهنما: `docs/IOS_PWA_FA.md` | **[دانلود `eplak-app-unsigned.ipa`](https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app-unsigned.ipa)** |
-| 🌍 **PWA (آیفون و اندروید) — بدون فایل** | فقط یک لینک: آیفون ← Safari ← «افزودن به صفحه اصلی»؛ اندروید ← Chrome ← «نصب». لینک مستقیم روی GitHub Pages (پس از یک‌بار روشن کردن Pages؛ `docs/IOS_PWA_FA.md` بخش ۳-۱) — و خودِ سایت هاست هم همین الان یک PWA است: `https://eplak.ir/eplak-fixed/` | **[https://hosseinbahrami-bot.github.io/eplak-fixed/](https://hosseinbahrami-bot.github.io/eplak-fixed/)** |
-| 🌐 **بسته‌ی سایت و پنل** | برای آپلود روی `eplak.ir/eplak-fixed` | **[دانلود `eplak-fixed-update.zip`](https://github.com/hosseinbahrami-bot/eplak-fixed/raw/main/eplak-fixed-update.zip)** |
-| 🗂️ **همه‌ی نسخه‌ها** | صفحه‌ی Releases گیت‌هاب | [صفحه‌ی Releases](https://github.com/hosseinbahrami-bot/eplak-fixed/releases/tag/v2.0-eplak-update) |
+| 📱 **اپ اندروید** | فایل نصب گوشی (`eplak-app.apk`) — نسخه‌ی آخر همیشه: [صفحه‌ی Releases](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases) | **[دانلود APK](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk)** |
+| 🍎 **اپ iOS (آیفون)** | فایل نصب بدون امضا (`eplak-app-unsigned.ipa`) — با Sideloadly / AltStore / Xcode و Apple ID خودتان نصب می‌شود؛ راهنما: `docs/IOS_PWA_FA.md` | **[دانلود `eplak-app-unsigned.ipa`](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app-unsigned.ipa)** |
+| 🌍 **PWA (آیفون و اندروید) — بدون فایل** | فقط یک لینک: آیفون ← Safari ← «افزودن به صفحه اصلی»؛ اندروید ← Chrome ← «نصب». لینک مستقیم روی GitHub Pages (پس از یک‌بار روشن کردن Pages؛ `docs/IOS_PWA_FA.md` بخش ۳-۱) — و خودِ سایت هاست هم همین الان یک PWA است: `https://eplak.ir/eplak-fixed/` | **[https://hosseinbahrami-bot.github.io/eplak-fixed-new/](https://hosseinbahrami-bot.github.io/eplak-fixed-new/)** |
+| 🌐 **بسته‌ی سایت و پنل** | برای آپلود روی `eplak.ir/eplak-fixed` | **[دانلود `eplak-fixed-update.zip`](https://github.com/hosseinbahrami-bot/eplak-fixed-new/raw/main/eplak-fixed-update.zip)** |
+| 🗂️ **همه‌ی نسخه‌ها** | صفحه‌ی Releases گیت‌هاب | [صفحه‌ی Releases](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/tag/v2.0-eplak-update) |
 
 **نصب اپ روی گوشی:** فایل APK را دانلود کنید → اجازه‌ی «نصب از منابع نامشخص» را بدهید → نصب.
 اگر پیام «App not installed» دیدید، نسخه‌ی قبلی اپ را پاک کنید و دوباره نصب کنید.
@@ -25,7 +25,7 @@
 | حذف اعلان | ✅ دکمه‌ی سطل‌زباله روی هر اعلان + «حذف همه» در سرصفحه (فقط از فهرست همان کاربر) |
 
 > 📌 برای اعلان روی گوشی: در تنظیمات گوشی → برنامه‌ها → ای‌پلاک → اعلان‌ها، اجازه‌ی اعلان را روشن کنید
-> و آخرین نسخه‌ی اپ را از بخش [Releases](https://github.com/hosseinbahrami-bot/eplak-fixed/releases) نصب کنید.
+> و آخرین نسخه‌ی اپ را از بخش [Releases](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases) نصب کنید.
 
 ## 📚 راهنماها
 
@@ -68,4 +68,4 @@ bash tools/dev/run-regression.sh pwa        # manifest، ساخت نسخه‌ی 
 - **Actions → Build iOS IPA** (روی macOS): اپ را روی شبیه‌ساز iPhone واقعاً اجرا و می‌سنجد (پینگ سرور، نقشه، «موقعیت من»، لینک نشان)،
   سپس `eplak-app-unsigned.ipa` (بدون امضا) و `eplak-ios-project.zip` (پروژه‌ی Xcode) را می‌سازد.
 - **Actions → Build PWA package**: PWA را در Chrome واقعی، روی origin جدا و با سرور واقعی می‌سنجد (CORS، سرویس‌ورکر، قابلیت نصب، نقشه)
-  و روی **GitHub Pages** منتشر می‌کند (`https://hosseinbahrami-bot.github.io/eplak-fixed/`؛ مالک مخزن یک‌بار: Settings ← Pages ← Source: GitHub Actions).
+  و روی **GitHub Pages** منتشر می‌کند (`https://hosseinbahrami-bot.github.io/eplak-fixed-new/`؛ مالک مخزن یک‌بار: Settings ← Pages ← Source: GitHub Actions).

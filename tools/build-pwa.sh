@@ -12,7 +12,7 @@
 #  هیچ فایلی از مخزن تغییر نمی‌کند؛ فقط کپیِ داخل پوشه‌ی خروجی اصلاح می‌شود.
 #
 #  ورک‌فلوی .github/workflows/pwa.yml همین پوشه را روی GitHub Pages می‌گذارد
-#  (https://hosseinbahrami-bot.github.io/eplak-fixed/) — کاربر هیچ zipی دریافت نمی‌کند.
+#  (https://hosseinbahrami-bot.github.io/eplak-fixed-new/) — کاربر هیچ zipی دریافت نمی‌کند.
 #  zip فقط وقتی ساخته می‌شود که خودتان آرگومان دوم را بدهید (برای میزبان دلخواه).
 #
 #  اجرا:   bash tools/build-pwa.sh [پوشه‌ی خروجی=pwa-dist] [فایل zip (اختیاری)]
