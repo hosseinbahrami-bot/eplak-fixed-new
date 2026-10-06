@@ -192,6 +192,79 @@ echo json_encode(['ready' => $cfg['ready'], 'skipped' => $res['skipped'], 'sent'
 ok('بدون کلید، موتور غیرفعال گزارش می‌شود', unset.ready === false);
 ok('ارسال بی‌خطا رد می‌شود (بدون استثنا)', unset.sent === 0 && String(unset.skipped).length > 5);
 
+console.log('\n=== کلید سرویس: قالب‌های ورودی، فایل جایگزین و «ذخیره‌ی تأییدشده» ===');
+const keyJson = JSON.stringify(serviceAccount);
+
+/* قالب‌های مختلفِ همان کلید — هر کدام باید پذیرفته شوند (به‌جز دو مورد آخر) */
+const parsed = JSON.parse(await run(`
+require '${APP}/admin/includes/db.php';
+$json = '${keyJson}';
+$cutKey = json_decode($json, true);
+$cutKey['private_key'] = substr($cutKey['private_key'], 0, 200) . '-----END PRIVATE KEY-----';
+$cases = [
+  'plain'   => $json,
+  'bom'     => chr(239) . chr(187) . chr(191) . $json,
+  'b64'     => base64_encode($json),
+  'escaped' => str_replace(chr(92) . 'n', chr(92) . chr(92) . 'n', $json),
+  'quotes'  => str_replace(chr(34), '“', $json),
+  'broken'  => '{"type":"service_account"',
+  'cutkey'  => (string) json_encode($cutKey),
+];
+$out = [];
+foreach ($cases as $name => $raw) {
+  $r = eplakFcmParseKeyInput($raw);
+  $out[$name] = [
+    'ok'       => $r['ok'],
+    'encoding' => $r['encoding'],
+    'project'  => $r['project_id'],
+    'key_len'  => $r['key_length'],
+    'openssl'  => $r['openssl'],
+    'error'    => mb_substr($r['error'], 0, 90),
+  ];
+}
+echo json_encode($out);`));
+ok('JSON ساده پذیرفته می‌شود و OpenSSL کلید را می‌خواند',
+  parsed.plain?.ok === true && parsed.plain?.project === 'eplak-test-project' && parsed.plain?.openssl === true, JSON.stringify(parsed.plain));
+ok('BOM اولِ فایل نادیده گرفته می‌شود', parsed.bom?.ok === true, JSON.stringify(parsed.bom));
+ok('base64 باز می‌شود (راه فرار از فایروالی که متن کلید را مسدود می‌کند)',
+  parsed.b64?.ok === true && parsed.b64?.encoding === 'base64', JSON.stringify(parsed.b64));
+ok('کلید با «\\n» دوتاشده درست می‌شود', parsed.escaped?.ok === true && parsed.escaped?.openssl === true, JSON.stringify(parsed.escaped));
+ok('نقل‌قول فارسی/هوشمند به جای " اصلاح می‌شود', parsed.quotes?.ok === true, JSON.stringify(parsed.quotes));
+ok('JSON ناقص رد می‌شود و علتش گفته می‌شود',
+  parsed.broken?.ok === false && String(parsed.broken?.error).length > 10, JSON.stringify(parsed.broken));
+ok('کلیدِ «بریده» رد می‌شود (همین باعث «ذخیره نشدن» روی هاست می‌شود)',
+  parsed.cutkey?.ok === false && parsed.cutkey?.openssl === false && /بریده|ناقص|OpenSSL/.test(String(parsed.cutkey?.error)), JSON.stringify(parsed.cutkey));
+
+/* راه سوم: فایلِ کلید روی سرور (وقتی ذخیره در دیتابیس ممکن نیست) */
+const KEY_FILE = '/tmp/eplak-fcm-key-file.json';
+fs.writeFileSync(KEY_FILE, keyJson, 'utf8');
+const fromFile = JSON.parse(await run(`
+putenv('EPLAK_FCM_KEY_FILE=${KEY_FILE}');
+require '${APP}/admin/includes/db.php';
+eplakSetAppSetting($pdo, 'fcm_service_account', '');
+$cfg = eplakFcmConfig($pdo);
+echo json_encode(['ready' => $cfg['ready'], 'source' => $cfg['source'], 'project' => $cfg['project_id'], 'error' => $cfg['error']]);`));
+ok('وقتی کلید در دیتابیس نیست، از فایلِ روی سرور خوانده می‌شود',
+  fromFile.ready === true && String(fromFile.source).indexOf('file:') === 0 && fromFile.project === 'eplak-test-project', JSON.stringify(fromFile));
+
+/* ذخیره‌ی تنظیمات: موفقیت/شکست باید «گزارش» شود (پیش‌تر بی‌صدا بود) */
+const setRes = JSON.parse(await run(`
+$other = '/tmp/eplak-fcm-settings.sqlite';
+@unlink($other);
+putenv('DB_SQLITE_PATH=' . $other);
+require '${APP}/admin/includes/db.php';
+$big = str_repeat('ab', 4000);
+$okBig = eplakSetAppSetting($pdo, 'k1', $big);
+$back  = (string) eplakAppSetting($pdo, 'k1', '');
+$pdo->exec('DROP TABLE app_settings');
+$okFail = eplakSetAppSetting($pdo, 'k2', 'x');
+$err = eplakSettingLastError();
+echo json_encode(['okBig' => $okBig, 'same' => $back === $big, 'okFail' => $okFail, 'err_len' => strlen($err)]);`));
+ok('ذخیره‌ی موفق «true» برمی‌گرداند و مقدار دقیقاً همان است',
+  setRes.okBig === true && setRes.same === true, JSON.stringify(setRes));
+ok('ذخیره‌ی ناموفق «false» می‌دهد و علت ثبت می‌شود (دیگر بی‌صدا نیست)',
+  setRes.okFail === false && setRes.err_len > 5, JSON.stringify(setRes));
+
 fakeGoogle.close();
 console.log('\n' + '='.repeat(52));
 console.log(`FCM: ${pass} passed, ${fail} failed`);

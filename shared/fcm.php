@@ -14,9 +14,149 @@
 
    کلید سرویس در پنل ادمین → تنظیمات → بخش «اعلان گوشی در اپ اندروید» وارد
    می‌شود و در جدول app_settings ذخیره می‌گردد (خارج از کد و خارج از گیت).
+
+   سه راه برای گذاشتن کلید هست (اگر یکی روی هاست شما کار نکرد، دیگری را بروید):
+     ۱) چسباندن متن JSON در همان کادرِ پنل
+     ۲) انتخاب «فایل JSON» در همان فرم (آپلود از طریق مرورگر)
+     ۳) گذاشتن فایل در سرور با File Manager به نشانی:
+          shared/eplak-fcm-service-account.json
+        (این پوشه هم در .gitignore است و هم با .htaccess از وب بسته شده)
+        اگر کلید در دیتابیس نباشد، همین فایل خوانده می‌شود. نشانی فایل با
+        متغیر محیطی EPLAK_FCM_KEY_FILE هم قابل تغییر است.
    ============================================================================ */
 
 require_once __DIR__ . '/webpush.php';   /* استفاده از eplakHttpPost و توابع base64 */
+
+/** نشانی فایلِ کلید روی سرور (راه جایگزینِ دیتابیس) — خالی یعنی فایل نیست */
+function eplakFcmServiceAccountFile(): string
+{
+    $fromEnv = trim((string) getenv('EPLAK_FCM_KEY_FILE'));
+    $candidates = [];
+    if ($fromEnv !== '') {
+        $candidates[] = $fromEnv;
+    }
+    $candidates[] = __DIR__ . '/eplak-fcm-service-account.json';
+    foreach ($candidates as $path) {
+        if (is_file($path) && is_readable($path)) {
+            return $path;
+        }
+    }
+    return '';
+}
+
+/**
+ * ورودی «کلید سرویس فایربیس» را از هر قالبی که کاربر/هاست داده باشد به یک
+ * JSON معتبر و بررسی‌شده تبدیل می‌کند.
+ *
+ * چرا لازم شد؟ روی بعضی هاست‌ها متنِ کلید در مسیر POST خراب می‌شود
+ * (فایروال/WAF، اسلش اضافه، BOM، نقل‌قول فارسی) یا ستون app_settings کوتاه است
+ * و مقدار «بریده» ذخیره می‌شود؛ در هر دو حالت پنل می‌گفت «نامعتبر» یا «ذخیره شد»
+ * بدون اینکه بگوید دقیقاً چه چیزی غلط است.
+ *
+ * @return array{ok:bool,json:string,error:string,encoding:string,project_id:string,
+ *               client_email:string,key_id:string,key_length:int,openssl:bool}
+ */
+function eplakFcmParseKeyInput(string $raw): array
+{
+    $out = [
+        'ok' => false, 'json' => '', 'error' => '', 'encoding' => '',
+        'project_id' => '', 'client_email' => '', 'key_id' => '',
+        'key_length' => 0, 'openssl' => false,
+    ];
+
+    $text = trim($raw);
+    if ($text === '') {
+        $out['error'] = 'کلید خالی است.';
+        return $out;
+    }
+    /* BOM (وقتی فایل JSON در ویندوز ذخیره و محتوا کپی شده باشد) */
+    if (strncmp($text, "\xEF\xBB\xBF", 3) === 0) {
+        $text = substr($text, 3);
+    }
+    /* نقل‌قول‌های فارسی/هوشمند که بعضی مرورگرها/ویرایشگرها جای " می‌گذارند */
+    $text = str_replace(['“', '”', '„', '‟', '«', '»'], '"', $text);
+    $text = str_replace(['‘', '’', '′'], "'", $text);
+
+    $decoded  = json_decode($text, true);
+    $encoding = 'json';
+
+    if (!is_array($decoded)) {
+        /* هاست/WAF اسلش اضافه کرده باشد: {"type":...} */
+        $retry = json_decode(stripslashes($text), true);
+        if (is_array($retry)) {
+            $decoded  = $retry;
+            $encoding = 'json+slashes';
+        }
+    }
+    if (!is_array($decoded)) {
+        /* شاید کاربر کلید را base64 کرده باشد (راه فرار از فایروالی که متن
+           «-----BEGIN PRIVATE KEY-----» را مسدود می‌کند) */
+        $b64 = base64_decode(preg_replace('/\s+/', '', $text) ?? '', true);
+        if (is_string($b64) && trim($b64) !== '') {
+            if (strncmp($b64, "\xEF\xBB\xBF", 3) === 0) {
+                $b64 = substr($b64, 3);
+            }
+            $retry = json_decode(trim($b64), true);
+            if (is_array($retry)) {
+                $decoded  = $retry;
+                $encoding = 'base64';
+            }
+        }
+    }
+    if (!is_array($decoded)) {
+        $out['error'] = 'متنِ داده‌شده JSON معتبر نیست (نه JSON، نه JSON با اسلش، نه base64). '
+            . 'کلِ محتوای فایل را از «{» تا «}» کپی کنید.';
+        return $out;
+    }
+
+    /* \n به‌جای خط جدید واقعی (وقتی کلید از جایی کپی شده که اسلش را دوتا کرده) */
+    if (isset($decoded['private_key']) && is_string($decoded['private_key'])
+        && strpos($decoded['private_key'], '\n') !== false
+        && strpos($decoded['private_key'], "\n") === false) {
+        $decoded['private_key'] = str_replace('\n', "\n", $decoded['private_key']);
+    }
+
+    $project = trim((string) ($decoded['project_id'] ?? ''));
+    $email   = trim((string) ($decoded['client_email'] ?? ''));
+    $key     = (string) ($decoded['private_key'] ?? '');
+    $keyId   = trim((string) ($decoded['private_key_id'] ?? ''));
+
+    if ($project === '' || $email === '' || $key === '') {
+        $out['error'] = 'JSON خوانده شد ولی فیلدهای لازم را ندارد (project_id / client_email / private_key).';
+        return $out;
+    }
+    if (strpos($key, 'BEGIN PRIVATE KEY') === false) {
+        $out['error'] = 'کلید خصوصی (private_key) نامعتبر است؛ محتوا ناقص کپی شده است.';
+        return $out;
+    }
+
+    $out['project_id']   = $project;
+    $out['client_email'] = $email;
+    $out['key_id']       = $keyId;
+    $out['key_length']   = strlen($key);
+    $out['encoding']     = $encoding;
+    $out['json']         = (string) json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+    /* مهم‌ترین بررسی: آیا OpenSSL می‌تواند این کلید را بخواند؟ اگر مقدار «بریده»
+       ذخیره شده باشد، همین‌جا معلوم می‌شود. */
+    if (function_exists('openssl_pkey_get_private')) {
+        $res = @openssl_pkey_get_private($key);
+        $out['openssl'] = ($res !== false);
+        if (is_resource($res) || (is_object($res) && $res instanceof \OpenSSLAsymmetricKey)) {
+            if (function_exists('openssl_free_key') && is_resource($res)) {
+                @openssl_free_key($res);
+            }
+        }
+        if (!$out['openssl']) {
+            $out['error'] = 'کلید خصوصی با OpenSSL خوانده نشد (طول کلید: ' . strlen($key)
+                . ' نویسه). یعنی متن کلید ناقص/بریده ذخیره یا کپی شده است.';
+            return $out;
+        }
+    }
+
+    $out['ok'] = true;
+    return $out;
+}
 
 /** وضعیت آماده بودن موتور: افزونه‌های لازم + کلید سرویس وارد شده */
 function eplakFcmConfig(PDO $pdo): array
@@ -28,6 +168,9 @@ function eplakFcmConfig(PDO $pdo): array
         'client_email' => '',
         'private_key'  => '',
         'error'        => '',
+        'source'       => '',      /* db یا file:<نام فایل> */
+        'key_id'       => '',
+        'key_length'   => 0,
     ];
 
     if (!function_exists('openssl_sign') || !function_exists('openssl_get_privatekey')) {
@@ -39,34 +182,34 @@ function eplakFcmConfig(PDO $pdo): array
         return $out;
     }
 
-    $raw = (string) eplakAppSetting($pdo, 'fcm_service_account', '');
+    /* ۱) دیتابیس (همان چیزی که در پنل ذخیره می‌شود) ۲) فایلِ روی سرور */
+    $source = 'db';
+    $raw    = (string) eplakAppSetting($pdo, 'fcm_service_account', '');
+    if (trim($raw) === '') {
+        $file = eplakFcmServiceAccountFile();
+        if ($file !== '') {
+            $raw    = (string) @file_get_contents($file);
+            $source = 'file:' . basename($file);
+        }
+    }
     if (trim($raw) === '') {
         $out['error'] = 'کلید سرویس فایربیس وارد نشده است.';
         return $out;
     }
 
-    $json = json_decode($raw, true);
-    if (!is_array($json)) {
-        $out['error'] = 'فایل کلید سرویس قابل خواندن نیست (JSON نامعتبر).';
+    $parsed = eplakFcmParseKeyInput($raw);
+    $out['source'] = $source;
+    if (!$parsed['ok']) {
+        $out['error'] = ($source === 'db' ? '' : 'کلید از فایل «' . $source . '» خوانده شد ولی ') . $parsed['error'];
         return $out;
     }
 
-    $project = trim((string) ($json['project_id'] ?? ''));
-    $email   = trim((string) ($json['client_email'] ?? ''));
-    $key     = (string) ($json['private_key'] ?? '');
-
-    if ($project === '' || $email === '' || $key === '') {
-        $out['error'] = 'کلید سرویس ناقص است (project_id / client_email / private_key).';
-        return $out;
-    }
-    if (strpos($key, 'BEGIN PRIVATE KEY') === false) {
-        $out['error'] = 'کلید خصوصی نامعتبر است. محتوای فایل JSON را کامل و بدون تغییر وارد کنید.';
-        return $out;
-    }
-
-    $out['project_id']   = $project;
-    $out['client_email'] = $email;
-    $out['private_key']  = $key;
+    $out['project_id']   = $parsed['project_id'];
+    $out['client_email'] = $parsed['client_email'];
+    $out['key_id']       = $parsed['key_id'];
+    $out['key_length']   = $parsed['key_length'];
+    $json = json_decode($parsed['json'], true);
+    $out['private_key']  = is_array($json) ? (string) ($json['private_key'] ?? '') : '';
     $out['configured']   = true;
     $out['ready']        = true;
 

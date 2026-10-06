@@ -411,6 +411,45 @@ s = await quick(RA, 'done', '');
 ok('بدون کلید: مدیر می‌فهمد کلید تنظیم نشده (اعلان داخل اپ همچنان هست)', s.flash === 'warning' && /کلید/.test(s.flashText), `${s.flash} | ${s.flashText}`);
 await exec(`eplakSetAppSetting($pdo, 'fcm_service_account', ${JSON.stringify(JSON.stringify(serviceAccount))}); eplakSetAppSetting($pdo, 'fcm_net_fail_at', '0');`);
 
+/* ── ذخیره‌ی «کلید سرویس فایربیس» از پنل ─────────────────────────────────
+   باگ گزارش‌شده: کلید را می‌چسباندند ولی ذخیره نمی‌شد و مقدار قبلی می‌ماند
+   (نوشتن در دیتابیس بی‌صدا شکست می‌خورد/بریده می‌شد). حالا ذخیره «تأیید»
+   می‌شود و علتِ هر شکست روی صفحه نوشته می‌شود. */
+const keyText = JSON.stringify(serviceAccount);
+settings = await admin.get('/admin/settings.php');
+const savedKey = await admin.post('/admin/settings.php', {
+  _token: csrfOf(settings.text), action: 'save_fcm', fcm_service_account: keyText,
+});
+ok('کلید سرویس از پنل ذخیره می‌شود (پیام موفقیت، بدون «ذخیره نشد»)',
+  /کلید سرویس فایربیس ذخیره شد|کلید ذخیره شد/.test(savedKey.text) && !/ذخیره نشد/.test(savedKey.text),
+  (savedKey.text.match(/[✅⚠️][^<]{0,140}/g) || []).join(' | ').slice(0, 260));
+const storedKey = await q(`SELECT setting_value FROM app_settings WHERE setting_key='fcm_service_account'`);
+const storedParsed = storedKey.length === 1 ? JSON.parse(String(storedKey[0].setting_value)) : null;
+ok('مقدارِ ذخیره‌شده در دیتابیس کامل است (کلید خصوصی بریده نشده)',
+  !!storedParsed && storedParsed.private_key === serviceAccount.private_key
+  && storedParsed.client_email === serviceAccount.client_email,
+  `len=${storedParsed ? String(storedParsed.private_key || '').length : '—'} vs ${serviceAccount.private_key.length}`);
+ok('صفحه، خلاصه‌ی کلیدِ ذخیره‌شده را نشان می‌دهد (پروژه/ایمیل/طول/منبع)',
+  /کلیدی که الان ذخیره است/.test(savedKey.text) && /طول کلید/.test(savedKey.text)
+  && /eplak-test-project/.test(savedKey.text), '');
+
+const badKey = await admin.post('/admin/settings.php', {
+  _token: csrfOf(savedKey.text), action: 'save_fcm', fcm_service_account: '{"type":"service_account"',
+});
+ok('کلیدِ نامعتبر رد می‌شود و علتِ دقیقش نوشته می‌شود',
+  /نامعتبر/.test(badKey.text) && /JSON معتبر نیست/.test(badKey.text)
+  && /eplak-fcm-service-account\.json/.test(badKey.text), (badKey.text.match(/⚠️[^<]{0,160}/g) || []).join(' | ').slice(0, 260));
+const stillGood = await q(`SELECT setting_value FROM app_settings WHERE setting_key='fcm_service_account'`);
+ok('کلیدِ نامعتبر، کلیدِ درستِ قبلی را خراب نمی‌کند',
+  stillGood.length === 1 && JSON.parse(String(stillGood[0].setting_value)).client_email === serviceAccount.client_email, '');
+
+const b64Key = await admin.post('/admin/settings.php', {
+  _token: csrfOf(badKey.text), action: 'save_fcm', fcm_service_account: Buffer.from(keyText, 'utf8').toString('base64'),
+});
+ok('کلید به‌صورت base64 هم پذیرفته می‌شود (راه فرار از فایروال هاست)',
+  /کلید سرویس فایربیس ذخیره شد|کلید ذخیره شد/.test(b64Key.text) && /base64/.test(b64Key.text),
+  (b64Key.text.match(/[✅⚠️][^<]{0,140}/g) || []).join(' | ').slice(0, 260));
+
 console.log('\n=== ۱۲) جزئیات گزارش: گوشی‌ها، سابقه‌ی ارسال، ارسال دوباره، آزمایشی ===');
 detail = await admin.get(`/admin/report_detail.php?id=${RA}`);
 ok('کارت «اعلان گوشی این کاربر» گوشی فعال را نشان می‌دهد', /data-testid="push-devices"[\s\S]*1 گوشی فعال/.test(detail.text));

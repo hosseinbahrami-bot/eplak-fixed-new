@@ -8,6 +8,7 @@ uploads/
 *firebase-adminsdk*.json
 *-service-account.json
 eplak-fcm-service-account.json
+shared/eplak-fcm-service-account.json
 
 # خروجی ساخت PWA مستقل (tools/build-pwa.sh) و ابزارهای آزمون CI — هر بار ساخته می‌شوند
 pwa-dist/

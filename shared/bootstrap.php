@@ -200,7 +200,24 @@ function eplakAppSetting(PDO $pdo, string $key, ?string $default = null): ?strin
     }
 }
 
-function eplakSetAppSetting(PDO $pdo, string $key, string $value): void {
+/** آخرین خطای ذخیره‌ی تنظیمات (برای نمایش در پنل؛ وگرنه شکست بی‌صدا می‌ماند) */
+function eplakSettingLastError(?string $set = null): string {
+    static $last = '';
+    if ($set !== null) {
+        $last = $set;
+    }
+    return $last;
+}
+
+/**
+ * ذخیره‌ی یک تنظیم در app_settings.
+ *
+ * ⚠️ پیش‌تر خطای این تابع «بی‌صدا» بلعیده می‌شد؛ نتیجه اینکه پنل می‌گفت
+ * «✅ ذخیره شد» در حالی که چیزی در دیتابیس نوشته نشده بود (مثلاً کلید سرویس
+ * فایربیس) و مقدار قبلی سرِ جایش می‌ماند. حالا نتیجه true/false برگردانده و
+ * علت در eplakSettingLastError() و error_log ثبت می‌شود.
+ */
+function eplakSetAppSetting(PDO $pdo, string $key, string $value): bool {
     $sql = eplakIsSqlite($pdo)
         ? 'INSERT INTO app_settings (setting_key, setting_value) VALUES (:k, :v)
            ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP'
@@ -210,7 +227,55 @@ function eplakSetAppSetting(PDO $pdo, string $key, string $value): void {
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':k' => $key, ':v' => $value]);
     } catch (\Throwable $e) {
-        /* بی‌صدا: نبود این جدول نباید جلوی کار اصلی را بگیرد */
+        /* نبودِ جدول نباید جلوی کار اصلی را بگیرد، ولی علت باید دیده شود */
+        eplakSettingLastError($key . ': ' . $e->getMessage());
+        error_log('[eplak-settings] ذخیره‌ی تنظیم ناموفق بود — ' . $key . ': ' . $e->getMessage());
+        return false;
+    }
+    /* بررسی «واقعاً نوشته شد؟»: روی دیتابیس‌های قدیمی ممکن است ستون setting_value
+       کوتاه باشد (مثلاً VARCHAR(255)) و مقدار بی‌صدا «بریده» شود. */
+    try {
+        $back = eplakAppSetting($pdo, $key, null);
+        if ($back === null || strlen($back) !== strlen($value) || $back !== $value) {
+            eplakSettingLastError($key . ': مقدار ذخیره‌شده با مقدار ارسالی یکی نیست ('
+                . strlen($value) . ' نویسه فرستاده شد، ' . strlen((string) $back) . ' نویسه ذخیره شد)'
+                . ' — احتمالاً ستون app_settings.setting_value کوتاه است.');
+            error_log('[eplak-settings] ' . eplakSettingLastError());
+            return false;
+        }
+    } catch (\Throwable $e) {
+        /* خواندن تأییدی ممکن نبود؛ اصلِ نوشتن موفق بوده */
+    }
+    eplakSettingLastError('');
+    return true;
+}
+
+/** نوع/طول واقعی یک ستون MySQL (برای تشخیص ستون‌های کوتاهِ دیتابیس قدیمی) */
+function eplakMysqlColumnMaxLength(PDO $pdo, string $table, string $column): int {
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c LIMIT 1'
+        );
+        $stmt->execute([':t' => $table, ':c' => $column]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return -1;
+        }
+        $type = strtolower((string) ($row['DATA_TYPE'] ?? ''));
+        if ($type === 'longtext') {
+            return 2147483647;
+        }
+        if ($type === 'mediumtext') {
+            return 16777215;
+        }
+        if ($type === 'text') {
+            return 65535;
+        }
+        $len = $row['CHARACTER_MAXIMUM_LENGTH'] ?? null;
+        return $len === null ? -1 : (int) $len;
+    } catch (\Throwable $e) {
+        return -1;
     }
 }
 
@@ -841,6 +906,32 @@ function eplakSchemaMissingColumns(PDO $pdo): array {
     return $missing;
 }
 
+/* ستون‌های متنیِ حیاتی که در دیتابیس‌های قدیمی کوتاه ساخته شده‌اند.
+   نمونه‌ی واقعی: app_settings.setting_value کوتاه → کلید سرویس فایربیس (~۲٫۵KB)
+   «بریده» یا رد می‌شد و پنل هم می‌گفت «ذخیره شد» در حالی که مقدار قبلی می‌ماند. */
+function eplakMysqlWidenTextColumns(PDO $pdo, array &$report): void {
+    $targets = [
+        ['app_settings', 'setting_value', 65535, 'LONGTEXT NULL'],
+        ['notifications', 'body',         2000,  'TEXT NULL'],
+        ['news',          'body',         2000,  'TEXT NULL'],
+    ];
+    foreach ($targets as [$table, $column, $minLength, $definition]) {
+        if (!eplakTableHasColumn($pdo, $table, $column)) {
+            continue;
+        }
+        $length = eplakMysqlColumnMaxLength($pdo, $table, $column);
+        if ($length < 0 || $length >= $minLength) {
+            continue;   /* سالم است یا نوعش خوانده نشد (دسترسی به information_schema نبود) */
+        }
+        try {
+            $pdo->exec('ALTER TABLE `' . $table . '` MODIFY COLUMN `' . $column . '` ' . $definition);
+            $report['added'][] = $table . '.' . $column . ' → ' . $definition . ' (طولش ' . $length . ' بود)';
+        } catch (\Throwable $e) {
+            $report['failed'][] = $table . '.' . $column . ' (افزایش طول) — ' . $e->getMessage();
+        }
+    }
+}
+
 /* آیا اسکیمای دیتابیس باید با کد همگام شود؟ */
 function eplakSchemaSyncNeeded(PDO $pdo): bool {
     try {
@@ -1001,6 +1092,7 @@ function eplakRunSchemaSync(PDO $pdo, bool $force = false): array {
     /* ستون‌های ویژه‌ی MySQL که تعریف‌شان در متن CREATE TABLE نیست */
     if (!eplakIsSqlite($pdo)) {
         eplakMysqlLegacyAlters($pdo, $report);
+        eplakMysqlWidenTextColumns($pdo, $report);
     }
     /* ستون‌های تازه اضافه شدند؛ حافظه‌ی «کدام ستون هست» باید تازه شود تا همان
        درخواست مسیر سازگارِ (بدون ستون) را انتخاب نکند. */

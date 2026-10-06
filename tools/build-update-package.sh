@@ -21,6 +21,7 @@ zip -q -r "$OUT" . \
   -x ".git/*" ".github/*" ".arena/*" "node_modules/*" \
      "android-app/*" "ios-app/*" "pwa-dist/*" "pwa-evidence/*" "backend/*" "views/*" "tools/*" \
      "data/*" "uploads/*" "test-fixtures/*" \
+     "shared/eplak-fcm-service-account.json" "*service-account*.json" "*firebase-adminsdk*.json" "*.pem" \
      "*.zip" ".gitignore" ".gitattributes" ".vscode/*" \
      "INSTALL_GUIDE_FA.md" "*/README.md" "docs/README.md" "docs/technical-architecture.md"
 
@@ -51,7 +52,8 @@ for f in .htaccess index.html index.php sw.js manifest.json shared/bootstrap.php
          docs/NOTIFICATIONS_FIX_FA.md; do
   if has "$f"; then echo "   ✅ $f"; else echo "   ❌ $f گم شده!"; exit 1; fi
 done
-for f in shared/config.php data/eplak.sqlite uploads/.htaccess; do
+for f in shared/config.php data/eplak.sqlite uploads/.htaccess \
+         shared/eplak-fcm-service-account.json android-app/eplak-release.p12; do
   if has "$f"; then echo "   ❌ $f نباید داخل بسته باشد!"; exit 1; fi
 done
 echo "   ✅ داده‌های کاربران و تنظیمات سرور داخل بسته نیستند"
