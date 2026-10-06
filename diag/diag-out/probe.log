@@ -1,0 +1,278 @@
+═══════════════════════════════════════════════════════════════
+ کاوش اعلان‌ها روی سرور زنده: https://eplak.ir/eplak-fixed
+ زمان: 2026-10-06 23:18:47 UTC
+═══════════════════════════════════════════════════════════════
+
+──── ping
+     GET https://eplak.ir/eplak-fixed/api/ping.php
+{"success":true,"online":true,"server_time":"2026-10-06T23:18:47+00:00","fa_time":"۱۴۰۵\/۰۷\/۱۵ ساعت ۰۲:۴۸"}
+[HTTP 200] time=2.137209s size=124B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── notifications-no-param
+     GET https://eplak.ir/eplak-fixed/api/notifications.php
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=1.090149s size=104B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── notifications-phone
+     GET https://eplak.ir/eplak-fixed/api/notifications.php?phone=09120000000
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=1.111200s size=104B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── notifications-phone-unread
+     GET https://eplak.ir/eplak-fixed/api/notifications.php?phone=09120000000&unread=1
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=1.076386s size=104B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── notifications-phone-device
+     GET https://eplak.ir/eplak-fixed/api/notifications.php?phone=09120000000&device=diagdevice1
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=1.165317s size=104B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── notifications-phone-plus98
+     GET https://eplak.ir/eplak-fixed/api/notifications.php?phone=%2B989120000000
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=1.091525s size=104B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── notifications-guest
+     GET https://eplak.ir/eplak-fixed/api/notifications.php?device=diagdevice1
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=0.686074s size=104B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── notifications-mark-read
+     POST https://eplak.ir/eplak-fixed/api/notifications.php
+     body: {"action":"read","phone":"09120000000","device":"diagdevice1","all":1}
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'WHERE'"}
+[HTTP 500] time=1.096565s size=103B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── notifications-delete-form
+     POST https://eplak.ir/eplak-fixed/api/notifications.php
+     body: action=delete&phone=09120000000&device=diagdevice1&id=0
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=0.669755s size=104B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── news
+     GET https://eplak.ir/eplak-fixed/api/news.php
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'badge' in 'SELECT'"}
+[HTTP 500] time=1.095017s size=102B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── departments
+     GET https://eplak.ir/eplak-fixed/api/departments.php
+{"success":true,"departments":[{"id":1,"name":"\u062d\u0648\u0632\u0647 \u0634\u0647\u0631\u062f\u0627\u0631","parent_id":0,"sort_order":1,"children":[{"id":2,"name":"\u062f\u0641\u062a\u0631 \u0634\u0647\u0631\u062f\u0627\u0631 \u0648\u0631\u0627\u0645\u06cc\u0646","parent_id":1,"sort_order":1},{"id":3,"name":"\u0631\u0648\u0627\u0628\u0637 \u0639\u0645\u0648\u0645\u06cc \u0648 \u0627\u0645\u0648\u0631 \u0628\u06cc\u0646\u200c\u0627\u0644\u0645\u0644\u0644","parent_id":1,"sort_order":2},{"id":4,"name":"\u0628\u0627\u0632\u0631\u0633\u06cc \u0648 \u0627\u0631\u0632\u06cc\u0627\u0628\u06cc \u0639\u0645\u0644\u06a9\u0631\u062f","parent_id":1,"sort_order":3},{"id":5,"name":"\u062d\u0631\u0627\u0633\u062a \u0634\u0647\u0631\u062f\u0627\u0631\u06cc","parent_id":1,"sort_order":4},{"id":6,"name":"\u0627\u0645\u0648\u0631 \u062d\u0642\u0648\u0642\u06cc","parent_id":1,"sort_order":5},{"id":7,"name":"\u0634\u0648\u0631\u0627\u06cc \u0645\u0634\u0627\u0648\u0631\u0627\u0646","parent_id":1,"sort_order":6}]},{"id":8,"name":"\u0645\u0639\u0627\u0648\u0646\u062a \u0627\u062f\u0627\u0631\u06cc \u0648 \u0645\u0627\u0644\u06cc","parent_id":0,"sort_order":2,"children":[{"id":9,"name":"\u0645\u0646\u0627\u0628\u0639 \u0627\u0646\u0633\u0627\u0646\u06cc","parent_id":8,"sort_order":1},{"id":10,"name":"\u0627\u0645\u0648\u0631 \u0627\u062f\u0627\u0631\u06cc","parent_id":8,"sort_order":2},{"id":11,"name":"\u0627\u0645\u0648\u0631 \u0645\u0627\u0644\u06cc \u0648 \u062d\u0633\u0627\u0628\u062f\u0627\u0631\u06cc","parent_id":8,"sort_order":3},{"id":12,"name":"\u0628\u0648\u062f\u062c\u0647 \u0648 \u0628\u0631\u0646\u0627\u0645\u0647\u200c\u0631\u06cc\u0632\u06cc","parent_id":8,"sort_order":4},{"id":13,"name":"\u062a\u062f\u0627\u0631\u06a9\u0627\u062a \u0648 \u067e\u0634\u062a\u06cc\u0628\u0627\u0646\u06cc","parent_id":8,"sort_order":5},{"id":14,"name":"\u0641\u0646\u0627\u0648\u0631\u06cc \u0627\u0637\u0644\u0627\u0639\u0627\u062a (IT)","parent_id":8,"sort_order":6}]},{"id":15,"name":"\u0645
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── places
+     GET https://eplak.ir/eplak-fixed/api/places.php
+{"success":true,"ready":true,"custom":[],"overrides":{},"hidden":[],"v":"00d6ab523433"}
+[HTTP 200] time=0.684198s size=87B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── users
+     GET https://eplak.ir/eplak-fixed/api/users.php
+{"success":false,"error":"شماره موبایل معتبر الزامی است"}
+[HTTP 400] time=1.243078s size=82B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── push
+     GET https://eplak.ir/eplak-fixed/api/push.php
+{"success":true,"enabled":true,"vapid_public_key":"BP9SNgdHL1LSMuVCoYaVOmY3z5a3ydH9sjaR9Ar9tyU_ZQKY5TweUmjuTAQ2Wuh2md8Kc-mcMd4OvsuZhjsFK_Q","reason":"","secure_context_required":true,"fcm_ready":true,"fcm_reason":""}
+[HTTP 200] time=0.687168s size=216B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── push-config
+     GET https://eplak.ir/eplak-fixed/api/push.php?action=config
+{"success":true,"enabled":true,"vapid_public_key":"BP9SNgdHL1LSMuVCoYaVOmY3z5a3ydH9sjaR9Ar9tyU_ZQKY5TweUmjuTAQ2Wuh2md8Kc-mcMd4OvsuZhjsFK_Q","reason":"","secure_context_required":true,"fcm_ready":true,"fcm_reason":""}
+[HTTP 200] time=0.856017s size=216B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── reports-list
+     GET https://eplak.ir/eplak-fixed/api/reports.php?phone=09120000000
+{"success":true,"reports":[]}
+[HTTP 200] time=1.130802s size=29B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── tickets-list
+     GET https://eplak.ir/eplak-fixed/api/tickets.php?phone=09120000000
+{"success":true,"tickets":[]}
+[HTTP 200] time=1.104785s size=29B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── users-profile
+     GET https://eplak.ir/eplak-fixed/api/users.php?phone=09120000000
+{"success":false,"user":null}
+[HTTP 200] time=0.671360s size=29B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: application/json; charset=utf-8
+
+──── media-head
+     GET https://eplak.ir/eplak-fixed/api/media.php?action=list&id=1
+فایل یافت نشد
+[HTTP 404] time=0.675819s size=24B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: text/plain; charset=utf-8
+
+──── admin-login-page
+     GET https://eplak.ir/eplak-fixed/admin/login.php
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ورود به پنل مدیریت ای‌پلاک</title>
+    <link rel="stylesheet" href="assets/style.css?v=9&eplak_admin=t2ehg838oad9gp52nf82a1n10e">
+  <script src="assets/theme.js?v=7&eplak_admin=t2ehg838oad9gp52nf82a1n10e"></script>
+  <script src="assets/persian-digits.js?v=6&eplak_admin=t2ehg838oad9gp52nf82a1n10e"></script>
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css?eplak_admin=t2ehg838oad9gp52nf82a1n10e">
+    <style>
+        /* ===== استایل‌های اختصاصی لاگین ===== */
+        .login-box .brand {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        
+        .login-box .brand-logo {
+            display: inline-block;
+            font-size: 48px;
+            background: linear-gradient(135deg, #0f766e, #14b8a6);
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            line-height: 80px;
+            text-align: center;
+            box-shadow: 0 8px 30px rgba(15, 118, 110, 0.3);
+            margin-bottom: 12px;
+            color: white;
+        }
+        
+        .login-box .brand-name {
+            font-size: 28px;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0;
+            letter-spacing: -0.5px;
+        }
+        
+        .login-box .brand-sub {
+            font-size: 14px;
+            color: #94a3b8;
+            margin: 4px 0 0 0;
+        }
+        
+        .login-box .divider {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin: 20px 0 24px 0;
+        }
+        
+        .login-box .divider::before,
+        .login-box .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e2e8f0;
+        }
+        
+        .login-box .divider span {
+            colo
+     هدرها: x-powered-by: PHP/8.2.34 content-type: text/html; charset=UTF-8
+
+──── admin-notifications-page
+     GET https://eplak.ir/eplak-fixed/admin/notifications.php
+
+[HTTP 302] time=0.666622s size=0B
+     هدرها: x-powered-by: PHP/8.2.34 content-type: text/html; charset=UTF-8
+
+═══════════════════════════════════════════════════════════════
+ خلاصه‌ی کدهای پاسخ
+═══════════════════════════════════════════════════════════════
+admin-login-page                       [HTTP 200]
+admin-notifications-page               [HTTP 302]
+departments                            [HTTP 200]
+media-head                             [HTTP 404]
+news                                   [HTTP 500]
+notifications-delete-form              [HTTP 500]
+notifications-guest                    [HTTP 500]
+notifications-mark-read                [HTTP 500]
+notifications-no-param                 [HTTP 500]
+notifications-phone-device             [HTTP 500]
+notifications-phone-plus98             [HTTP 500]
+notifications-phone-unread             [HTTP 500]
+notifications-phone                    [HTTP 500]
+ping                                   [HTTP 200]
+places                                 [HTTP 200]
+push-config                            [HTTP 200]
+push                                   [HTTP 200]
+reports-list                           [HTTP 200]
+tickets-list                           [HTTP 200]
+users-profile                          [HTTP 200]
+users                                  [HTTP 400]
+
+═══════════════════════════════════════════════════════════════
+ بدنه‌ی پاسخ‌های خطادار (۵۰۰/۴xx) — علت واقعی این‌جاست
+═══════════════════════════════════════════════════════════════
+── media-head
+فایل یافت نشد
+[HTTP 404] time=0.675819s size=24B
+── news
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'badge' in 'SELECT'"}
+[HTTP 500] time=1.095017s size=102B
+── notifications-delete-form
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=0.669755s size=104B
+── notifications-guest
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=0.686074s size=104B
+── notifications-mark-read
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'WHERE'"}
+[HTTP 500] time=1.096565s size=103B
+── notifications-no-param
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=1.090149s size=104B
+── notifications-phone-device
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=1.165317s size=104B
+── notifications-phone-plus98
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=1.091525s size=104B
+── notifications-phone-unread
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=1.076386s size=104B
+── notifications-phone
+{"success":false,"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'SELECT'"}
+[HTTP 500] time=1.111200s size=104B
+── users
+{"success":false,"error":"شماره موبایل معتبر الزامی است"}
+[HTTP 400] time=1.243078s size=82B
+
+═══════════════════════════════════════════════════════════════
+ داوری (انتظار: اعلان‌ها و اخبار باید ۲۰۰ و success:true باشند)
+═══════════════════════════════════════════════════════════════
+notifications-phone            [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+notifications-no-param         [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+notifications-guest            [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+notifications-phone-plus98     [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+notifications-mark-read        [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+news                           [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+ping                           [HTTP 200] ✅
+places                         [HTTP 200] ✅
+departments                    [HTTP 200] ✅
+reports-list                   [HTTP 200] ✅
+tickets-list                   [HTTP 200] ✅
+users-profile                  [HTTP 200] ✅
+media-head                     [HTTP 404] ✅
+push-config                    [HTTP 200] ✅
+admin-login-page               [HTTP 200] ✅
+
+❌ داوری: دست‌کم یکی از endpointهای حیاتی اعلان/اخبار روی سرور زنده خطا داد.
+   → بدنه‌ی پاسخ همان بالا نوشته شده؛ اگر «Unknown column» بود، بسته‌ی به‌روزرسانی
+     روی هاست باز شود (خودش دیتابیس را ترمیم می‌کند) یا در پنل: تنظیمات ← ترمیم ساختار دیتابیس.
+
+✅ کاوش تمام شد؛ همه‌ی پاسخ‌ها در پوشه‌ی «diag-out» ذخیره شد.

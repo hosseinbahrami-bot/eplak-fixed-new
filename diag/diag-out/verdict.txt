@@ -1,0 +1,15 @@
+notifications-phone            [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+notifications-no-param         [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+notifications-guest            [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+notifications-phone-plus98     [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+notifications-mark-read        [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+news                           [HTTP 500] ❌ انتظار HTTP 200 بود، [HTTP 500] شد
+ping                           [HTTP 200] ✅
+places                         [HTTP 200] ✅
+departments                    [HTTP 200] ✅
+reports-list                   [HTTP 200] ✅
+tickets-list                   [HTTP 200] ✅
+users-profile                  [HTTP 200] ✅
+media-head                     [HTTP 404] ✅
+push-config                    [HTTP 200] ✅
+admin-login-page               [HTTP 200] ✅

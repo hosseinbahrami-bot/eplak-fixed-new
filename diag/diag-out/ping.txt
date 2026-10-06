@@ -1,0 +1,2 @@
+{"success":true,"online":true,"server_time":"2026-10-06T23:18:47+00:00","fa_time":"۱۴۰۵\/۰۷\/۱۵ ساعت ۰۲:۴۸"}
+[HTTP 200] time=2.137209s size=124B

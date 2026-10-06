@@ -1,0 +1,2 @@
+{"success":true,"enabled":true,"vapid_public_key":"BP9SNgdHL1LSMuVCoYaVOmY3z5a3ydH9sjaR9Ar9tyU_ZQKY5TweUmjuTAQ2Wuh2md8Kc-mcMd4OvsuZhjsFK_Q","reason":"","secure_context_required":true,"fcm_ready":true,"fcm_reason":""}
+[HTTP 200] time=0.856017s size=216B

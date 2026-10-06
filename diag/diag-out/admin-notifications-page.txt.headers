@@ -1,0 +1,12 @@
+HTTP/2 302 
+x-powered-by: PHP/8.2.34
+set-cookie: eplak_admin=isblt32oi3ud3ctkie0rctk4um; path=/; secure; HttpOnly; SameSite=None
+expires: 0
+cache-control: no-store, no-cache, must-revalidate, max-age=0
+pragma: no-cache
+location: /eplak-fixed/admin/login.php?eplak_admin=isblt32oi3ud3ctkie0rctk4um
+content-type: text/html; charset=UTF-8
+content-length: 0
+date: Tue, 06 Oct 2026 23:19:07 GMT
+alt-svc: h3=":443"; ma=2592000, h3-29=":443"; ma=2592000, h3-Q050=":443"; ma=2592000, h3-Q046=":443"; ma=2592000, h3-Q043=":443"; ma=2592000, quic=":443"; ma=2592000; v="43,46"
+

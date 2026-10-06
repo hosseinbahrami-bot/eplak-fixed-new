@@ -1,0 +1,10 @@
+HTTP/2 200 
+x-powered-by: PHP/8.2.34
+set-cookie: eplak_admin=t2ehg838oad9gp52nf82a1n10e; path=/; secure; HttpOnly; SameSite=None
+expires: 0
+cache-control: no-store, no-cache, must-revalidate, max-age=0
+pragma: no-cache
+content-type: text/html; charset=UTF-8
+date: Tue, 06 Oct 2026 23:19:06 GMT
+alt-svc: h3=":443"; ma=2592000, h3-29=":443"; ma=2592000, h3-Q050=":443"; ma=2592000, h3-Q046=":443"; ma=2592000, h3-Q043=":443"; ma=2592000, quic=":443"; ma=2592000; v="43,46"
+
