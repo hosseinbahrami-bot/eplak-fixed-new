@@ -2811,6 +2811,33 @@
     background: rgba(0, 201, 167, 0.06) !important;
   }
 
+  #screen-otp .otp-inputs-row.otp-valid input.otp-box {
+    border-color: #22c985 !important;
+    background: rgba(34, 201, 133, 0.14) !important;
+    box-shadow: 0 0 0 3px rgba(34, 201, 133, 0.16), 0 0 24px rgba(34, 201, 133, 0.34) !important;
+    color: #22c985 !important;
+    -webkit-text-fill-color: #22c985 !important;
+    transform: translateY(-2px) !important;
+  }
+
+  .otp-inputs-row.otp-invalid {
+    animation: otpInvalidShake 0.42s cubic-bezier(.36,.07,.19,.97) both;
+  }
+
+  #screen-otp .otp-inputs-row.otp-invalid input.otp-box {
+    border-color: #fb5268 !important;
+    background: rgba(251, 82, 104, 0.13) !important;
+    box-shadow: 0 0 0 3px rgba(251, 82, 104, 0.15), 0 0 25px rgba(251, 82, 104, 0.38) !important;
+    color: #ff7183 !important;
+    -webkit-text-fill-color: #ff7183 !important;
+  }
+
+  @keyframes otpInvalidShake {
+    15%, 85% { transform: translateX(-3px); }
+    30%, 70% { transform: translateX(5px); }
+    45%, 55% { transform: translateX(-4px); }
+  }
+
   .otp-box::-webkit-outer-spin-button,
   .otp-box::-webkit-inner-spin-button {
     -webkit-appearance: none !important;

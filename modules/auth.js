@@ -5,7 +5,34 @@
      Login / OTP
   ========================================================= */
   let otpTimerInterval = null;
-  let otpSeconds = 30;
+  let otpSeconds = 120;
+  let otpChallengeId = '';
+  let otpTestCode = '';
+  let otpRequestPending = false;
+  let otpVerifyPending = false;
+
+  async function requestServerOtp(action, payload) {
+    const base = (typeof window.eplakApiBase === 'function')
+      ? window.eplakApiBase()
+      : (window.EPLAK_API_BASE_URL || 'api').replace(/\/+$/, '');
+    const response = await fetch(base + '/auth.php?action=' + encodeURIComponent(action), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify(payload)
+    });
+    let data;
+    try {
+      data = await response.json();
+    } catch (error) {
+      throw new Error('invalid_response');
+    }
+    if (!response.ok || !data || data.success !== true) {
+      const requestError = new Error(data && data.error ? data.error : 'request_failed');
+      requestError.status = response.status;
+      throw requestError;
+    }
+    return data;
+  }
 
   function toEnglishDigits(str) {
     if (!str) return '';
@@ -41,7 +68,11 @@
     const phone = userProfile.rawPhone || '09120000000';
     const container = document.getElementById('otpSubtitleContainer');
     if (container) {
-      if (isEn) {
+      if (otpTestCode) {
+        container.textContent = isEn
+          ? 'Local test mode: use code ' + otpTestCode + '. No SMS was sent.'
+          : 'حالت آزمایشی محلی: کد ' + otpTestCode + ' را وارد کنید؛ پیامکی ارسال نشده است.';
+      } else if (isEn) {
         container.innerHTML = 'A 4-digit code was sent to <span id="otpPhoneDisplay" style="color:var(--teal); direction:ltr; display:inline-block; font-weight:700;">' + phone + '</span> via SMS';
       } else {
         container.innerHTML = 'کد ۴ رقمی به شماره <span id="otpPhoneDisplay" style="color:var(--teal); direction:ltr; display:inline-block; font-weight:700;">' + phone + '</span> پیامک شد';
@@ -50,7 +81,15 @@
     updateOtpTimerDisplay();
   }
 
-  function sendOtp() {
+  function setOtpVisualState(state) {
+    const row = document.querySelector('#screen-otp .otp-inputs-row');
+    if (!row) return;
+    row.classList.remove('otp-valid', 'otp-invalid');
+    if (state) row.classList.add('otp-' + state);
+  }
+
+  async function sendOtp() {
+    if (otpRequestPending) return;
     const input = document.getElementById('loginPhoneInput');
     const rawVal = (input ? input.value : '').trim().toLowerCase();
     if (rawVal === 'admin' || rawVal === 'panel' || rawVal === 'modir' || rawVal === 'مدیر') {
@@ -67,21 +106,37 @@
       return;
     }
 
-    userProfile.rawPhone = phone;
-    updateOtpDescription();
-    showScreen('screen-otp');
-    startOtpTimer();
-    setTimeout(() => {
-      const firstBox = document.querySelector('#screen-otp .otp-box');
-      if (firstBox) {
-        firstBox.focus();
-        if (typeof firstBox.select === 'function') firstBox.select();
-      }
-    }, 300);
+    otpRequestPending = true;
+    try {
+      const result = await requestServerOtp('send', { phone: phone });
+      otpChallengeId = result.challenge_id;
+      otpTestCode = result.test_mode ? String(result.test_code || '') : '';
+      userProfile.rawPhone = phone;
+      updateOtpDescription();
+      showScreen('screen-otp');
+      startOtpTimer();
+      setTimeout(() => {
+        const firstBox = document.querySelector('#screen-otp .otp-box');
+        if (firstBox) {
+          firstBox.focus();
+          if (typeof firstBox.select === 'function') firstBox.select();
+        }
+      }, 300);
+    } catch (error) {
+      const message = isEn
+        ? 'Could not send the verification code. Please check the number and try again.'
+        : (error.message && error.message !== 'request_failed' && error.message !== 'invalid_response'
+          ? error.message
+          : 'ارسال کد تایید انجام نشد؛ لطفاً دوباره تلاش کنید.');
+      showToast(message);
+    } finally {
+      otpRequestPending = false;
+    }
   }
 
   function otpAutoNext(el) {
     if (!el) return;
+    setOtpVisualState('');
     let clean = toEnglishDigits(el.value).replace(/[^0-9]/g, '');
     if (clean.length > 1) {
       clean = clean.slice(-1);
@@ -111,6 +166,7 @@
   function otpKeyDown(el, event) {
     if (!el || !event) return;
     if (event.key === 'Backspace') {
+      setOtpVisualState('');
       if (!el.value) {
         const prev = el.previousElementSibling;
         if (prev && prev.classList.contains('otp-box')) {
@@ -141,6 +197,7 @@
 
   function otpPaste(event) {
     event.preventDefault();
+    setOtpVisualState('');
     const clip = (event.clipboardData || window.clipboardData).getData('text');
     if (!clip) return;
     const clean = toEnglishDigits(clip).replace(/[^0-9]/g, '');
@@ -164,7 +221,7 @@
 
   function startOtpTimer() {
     clearInterval(otpTimerInterval);
-    otpSeconds = 30;
+    otpSeconds = 120;
     const textEl = document.getElementById('otpTimerText');
     const linkEl = document.getElementById('otpResendLink');
     if (!textEl || !linkEl) return;
@@ -189,21 +246,40 @@
     }, 1000);
   }
 
-  function resendOtp() {
+  async function resendOtp() {
+    if (otpRequestPending || !isValidIranMobile(userProfile.rawPhone)) return;
     const isEn = (window.i18n && typeof window.i18n.getLanguage === 'function')
       ? window.i18n.getLanguage() === 'en'
       : (window.i18n && window.i18n.currentLang === 'en');
-    showToast(isEn ? 'Verification code resent successfully' : 'کد تایید مجدداً ارسال شد');
-    startOtpTimer();
-    document.querySelectorAll('#screen-otp .otp-box').forEach(b => {
-      b.value = '';
-      b.classList.remove('filled');
-    });
-    const firstBox = document.querySelector('#screen-otp .otp-box');
-    if (firstBox) firstBox.focus();
+    otpRequestPending = true;
+    try {
+      const result = await requestServerOtp('send', { phone: userProfile.rawPhone });
+      otpChallengeId = result.challenge_id;
+      otpTestCode = result.test_mode ? String(result.test_code || '') : '';
+      updateOtpDescription();
+      startOtpTimer();
+      document.querySelectorAll('#screen-otp .otp-box').forEach(b => {
+        b.value = '';
+        b.classList.remove('filled');
+      });
+      setOtpVisualState('');
+      const firstBox = document.querySelector('#screen-otp .otp-box');
+      if (firstBox) firstBox.focus();
+      showToast(isEn ? 'Verification code sent' : 'کد تایید ارسال شد');
+    } catch (error) {
+      const message = isEn
+        ? 'Could not resend the verification code. Please try again later.'
+        : (error.message && error.message !== 'request_failed' && error.message !== 'invalid_response'
+          ? error.message
+          : 'ارسال مجدد کد انجام نشد؛ کمی بعد دوباره تلاش کنید.');
+      showToast(message);
+    } finally {
+      otpRequestPending = false;
+    }
   }
 
-  function verifyOtp() {
+  async function verifyOtp() {
+    if (otpVerifyPending) return;
     const boxes = document.querySelectorAll('#screen-otp .otp-box');
     let code = '';
     const isEn = (window.i18n && typeof window.i18n.getLanguage === 'function')
@@ -224,8 +300,53 @@
       return;
     }
 
-    clearInterval(otpTimerInterval);
+    if (!otpChallengeId) {
+      showToast(isEn ? 'Request a verification code first' : 'ابتدا کد تایید را درخواست کنید');
+      return;
+    }
 
+    otpVerifyPending = true;
+    try {
+      await requestServerOtp('verify', { challenge_id: otpChallengeId, code: code });
+    } catch (error) {
+      if (error.status === 400) {
+        setOtpVisualState('invalid');
+        setTimeout(() => {
+          const row = document.querySelector('#screen-otp .otp-inputs-row');
+          if (!row || !row.classList.contains('otp-invalid')) return;
+          boxes.forEach(box => {
+            box.value = '';
+            box.classList.remove('filled');
+          });
+          setOtpVisualState('');
+          if (boxes[0]) boxes[0].focus();
+        }, 1100);
+      }
+      const message = isEn
+        ? (error.status === 410 || error.status === 429
+          ? 'The code has expired or the attempt limit was reached. Request a new code.'
+          : 'The verification code is incorrect. Please try again.')
+        : (error.message && error.message !== 'request_failed' && error.message !== 'invalid_response'
+          ? error.message
+          : 'کد تایید اشتباه است یا منقضی شده؛ دوباره بررسی کنید.');
+      if (error.status === 410 || error.status === 429) {
+        otpChallengeId = '';
+        const linkEl = document.getElementById('otpResendLink');
+        const textEl = document.getElementById('otpTimerText');
+        if (textEl) textEl.style.display = 'none';
+        if (linkEl) linkEl.style.display = 'inline';
+      }
+      showToast(message);
+      otpVerifyPending = false;
+      return;
+    }
+
+    setOtpVisualState('valid');
+    await new Promise(resolve => setTimeout(resolve, 450));
+    clearInterval(otpTimerInterval);
+    otpChallengeId = '';
+    otpTestCode = '';
+    otpVerifyPending = false;
     if (typeof loginWithPhone === 'function') {
       loginWithPhone(userProfile.rawPhone);
     } else {
@@ -277,6 +398,9 @@
 
   function logoutUser() {
     clearInterval(otpTimerInterval);
+    otpChallengeId = '';
+    otpRequestPending = false;
+    otpVerifyPending = false;
     document.querySelectorAll('#screen-otp .otp-box').forEach(b => {
       b.value = '';
       b.classList.remove('filled');

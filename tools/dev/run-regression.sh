@@ -10,6 +10,7 @@
 #    syntax     → همه‌ی فایل‌های PHP و JS از نظر نحوی سالم‌اند
 #    notify     → «خوانده شدن» اعلان برای هر کاربر جدا، پنل درست نشان می‌دهد
 #    app        → درخواست‌های اپ (خوانده‌شده، اعلان سیستمی، ثبت توکن فایربیس)
+#    otp        → ارسال OTP آموت، اعتبارسنجی سمت سرور، انقضا و محدودیت تلاش/ارسال
 #    pushcrypto → رمزنگاری اعلان مرورگر و امضای VAPID
 #    fcm        → موتور فایربیس (JWT، ارسال پیام، توکن باطل)
 #    backend    → دیتابیس، بذرها، آپلود عکس، صفحات پنل
@@ -94,7 +95,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "syntax" ]; then
   run_step "بررسی نحوی JS"  node "$WORK/js-syntax.mjs"  "$ROOT"
 fi
 
-for t in notify app pushcrypto fcm backend security online geo upload tiles push places placesadmin ios pwa; do
+for t in notify app pushcrypto fcm backend security online geo upload tiles push places placesadmin otp ios pwa; do
   if [ "$TARGET" = "all" ] || [ "$TARGET" = "$t" ]; then
     if [ -f "$WORK/$t.test.mjs" ]; then
       run_step "آزمون $t" node "$WORK/$t.test.mjs"
