@@ -1,0 +1,95 @@
+name: Diagnostics (live host)
+
+# ============================================================================
+#  کاوش سرور زنده‌ی ای‌پلاک — برای وقتی که از محیط توسعه نمی‌شود به eplak.ir رسید
+#
+#  چه می‌کند؟ همان درخواست‌هایی را می‌زند که اپ/سایت می‌زنند (فهرست اعلان‌ها،
+#  خوانده‌شده/حذف، اخبار، اماکن، صفحه‌ی پنل) و «کد پاسخ + بدنه‌ی کامل» را جمع می‌کند؛
+#  بعد tools/live-check.sh را هم اجرا می‌کند. نتیجه:
+#    • artifact «diag» و برچسب گیت «artifacts/diag» (بدون نیاز به سرویس artifact)
+#    • حاشیه‌نویسی (::notice/::error) با خلاصه‌ی کدها و بدنه‌ی خطاها
+#
+#  هیچ داده‌ای روی سرور نمی‌سازد و پاک نمی‌کند (فقط GET و دو POST بی‌اثر روی
+#  شماره‌ی آزمایشی). رمز/کلیدی هم لازم ندارد.
+# ============================================================================
+
+on:
+  push:
+    branches: [main, 'arena/**']
+    paths:
+      - 'tools/diag/**'
+      - 'tools/live-check.sh'
+      - '.github/workflows/diagnostics.yml'
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'آدرس پایه‌ی سایت (پیش‌فرض https://eplak.ir/eplak-fixed)'
+        required: false
+        default: 'https://eplak.ir/eplak-fixed'
+
+env:
+  EPLAK_BASE: https://eplak.ir/eplak-fixed
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    name: کاوش اعلان‌ها و API روی سرور زنده
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: کاوش endpointها (tools/diag/probe-notifications.sh)
+        run: |
+          set -uo pipefail
+          BASE="${{ github.event.inputs.base || env.EPLAK_BASE }}"
+          mkdir -p diag-out
+          bash tools/diag/probe-notifications.sh "$BASE" diag-out 2>&1 | tee diag-out/probe.log
+
+      - name: پایش زنده‌ی کامل (tools/live-check.sh) — گزارشی
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          BASE="${{ github.event.inputs.base || env.EPLAK_BASE }}"
+          EPLAK_BASE="$BASE" bash tools/live-check.sh 2>&1 | tee diag-out/live-check.log | tail -60
+
+      - name: خلاصه‌ی اجرا
+        if: always()
+        run: |
+          {
+            echo '### 🔎 کاوش سرور زنده (اعلان‌ها)'
+            echo
+            echo '```'
+            cat diag-out/summary.txt 2>/dev/null || echo '(خلاصه‌ای نبود)'
+            echo '```'
+            echo
+            echo 'جزئیات کامل در artifact **diag** و برچسب گیت **artifacts/diag**.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: انتشار گزارش روی برچسب گیت (artifacts/diag)
+        if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          bash tools/ci/publish-artifacts.sh diag diag-out
+
+      - name: حاشیه‌نویسیِ بدنه‌ی خطای endpointهای اعلان (خوانا از API)
+        if: always()
+        run: |
+          set -uo pipefail
+          for f in diag-out/notifications*.txt diag-out/news.txt; do
+            [ -f "$f" ] || continue
+            name="$(basename "$f" .txt)"
+            code="$(grep -o '\[HTTP [0-9]*\]' "$f" | tail -1 | tr -d '[]')"
+            body="$(head -c 900 "$f" | tr '\n' ' ' | tr -d '\r')"
+            case "$code" in
+              "HTTP 200") echo "::notice title=${name} ${code}::${body}" ;;
+              "")         echo "::notice title=${name} (بدون پاسخ)::${body}" ;;
+              *)          echo "::error title=${name} ${code}::${body}" ;;
+            esac
+          done
