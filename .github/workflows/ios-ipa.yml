@@ -79,12 +79,13 @@ jobs:
       - name: ساخت برای شبیه‌ساز iPhone (بدون امضا)
         run: |
           set -euo pipefail
+          mkdir -p ci-logs
           xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Release \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath ios-app/build-sim \
             MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$APP_BUILD" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
-            build
+            build 2>&1 | tee ci-logs/xcodebuild-sim.log
 
       - name: آزمون دودی اپ روی شبیه‌ساز iPhone (گزارشی؛ IPA را متوقف نمی‌کند)
         id: smoke
@@ -93,7 +94,8 @@ jobs:
           set -euo pipefail
           APP="ios-app/build-sim/Build/Products/Release-iphonesimulator/Eplak.app"
           test -d "$APP"
-          bash ios-app/ci/simulator-smoke.sh "$APP" ios-app/sim-evidence
+          mkdir -p ci-logs
+          bash ios-app/ci/simulator-smoke.sh "$APP" ios-app/sim-evidence 2>&1 | tee ci-logs/simulator-smoke.log
 
       - name: ساخت برای دستگاه واقعی arm64 (بدون امضا)
         run: |
@@ -103,13 +105,13 @@ jobs:
             -derivedDataPath ios-app/build-device \
             MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$APP_BUILD" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
-            build
+            build 2>&1 | tee ci-logs/xcodebuild-device.log
 
       - name: بازرسی IPA و بسته‌بندی Payload
         run: |
           set -euo pipefail
           APP="ios-app/build-device/Build/Products/Release-iphoneos/Eplak.app"
-          mkdir -p dist
+          mkdir -p dist ci-logs
           test -d "$APP" || { echo "❌ Eplak.app ساخته نشد"; exit 1; }
 
           echo "— باینری اپ:"
@@ -230,6 +232,30 @@ jobs:
             "dist/${PROJECT_ZIP}.sha256" \
             --clobber
           echo "✅ به Releases پیوست شد: $RELEASE_TAG"
+
+      - name: انتشار فایل‌ها و لاگ‌ها روی برچسب گیت (artifacts/ios)
+        if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          bash tools/ci/publish-artifacts.sh ios dist ci-logs ios-app/sim-evidence
+
+      - name: گزارش خطا (در حاشیه‌نویسیِ اجرا؛ چون لاگ از بعضی محیط‌ها قابل خواندن نیست)
+        if: always()
+        run: |
+          set -uo pipefail
+          for log in ci-logs/xcodebuild-sim.log ci-logs/simulator-smoke.log ci-logs/xcodebuild-device.log; do
+            [ -f "$log" ] || continue
+            echo "::group::tail of $log"
+            tail -50 "$log"
+            echo "::endgroup::"
+            if grep -qE '\*\* (BUILD|TEST) FAILED|error:' "$log"; then
+              MSG="$(grep -E 'error:|\*\* (BUILD|TEST) FAILED|The following build commands failed' "$log" | tail -20 | tr -d '\r' | tr '\n' '|' | cut -c1-1500)"
+              echo "::error title=${log}::${MSG}"
+            fi
+          done
 
       - name: بررسی انتشار در Releases
         if: always()

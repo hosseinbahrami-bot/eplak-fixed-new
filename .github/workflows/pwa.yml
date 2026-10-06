@@ -91,7 +91,8 @@ jobs:
       - name: آزمون دودی در Chrome واقعی (سرور محلی، origin جدا، سرور واقعی ای‌پلاک)
         run: |
           set -euo pipefail
-          node tools/pwa-smoke.mjs pwa-dist pwa-evidence
+          mkdir -p ci-logs
+          node tools/pwa-smoke.mjs pwa-dist pwa-evidence 2>&1 | tee ci-logs/pwa-smoke.log
 
       - name: خلاصه‌ی اجرا
         if: always()
@@ -108,6 +109,16 @@ jobs:
             echo
             echo "نصب روی آیفون: Safari ← «افزودن به صفحه اصلی» · اندروید: Chrome ← «نصب»"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: انتشار بسته‌ی PWA روی برچسب گیت (artifacts/pwa)
+        if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          mkdir -p ci-logs
+          bash tools/ci/publish-artifacts.sh pwa pwa-dist pwa-evidence ci-logs
 
       - name: گذاشتن عکس‌های آزمون روی برچسب گیت (فقط وقتی پیام کامیت «[evidence]» دارد)
         if: contains(github.event.head_commit.message, '[evidence]')
@@ -145,8 +156,9 @@ jobs:
       - name: سایت روی هاست در Chrome (حالت هاست — API نسبی، بدون پرچم نسخه‌ی ایستا)
         run: |
           set -euo pipefail
+          mkdir -p ci-logs
           EPLAK_PWA_API_BASE="$PWA_API" bash tools/build-pwa.sh pwa-dist
-          node tools/pwa-smoke.mjs pwa-dist host-evidence
+          node tools/pwa-smoke.mjs pwa-dist host-evidence 2>&1 | tee ci-logs/host-smoke.log
         env:
           PWA_KIND: host
           PWA_URL: ${{ env.HOST_PWA_URL }}

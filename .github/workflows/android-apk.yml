@@ -7,14 +7,17 @@ name: Build Android APK
 #  یا هر تغییر در android-app/ — و دستی از تب Actions.
 #
 #  چه چیزی می‌سازد؟
-#    • dist/eplak-app.apk  — نسخه‌ی release، امضاشده و قابل نصب روی گوشی
+#    • dist/eplak-app.apk       — نسخه‌ی release، امضاشده و قابل نصب روی گوشی
 #    • dist/eplak-app.apk.sha256 — اثرانگشت فایل
-#    • artifact «eplak-apk» (تب Actions) و پیوست به صفحه‌ی Releases
+#    • artifact «eplak-apk» (تب Actions) + پیوست به صفحه‌ی Releases
+#    • برچسب گیت «artifacts/android» — همان فایل‌ها + لاگ‌های ساخت (ci-logs/)، برای
+#      محیط‌هایی که به سرویس artifact گیت‌هاب دسترسی ندارند (tools/ci/publish-artifacts.sh)
 #
 #  امضا: android-app/eplak-release.p12 + android-app/keystore.properties.
 #  اگر کلید در مخزن نباشد (بار اول)، همین ورک‌فلو آن را با keytool می‌سازد، APK را با آن
-#  امضا می‌کند و خودِ کلید را در artifact «eplak-signing-key» بیرون می‌دهد تا در مخزن
-#  گذاشته شود؛ از آن پس کلید ثابت می‌ماند و نسخه‌ی تازه روی نسخه‌ی نصب‌شده به‌روز می‌شود.
+#  امضا می‌کند و خودِ کلید را هم در artifact «eplak-signing-key» و هم روی همان برچسب گیت
+#  می‌گذارد؛ آن را در android-app/ commit کنید تا کلید ثابت بماند و نسخه‌های بعدی روی
+#  نسخه‌ی نصب‌شده به‌روز شوند.
 #
 #  شاخص «همگام‌سازی اماکنِ پنل با اپ» (PLACES_SYNC_CODE): اثرانگشتِ پاسخِ api/places.php
 #  روی سرور زنده. اپ این پاسخ را با applyRemote روی فهرست پیش‌فرض اعمال می‌کند و در کلید
@@ -65,16 +68,37 @@ jobs:
           distribution: oracle
           java-version: '17'
 
-      - name: نصب Android SDK (cmdline-tools)
-        uses: android-actions/setup-android@v3
-
-      - name: نصب platform-tools، platform 36 و build-tools
+      - name: نصب Android SDK (cmdline-tools، platform 36، build-tools)
         run: |
           set -euo pipefail
-          (yes | sdkmanager --licenses) >/dev/null 2>&1 || true
-          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;${BUILD_TOOLS}"
-          echo "BT_DIR=${ANDROID_HOME:-${ANDROID_SDK_ROOT}}/build-tools/${BUILD_TOOLS}" >> "$GITHUB_ENV"
-          java -version
+          mkdir -p ci-logs
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if [ ! -d "$SDK_ROOT" ] || [ ! -w "$SDK_ROOT" ]; then
+            SDK_ROOT="$HOME/android-sdk"
+            mkdir -p "$SDK_ROOT"
+          fi
+          echo "ANDROID_HOME=${SDK_ROOT}" >> "$GITHUB_ENV"
+          echo "BT_DIR=${SDK_ROOT}/build-tools/${BUILD_TOOLS}" >> "$GITHUB_ENV"
+          {
+            echo "ANDROID_HOME=${SDK_ROOT}"
+            java -version 2>&1
+            ls -la "$SDK_ROOT" 2>/dev/null || echo "(پوشه‌ی SDK خالی است)"
+            mkdir -p "$SDK_ROOT/cmdline-tools"
+            if [ ! -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+              echo "→ cmdline-tools نصب می‌شود"
+              curl -fsSL -o /tmp/cmdtools.zip \
+                https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+              rm -rf /tmp/cmdtools && mkdir -p /tmp/cmdtools
+              unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
+              rm -rf "$SDK_ROOT/cmdline-tools/latest"
+              mv /tmp/cmdtools/cmdline-tools "$SDK_ROOT/cmdline-tools/latest"
+            fi
+            SDKM="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+            (yes | "$SDKM" --licenses) >/dev/null 2>&1 || true
+            "$SDKM" --install "platform-tools" "platforms;android-36" "build-tools;${BUILD_TOOLS}"
+            "$SDKM" --list_installed 2>/dev/null | head -25 || true
+          } 2>&1 | tee ci-logs/android-sdk.log
+          printf 'sdk.dir=%s\n' "$SDK_ROOT" > android-app/local.properties
 
       - name: کش Gradle (ساخت‌های بعدی سریع‌تر)
         uses: actions/cache@v4
@@ -144,7 +168,7 @@ jobs:
           except Exception:
               d = {}
           # همان چیزی که اپ با applyRemote می‌گیرد و در eplak_places_remote_v1 نگه می‌دارد
-          v = str(d.get('v', '')).strip()
+          v = str(d.get('v', '')).strip() if isinstance(d, dict) else ''
           if v:
               print(v[:12])
           else:
@@ -152,7 +176,7 @@ jobs:
               print(hashlib.sha256(body).hexdigest()[:12])
           PY
           )"
-          PLACES_COUNT="$(python3 - <<'PY' || echo '?'
+          PLACES_COUNT="$(python3 - <<'PY'
           import json
           try:
               with open('/tmp/places.json', encoding='utf-8') as f:
@@ -175,7 +199,7 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace assembleRelease \
             -PeplakVersionName="${APP_VERSION}" \
-            -PeplakVersionCode="${APP_VERSION_CODE}"
+            -PeplakVersionCode="${APP_VERSION_CODE}" 2>&1 | tee ../ci-logs/gradle.log
 
       - name: بازرسی APK (امضا، نسخه، مجوزها) و کپی در dist/
         run: |
@@ -183,12 +207,12 @@ jobs:
           mkdir -p dist
           APK="$(find android-app/app/build/outputs/apk -type f -name '*.apk' -path '*release*' | head -1 || true)"
           if [ -z "$APK" ]; then
-            echo "❌ APK ساخته نشد؛ خروجی‌های Gradle:"
-            find android-app/app/build/outputs -type f | head -30
+            echo "❌ APK ساخته نشد؛ خروجی‌های Gradle:" | tee ci-logs/apk-not-found.txt
+            find android-app/app/build/outputs -type f | tee -a ci-logs/apk-not-found.txt
             exit 1
           fi
           cp "$APK" "dist/${APK_NAME}"
-          "${BT_DIR}/apksigner" verify --print-certs --verbose "dist/${APK_NAME}" | tee dist/apksigner.txt
+          "${BT_DIR}/apksigner" verify --print-certs --verbose "dist/${APK_NAME}" | tee dist/apksigner.txt ci-logs/apksigner.log
           if ! grep -q 'Signer #1 certificate' dist/apksigner.txt; then
             echo '❌ APK امضا نشده است (کلید امضا پیدا نشد)'; exit 1
           fi
@@ -210,26 +234,33 @@ jobs:
             echo "| شاخص همگام‌سازی اماکن (PLACES_SYNC_CODE) | ${PLACES_SYNC_CODE} |"
             echo "| منبع کلید امضا | ${KEYSTORE_SOURCE} |"
             echo "| تاریخ ساخت | $(date -u '+%Y-%m-%d %H:%M UTC') |"
-          } > dist/build-info.md
-          cat dist/build-info.md
+          } | tee dist/build-info.md
 
       - name: خلاصه‌ی اجرا
+        if: always()
         run: |
           {
-            echo "### 📱 APK ای‌پلاک ساخته شد"
+            echo "### 📱 ساخت APK ای‌پلاک"
             echo
-            echo "| مورد | مقدار |"
-            echo "|---|---|"
-            echo "| نسخه | \`${APP_VERSION}\` (versionCode \`${APP_VERSION_CODE}\`) |"
-            echo "| کامیت | \`${COMMIT_SHORT}\` |"
-            echo "| اندازه | $(du -h "dist/${APK_NAME}" | cut -f1) |"
-            echo "| امضا | ${KEYSTORE_SOURCE} — $(grep -m1 'SHA256:' dist/keystore-fingerprint.txt | sed 's/^ *//') |"
-            echo "| شاخص همگام‌سازی اماکنِ پنل (PLACES_SYNC_CODE) | \`${PLACES_SYNC_CODE}\` |"
-            echo
-            echo "فایل‌ها: artifact **eplak-apk** و صفحه‌ی Releases (برچسب \`${RELEASE_TAG}\`)."
+            if [ -f "dist/${APK_NAME}" ]; then
+              echo "| مورد | مقدار |"
+              echo "|---|---|"
+              echo "| نسخه | \`${APP_VERSION}\` (versionCode \`${APP_VERSION_CODE}\`) |"
+              echo "| کامیت | \`${COMMIT_SHORT}\` |"
+              echo "| اندازه | $(du -h "dist/${APK_NAME}" | cut -f1) |"
+              echo "| امضا | ${KEYSTORE_SOURCE} — $(grep -m1 'SHA256:' dist/keystore-fingerprint.txt 2>/dev/null | sed 's/^ *//') |"
+              echo "| SHA-256 | \`${APK_SHA256:-?}\` |"
+              echo "| شاخص همگام‌سازی اماکنِ پنل (PLACES_SYNC_CODE) | \`${PLACES_SYNC_CODE}\` |"
+              echo
+              echo "فایل‌ها: artifact **eplak-apk**، صفحه‌ی Releases (برچسب \`${RELEASE_TAG}\`) و برچسب گیت \`artifacts/android\`."
+            else
+              echo "❌ APK ساخته نشد — لاگ‌ها در \`ci-logs/\` (روی برچسب گیت \`artifacts/android\`)."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: آپلود artifact (eplak-apk)
+        if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: eplak-apk
@@ -239,7 +270,8 @@ jobs:
             dist/build-info.md
             dist/apksigner.txt
             dist/keystore-fingerprint.txt
-          if-no-files-found: error
+            ci-logs
+          if-no-files-found: ignore
           retention-days: 90
 
       - name: پیوست APK به صفحه‌ی Releases
@@ -266,24 +298,38 @@ jobs:
 
             **نصب روی گوشی:** `eplak-app.apk` را دانلود کنید → اجازه‌ی «نصب از منابع نامشخص» → نصب.
             اگر پیام «App not installed» دیدید، نسخه‌ی قبلی را پاک کنید و دوباره نصب کنید
-            (کلید امضا با نسخه‌های مخزن قبلی `eplak-fixed` یکی نیست).
+            (کلید امضا با نسخه‌های مخزن قبلی یکی نیست).
 
-            🍎 `eplak-app-unsigned.ipa` و 🌍 بسته‌ی PWA از ورک‌فلوهای `Build iOS IPA` و `Build PWA package`
-            به همین صفحه اضافه می‌شوند.
+            🍎 `eplak-app-unsigned.ipa` و 🌍 بسته‌ی PWA از ورک‌فلوهای `Build iOS IPA` و
+            `Build PWA package` به همین صفحه اضافه می‌شوند.
 
-      - name: بررسی انتشار در Releases
+      - name: انتشار فایل‌ها و لاگ‌ها روی برچسب گیت (artifacts/android)
         if: always()
+        continue-on-error: true
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
+          bash tools/ci/publish-artifacts.sh android dist ci-logs android-app/eplak-release.p12 android-app/keystore.properties
+
+      - name: گزارش خطا (در حاشیه‌نویسیِ اجرا؛ چون لاگ از بعضی محیط‌ها قابل خواندن نیست)
+        if: always()
+        run: |
+          set -uo pipefail
+          for log in ci-logs/android-sdk.log ci-logs/gradle.log; do
+            [ -f "$log" ] || continue
+            echo "::group::tail of $log"
+            tail -60 "$log"
+            echo "::endgroup::"
+            if grep -qE 'FAILURE: Build (failed|completed with an exception)|Exception|error:' "$log"; then
+              MSG="$(grep -E 'FAILURE|What went wrong|error:|Caused by|> ' "$log" | tail -25 | tr -d '\r' | tr '\n' '|' | cut -c1-1500)"
+              echo "::error title=${log}::${MSG}"
+            fi
+          done
           if gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' 2>/dev/null | grep -q "${APK_NAME}"; then
-            echo "✅ ${APK_NAME} روی صفحه‌ی Releases (برچسب ${RELEASE_TAG}) هست." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "✅ ${APK_NAME} روی صفحه‌ی Releases (برچسب ${RELEASE_TAG}) هست." >> "$GITHUB_STEP_SUMMARY"
           else
-            {
-              echo
-              echo "⚠️ پیوست خودکار به Releases انجام نشد (احتمالاً مجوز نوشتنِ توکن اجرا: "
-              echo "Settings ← Actions ← General ← Workflow permissions ← Read and write)."
-              echo "فایل‌ها در artifact **eplak-apk** همین اجرا هستند."
-            } >> "$GITHUB_STEP_SUMMARY"
+            echo "⚠️ پیوست خودکار به Releases انجام نشد (مجوز نوشتنِ توکن اجرا: Settings ← Actions ← General ← Workflow permissions ← Read and write). فایل‌ها در artifact **eplak-apk** و برچسب گیت **artifacts/android** هستند." >> "$GITHUB_STEP_SUMMARY"
           fi
+        env:
+          GH_TOKEN: ${{ github.token }}
