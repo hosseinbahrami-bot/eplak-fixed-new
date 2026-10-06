@@ -1,0 +1,20 @@
+## آزمون دودی PWA (Chrome، origin جدا از سرور اصلی)
+
+- آدرس PWA: http://127.0.0.1:46245/ — API: https://eplak.ir/eplak-fixed/api
+- صفحه‌ی اول: screen-login؛ پینگ: {"status":200,"body":"{\"success\":true,\"online\":true,\"server_time\":\"2026-10-06T15:32:03+00:00\",\"fa_time\":\"۱۴۰۵\\/۰۷\\/۱۴ ساعت"}
+- سرویس‌ورکر: {"scope":"http://127.0.0.1:46245/","active":true}؛ نام manifest: ای‌پلاک - سامانه مدیریت و خدمات شهری
+- خطاهای قابلیت نصب: []
+- نقشه: چیپ 10، ردیف 35، کاشی 9 از 9، نشانگر 36
+- کد پاسخ درخواست‌های سرور اصلی: {"api/ping.php":200,"api/notifications.php":500,"api/departments.php":200,"api/news.php":500,"api/places.php":200,"api/tiles.php":200}
+
+### خطاهای کنسول/شبکه‌ی دیده‌شده (گزارشی)
+- request failed: https://prayer.aviny.com/api/prayertimes/243 — net::ERR_CERT_DATE_INVALID
+- console: Failed to load resource: net::ERR_CERT_DATE_INVALID
+- console: Failed to load resource: the server responded with a status of 500 ()
+- console: Failed to load resource: the server responded with a status of 500 ()
+- console: Failed to load resource: the server responded with a status of 500 ()
+- console: Failed to load resource: the server responded with a status of 500 ()
+- console: Failed to load resource: the server responded with a status of 500 ()
+- console: Failed to load resource: the server responded with a status of 500 ()
+
+### ✅ همه‌ی بررسی‌ها گذشت
