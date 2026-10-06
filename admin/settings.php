@@ -181,6 +181,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $schemaReport  = eplakSchemaSyncReport();
 $schemaVersion = (string) eplakAppSetting($pdo, 'schema_version', '');
+/* ستون‌های حیاتی که نبودشان فهرست اعلان‌های اپ/اخبار را با خطای «Unknown column»
+   می‌خواباند (کد اکنون سازگار کار می‌کند، ولی ترمیمِ واقعی همین‌جا انجام می‌شود). */
+$schemaMissing = function_exists('eplakSchemaMissingColumns') ? eplakSchemaMissingColumns($pdo) : [];
 
 $vapid        = eplakVapidKeys($pdo, false);
 $vapidReady   = $vapid['ready'];
@@ -652,6 +655,19 @@ $httpsOn = eplakIsHttpsRequest();
             <span class="kv-key">نسخه‌ی ساختار دیتابیس</span>
             <span class="kv-val" style="direction:ltr"><?= htmlspecialchars($schemaVersion !== '' ? $schemaVersion : '—') ?></span>
           </div>
+          <?php if ($schemaMissing): ?>
+            <div class="kv-row">
+              <span class="kv-key">ستون‌های حیاتیِ نبوده</span>
+              <span class="kv-val" style="direction:ltr; text-align:left; word-break:break-all;">
+                <span class="pill pill-bad"><?= htmlspecialchars(implode('، ', $schemaMissing)) ?></span>
+              </span>
+            </div>
+          <?php else: ?>
+            <div class="kv-row">
+              <span class="kv-key">ستون‌های حیاتی</span>
+              <span class="kv-val"><span class="pill pill-ok">همه هست</span></span>
+            </div>
+          <?php endif; ?>
           <?php if ($schemaReport['ran']): ?>
             <div class="kv-row">
               <span class="kv-key">آخرین همگام‌سازی</span>
@@ -676,6 +692,14 @@ $httpsOn = eplakIsHttpsRequest();
           <input type="hidden" name="action" value="repair_schema">
           <button type="submit" class="btn btn-outline"><i class="fas fa-screwdriver-wrench"></i> بررسی و ترمیم ساختار دیتابیس</button>
         </form>
+        <?php if ($schemaMissing): ?>
+          <p class="field-hint" style="color:#b91c1c; margin-top:8px;">
+            ⚠️ این ستون‌ها در دیتابیس نیستند: <span style="direction:ltr"><?= htmlspecialchars(implode('، ', $schemaMissing)) ?></span>.
+            کد بدون آن‌ها هم کار می‌کند (فهرست اعلان‌ها خالی نمی‌ماند)، ولی برای «گروه‌بندی ارسال‌ها»
+            و صفحه‌ی گیرندگان بهتر است دکمه‌ی ترمیم بالا زده شود. اگر ترمیم ناموفق ماند، کاربر دیتابیس
+            اجازه‌ی <code>ALTER TABLE</code> ندارد (در سی‌پنل: MySQL® Databases ← کاربر ← All Privileges).
+          </p>
+        <?php endif; ?>
 
         <h3 style="margin-top: 22px; font-size: 15px;">چطور مطمئن شوم اعلان در حالت قفل می‌رسد؟</h3>
         <ol class="steps">

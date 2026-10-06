@@ -23,13 +23,20 @@
 - `admin/places.php` · `api/places.php` · `shared/places_store.php` — **مدیریت اماکن از پنل** (منوی «اماکن شهری»). جدول `city_places` در اولین استفاده خودکار ساخته می‌شود؛ نیازی به SQL دستی نیست
 
 **فایل‌های تغییر‌یافته:**
-- `shared/bootstrap.php` — همگام‌سازی خودکار ساختار دیتابیس (رفع خطای `send_id`)
+- `shared/bootstrap.php` — همگام‌سازی خودکار ساختار دیتابیس + **بررسی ستون‌های حیاتی
+  در هر درخواست** (رفع دائمی خطای `Unknown column 'send_id'` / `'badge'` که باعث
+  خالی ماندن فهرست اعلان‌های اپ می‌شد) — جزئیات: `docs/NOTIFICATIONS_FIX_FA.md`
+- `shared/notify_events.php` · `shared/notification_reads.php` — اعلانِ «ثبت درخواست»
+  روی دیتابیس قدیمی هم ساخته می‌شود (پیش‌تر بی‌صدا از بین می‌رفت)
 - `admin/settings.php` — تغییر نام کاربری/رمز + بخش ساختار دیتابیس + تست اعلان
 - `admin/includes/functions.php` · `admin/report_detail.php` · `admin/reports.php`
   · `admin/news.php` · `admin/news_add.php` · `admin/news_edit.php`
   · `admin/notifications.php` · `admin/index.php` · `admin/assets/style.css`
 - `api/reports.php` · `api/news.php` · `api/notifications.php` (وضعیت خوانده‌شدن هر کاربر)
 - `admin/notification_view.php` · `admin/notifications.php` (نمایش درست خوانده‌شده/نخوانده)
+- `admin/version.php` — ردیف «ستون‌های حیاتی دیتابیس» (تشخیص سریع علت خالی بودن اعلان‌ها)
+- `api/news.php` — ستونِ نبوده (مثل `badge`) به‌صورت `NULL` خوانده می‌شود (دیگر ۵۰۰ نمی‌دهد)
+- `tools/diag/probe-notifications.sh` — کاوش سرور زنده + بخش «داوری» (از GitHub Actions اجرا می‌شود)
 - `android-app/.../NotificationBridge.kt` + `MainActivity.kt` + `AndroidManifest.xml` (اعلان سیستمی گوشی)
 - `index.html` · `app.js` · `sw.js`
 - `core/storage.js` · `core/i18n.js`
@@ -308,3 +315,28 @@ bash tools/dev/run-regression.sh syntax   # فقط بررسی نحوی فایل�
 ```bash
 bash tools/live-check.sh https://eplak.ir/eplak-fixed
 ```
+
+---
+
+## ۹) عیب‌یابی: «اعلان‌ها در اپ نمی‌آیند» / خطای `Unknown column`
+
+**نشانه‌ها:** فهرست اعلان‌های اپ خالی است (حتی پس از ثبت درخواست)، ارسال اعلان از
+پنل خطا می‌دهد، و `api/notifications.php` یا `api/news.php` کد `500` با پیام
+`Unknown column 'send_id'` / `'badge'` برمی‌گردانند.
+
+**علت:** جدول‌های دیتابیسِ هاست از کد عقب‌ترند (ستون‌های تازه اضافه نشده‌اند) و
+نشانه‌ی `app_settings.schema_version` «به‌روز» ثبت شده بود، پس همگام‌سازی خودکار
+رد می‌شد.
+
+**درمان (نسخه‌ی تازه‌ی کد):**
+
+1. بسته‌ی به‌روزرسانی را روی هاست Extract کنید؛ **اولین درخواست، خودش ستون‌های
+   نبوده را اضافه می‌کند** (بدون SQL دستی).
+2. برای اطمینان دستی: پنل ادمین → **تنظیمات** → **«بررسی و ترمیم ساختار دیتابیس»**.
+3. بررسی: پنل ادمین → **بررسی نسخه** → ردیف «ستون‌های حیاتی دیتابیس» باید «درست» باشد.
+4. اگر ترمیم ناموفق بود: کاربر دیتابیس اجازه‌ی `ALTER TABLE` ندارد →
+   cPanel → *MySQL® Databases* → کاربر → **All Privileges**. (در این حالت هم کد
+   سازگار کار می‌کند و اعلان‌ها خالی نمی‌مانند.)
+5. از بیرون: **GitHub → Actions → Diagnostics (live host)** → بخش «داوری» باید سبز باشد.
+
+> توضیح کاملِ علت، تغییرات و آزمون‌ها: **`docs/NOTIFICATIONS_FIX_FA.md`**

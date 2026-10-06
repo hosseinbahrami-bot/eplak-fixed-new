@@ -50,6 +50,7 @@ jobs:
           bash tools/diag/probe-notifications.sh "$BASE" diag-out 2>&1 | tee diag-out/probe.log
 
       - name: پایش زنده‌ی کامل (tools/live-check.sh) — گزارشی
+        if: always()
         continue-on-error: true
         run: |
           set -uo pipefail
@@ -61,6 +62,14 @@ jobs:
         run: |
           {
             echo '### 🔎 کاوش سرور زنده (اعلان‌ها)'
+            echo
+            echo '**داوری (endpointهای حیاتی)**'
+            echo
+            echo '```'
+            cat diag-out/verdict.txt 2>/dev/null || echo '(داوری انجام نشد)'
+            echo '```'
+            echo
+            echo '**کدهای پاسخ**'
             echo
             echo '```'
             cat diag-out/summary.txt 2>/dev/null || echo '(خلاصه‌ای نبود)'

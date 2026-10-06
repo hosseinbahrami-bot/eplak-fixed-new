@@ -18,6 +18,7 @@
 */
 require_once __DIR__ . '/../admin/includes/db.php';
 require_once __DIR__ . '/../shared/notification_reads.php';
+require_once __DIR__ . '/../shared/notify_events.php';   /* یکسان‌سازی شماره‌ی موبایل */
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -61,6 +62,16 @@ $phone  = preg_replace('/[^0-9+]/', '', trim((string) $input('phone', ''))) ?? '
 if ($phone === 'all') {
     $phone = '';
 }
+/* شماره باید دقیقاً به همان قالبی باشد که اعلان‌ها با آن «ذخیره» می‌شوند
+   (09xxxxxxxxx)؛ چون مسیر ثبت اعلان شماره را یکسان‌سازی می‌کند. بدون این کار،
+   شماره‌ی «+989…» یا «9…» یا با رقم فارسی هیچ اعلانی را پیدا نمی‌کرد و فهرست
+   اعلان‌ها خالی به‌نظر می‌رسید. */
+if ($phone !== '' && function_exists('eplakNotifyNormalizePhone')) {
+    $phone = eplakNotifyNormalizePhone($phone);
+    if ($phone === 'all') {
+        $phone = '';
+    }
+}
 $device   = preg_replace('/[^A-Za-z0-9_-]/', '', trim((string) $input('device', ''))) ?? '';
 $readerKey = eplakNotificationReaderKey($phone, $device);
 
@@ -85,6 +96,13 @@ $wantedIds = static function () use ($input): array {
 };
 
 try {
+    /* سازگاری با دیتابیس قدیمی: روی هاست‌هایی که کاربر دیتابیس اجازه‌ی ALTER
+       TABLE ندارد، ستون‌های تازه (send_id / read_flag) هرگز اضافه نمی‌شوند. در
+       آن حالت پرس‌وجوها «بدون» آن ستون‌ها ساخته می‌شوند تا کل فهرست اعلان‌ها با
+       خطای ۵۰۰ و «Unknown column» از کار نیفتد (همین خطا باعث شده بود اعلانِ
+       ثبت درخواست در اپ دیده نشود). */
+    $hasSendId = eplakTableHasColumn($pdo, 'notifications', 'send_id');
+
     /* ── حذف اعلان از فهرست همین کاربر ──────────────────────────────── */
     if ($action === 'delete' && $readerKey !== '') {
         $ids = $wantedIds();
@@ -149,8 +167,10 @@ try {
         }
 
         /* اگر همان کاربر ردیف اختصاصی دارد، ردیف مشترک «all» هم برای او خوانده‌شده
-           حساب می‌شود؛ پس رسید خواندن برای آن هم ثبت می‌شود. */
-        if ($phone !== '') {
+           حساب می‌شود؛ پس رسید خواندن برای آن هم ثبت می‌شود.
+           (بدون ستون send_id نمی‌شود این تفکیک را انجام داد؛ شناسه‌هایی که اپ
+           فرستاده یا مرحله‌ی «همه» کافی است.) */
+        if ($phone !== '' && $hasSendId) {
             $stmt = $pdo->prepare("SELECT id FROM notifications WHERE (user_phone = 'all' OR user_phone = '') AND (send_id IS NULL OR send_id NOT IN (SELECT send_id FROM notifications WHERE user_phone = :phone AND send_id IS NOT NULL))");
             $stmt->execute([':phone' => $phone]);
             foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $one) {
@@ -190,18 +210,29 @@ try {
     $onlyUnread = (string) $input('unread', '') === '1';
     $sinceId    = (int) $input('since_id', 0);
 
+    /* ستون‌های موجودِ جدول انتخاب می‌شوند؛ ستون نبوده → NULL (بدون شکست پرس‌وجو) */
+    $columns = eplakSelectColumns($pdo, 'notifications', ['id', 'title', 'body', 'read_flag', 'created_at']);
+
     $params = [];
-    if ($phone !== '') {
+    if ($phone !== '' && $hasSendId) {
         /* اعلان‌های خودِ کاربر + اعلان‌های عمومی‌ای که نسخه‌ی اختصاصی برای او ندارند */
-        $inner = 'SELECT id, title, body, read_flag, created_at, send_id FROM notifications WHERE user_phone = :phone
+        $inner = 'SELECT ' . $columns . ', send_id FROM notifications WHERE user_phone = :phone
                   UNION
-                  SELECT id, title, body, read_flag, created_at, send_id FROM notifications WHERE (user_phone = "all" OR user_phone = "")
+                  SELECT ' . $columns . ', send_id FROM notifications WHERE (user_phone = "all" OR user_phone = "")
                   AND (send_id IS NULL OR send_id NOT IN (SELECT send_id FROM notifications WHERE user_phone = :phone2 AND send_id IS NOT NULL))';
         $params[':phone']  = $phone;
         $params[':phone2'] = $phone;
+    } elseif ($phone !== '') {
+        /* دیتابیس قدیمی (بدون send_id): هر اعلانِ خودِ کاربر و هر اعلان عمومی
+           نمایش داده می‌شود؛ ممکن است یک اعلان گروهی دو بار دیده شود (یک ردیف
+           عمومی و یک ردیف اختصاصی) ولی فهرست هرگز خالی/خطا نمی‌شود. */
+        $inner = 'SELECT ' . $columns . ' FROM notifications WHERE user_phone = :phone
+                  UNION
+                  SELECT ' . $columns . ' FROM notifications WHERE (user_phone = "all" OR user_phone = "")';
+        $params[':phone'] = $phone;
     } else {
         /* کاربر مهمان: فقط اعلان‌های عمومی */
-        $inner = 'SELECT id, title, body, read_flag, created_at, send_id FROM notifications WHERE (user_phone = "all" OR user_phone = "")';
+        $inner = 'SELECT ' . $columns . ' FROM notifications WHERE (user_phone = "all" OR user_phone = "")';
     }
 
     $sql = "SELECT * FROM ($inner) AS eplak_notif";
@@ -227,7 +258,7 @@ try {
             /* کاربر این اعلان را حذف کرده است؛ در فهرست او نمایش داده نمی‌شود */
             continue;
         }
-        $isRead = ((int) $r['read_flag'] === 1) || isset($read[$id]);
+        $isRead = ((int) ($r['read_flag'] ?? 0) === 1) || isset($read[$id]);
         $items[] = [
             'id'         => $id,
             'title'      => $r['title'],
@@ -260,5 +291,16 @@ try {
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 } catch (Throwable $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    error_log('[eplak-notifications] ' . $e->getMessage());
+    $payload = ['success' => false, 'error' => $e->getMessage()];
+    if (eplakIsSchemaError($e->getMessage())) {
+        /* اپ این متن را در فهرست اعلان‌ها نشان می‌دهد تا مشکل بی‌صدا نماند */
+        $payload['schema'] = 'out_of_date';
+        $payload['hint']   = eplakSchemaErrorHint();
+        try {
+            $payload['missing'] = eplakSchemaMissingColumns($pdo);
+        } catch (Throwable $ignore) {
+        }
+    }
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
 }

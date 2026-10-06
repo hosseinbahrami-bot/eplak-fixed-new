@@ -393,6 +393,15 @@ ok('بررسی زنجیره قطع‌کن را (با تلاش اجباری) پا
 settings = await admin.get('/admin/settings.php');
 ok('فهرست گوشی‌های ثبت‌شده و آخرین ارسال‌ها در تنظیمات هست', /data-testid="fcm-devices"/.test(settings.text) && /data-testid="fcm-log"/.test(settings.text), '');
 
+/* دکمه‌ی «ترمیم ساختار دیتابیس» — راهِ دستیِ رفع خطای «Unknown column» روی هاست
+   (همان چیزی که باعث شد فهرست اعلان‌های اپ و ارسال اعلان از پنل بخوابد). */
+const repaired = await admin.post('/admin/settings.php', { _token: csrfOf(settings.text), action: 'repair_schema' });
+ok('دکمه‌ی «ترمیم ساختار دیتابیس» نتیجه را نشان می‌دهد',
+  /ساختار دیتابیس (ترمیم شد|کامل است)/.test(repaired.text) && !/Fatal error|Parse error/.test(repaired.text),
+  (repaired.text.match(/[✅⚠️][^<]{0,90}/g) || []).join(' | ').slice(0, 200));
+ok('ستون‌های حیاتی دیتابیس «هست» گزارش می‌شوند (بدون هشدار)',
+  /ستون‌های حیاتی/.test(repaired.text) && !/ستون‌های حیاتیِ نبوده/.test(repaired.text), '');
+
 /* بدون کلید */
 await exec(`eplakSetAppSetting($pdo, 'fcm_service_account', '');`);
 diag = await admin.post('/admin/settings.php', { _token: csrfOf(settings.text), action: 'diagnose_fcm' });

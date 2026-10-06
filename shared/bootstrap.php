@@ -690,7 +690,13 @@ function eplakUsersUpsertSql(PDO $pdo, bool $keepDefaultName = false): string {
    یک پله بالا ببرید؛ بقیه‌اش خودکار انجام می‌شود.
    ============================================================================ */
 if (!defined('EPLAK_SCHEMA_VERSION')) {
-    define('EPLAK_SCHEMA_VERSION', '2026-10-03.1');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
+    /* ⚠️ هر بار که ستونی به تعریف جدول‌ها اضافه می‌شود، این نسخه را یک پله بالا
+       ببرید؛ وگرنه دیتابیس‌های قدیمی همگام نمی‌شوند و خطای «Unknown column»
+       می‌دهند (نمونه‌ی واقعی: notifications.send_id و news.badge که باعث شد
+       فهرست اعلان‌های اپ و ارسال اعلان از پنل ادمین با خطای ۵۰۰ بخوابد).
+       افزون بر این، ستون‌های حیاتی در eplakSchemaCriticalColumns() هر درخواست
+       بررسی می‌شوند تا حتی با نسخه‌ی یکسان هم ترمیم خودکار انجام شود. */
+    define('EPLAK_SCHEMA_VERSION', '2026-10-06.1');   /* + بررسی خودکار ستون‌های حیاتی (notifications.send_id / read_flag، news.badge، reports.client_ref) */   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
 }
 
 /* تعریف جداول (همان متن CREATE TABLE) برای مقایسه با دیتابیس.
@@ -810,12 +816,46 @@ function eplakSyncTableColumns(PDO $pdo, string $ddl, array &$report): void {
     }
 }
 
+/* ستون‌های حیاتی: نبودِ هر کدام یعنی دیتابیس از کد عقب‌تر است و پرس‌وجوها با
+   «Unknown column» می‌خوابند. این فهرست کوتاه و ارزان است (یک SHOW COLUMNS برای
+   هر جدول در هر درخواست) تا حتی اگر schema_version در دیتابیس «به‌روز» ثبت شده
+   باشد (نسخه‌ی کد بالا نرفته باشد)، ترمیم خودکار انجام شود. */
+function eplakSchemaCriticalColumns(): array {
+    return [
+        'notifications' => ['send_id', 'read_flag'],
+        'news'          => ['badge'],
+        'reports'       => ['client_ref'],
+    ];
+}
+
+/** ستون‌های حیاتیِ نبود → فهرست «جدول.ستون» (خالی یعنی همه چیز سرِ جایش است) */
+function eplakSchemaMissingColumns(PDO $pdo): array {
+    $missing = [];
+    foreach (eplakSchemaCriticalColumns() as $table => $columns) {
+        foreach ((array) $columns as $column) {
+            if (!eplakTableHasColumn($pdo, (string) $table, (string) $column)) {
+                $missing[] = $table . '.' . $column;
+            }
+        }
+    }
+    return $missing;
+}
+
 /* آیا اسکیمای دیتابیس باید با کد همگام شود؟ */
 function eplakSchemaSyncNeeded(PDO $pdo): bool {
     try {
-        return (string) eplakAppSetting($pdo, 'schema_version', '') !== EPLAK_SCHEMA_VERSION;
+        if ((string) eplakAppSetting($pdo, 'schema_version', '') !== EPLAK_SCHEMA_VERSION) {
+            return true;
+        }
     } catch (\Throwable $e) {
         return true;
+    }
+    /* نسخه یکسان است، ولی شاید ستون‌ها واقعاً نباشند (دیتابیس قدیمی که پیش‌تر
+       «همگام» علامت خورده). بررسی ارزانِ ستون‌های حیاتی این حالت را می‌گیرد. */
+    try {
+        return eplakSchemaMissingColumns($pdo) !== [];
+    } catch (\Throwable $e) {
+        return false;
     }
 }
 
@@ -832,8 +872,20 @@ function eplakSchemaSyncReport(?array $report = null): array {
    روی هاست‌هایی که کاربر دیتابیس اجازه‌ی ALTER ندارد، همگام‌سازی اسکیما ممکن
    است ناقص بماند؛ با این بررسی، کد به‌جای خطای «Unknown column» مسیر
    سازگار (بدون آن ستون) را انتخاب می‌کند. */
-function eplakTableHasColumn(PDO $pdo, string $table, string $column): bool {
+function &eplakTableColumnCache(): array {
     static $cache = [];
+    return $cache;
+}
+
+/* پاک کردن حافظه‌ی ستون‌ها — بعد از ALTER TABLE لازم است تا ستون تازه‌افزوده
+   در همان درخواست «نبود» حساب نشود. */
+function eplakTableColumnCacheReset(): void {
+    $cache = &eplakTableColumnCache();
+    $cache = [];
+}
+
+function eplakTableHasColumn(PDO $pdo, string $table, string $column): bool {
+    $cache = &eplakTableColumnCache();
     $key = $table . '.' . $column;
     if (array_key_exists($key, $cache)) {
         return $cache[$key];
@@ -854,6 +906,73 @@ function eplakTableHasColumn(PDO $pdo, string $table, string $column): bool {
     } catch (\Throwable $e) {
         return $cache[$key] = false;
     }
+}
+
+/* ── سازگاری با دیتابیس قدیمی (ستون‌های نبوده) ──────────────────────────────
+   روی هاست‌هایی که کاربر دیتابیس اجازه‌ی ALTER ندارد، ستون‌های تازه هرگز اضافه
+   نمی‌شوند؛ در آن حالت پرس‌وجوها به‌جای خطای «Unknown column» باید ستون ناموجود
+   را NULL انتخاب کنند تا اپ از کار نیفتد. نام ستون‌ها همیشه از کد می‌آید (نه از
+   ورودی کاربر)، پس خطری از نظر SQL injection ندارند.
+   ========================================================================== */
+
+/** فهرست ستون‌های SELECT: هر ستونی که در جدول نیست به‌صورت NULL انتخاب می‌شود */
+function eplakSelectColumns(PDO $pdo, string $table, array $columns): string {
+    $parts = [];
+    foreach ($columns as $column) {
+        $column = trim((string) $column);
+        if ($column === '') {
+            continue;
+        }
+        $parts[] = eplakTableHasColumn($pdo, $table, $column)
+            ? $column
+            : 'NULL AS ' . $column;
+    }
+    return implode(', ', $parts);
+}
+
+/**
+ * INSERT سازگار با دیتابیس قدیمی: فقط ستون‌های موجود نوشته می‌شوند.
+ *
+ * @param array<string,mixed> $values کلید = نام ستون
+ * @return int شناسه‌ی ردیفِ نوشته‌شده (۰ اگر نوشتن ممکن نبود)
+ * @throws \RuntimeException اگر هیچ ستونی از فهرست در جدول وجود نداشته باشد
+ */
+function eplakInsertRow(PDO $pdo, string $table, array $values): int {
+    $columns = [];
+    $data    = [];
+    foreach ($values as $column => $value) {
+        $column = (string) $column;
+        if (!eplakTableHasColumn($pdo, $table, $column)) {
+            continue;
+        }
+        $columns[]          = $column;
+        $data[':' . $column] = $value;
+    }
+    if (!$columns) {
+        throw new \RuntimeException('هیچ ستونِ قابل نوشتنی در جدول ' . $table . ' پیدا نشد');
+    }
+    $sql  = 'INSERT INTO ' . $table . ' (' . implode(', ', $columns) . ') VALUES ('
+          . implode(', ', array_map(static fn($c) => ':' . $c, $columns)) . ')';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($data);
+    return (int) $pdo->lastInsertId();
+}
+
+/** آیا خطا از جنس «ستون/جدولِ نبوده» است؟ (برای راهنمایی مدیر در پاسخ JSON) */
+function eplakIsSchemaError(?string $message): bool {
+    $message = (string) $message;
+    return $message !== '' && (
+        stripos($message, 'Unknown column') !== false
+        || stripos($message, '42S22') !== false
+        || stripos($message, 'has no column named') !== false
+        || stripos($message, 'no such column') !== false
+        || stripos($message, "doesn't exist") !== false
+    );
+}
+
+/** متن راهنمای فارسی برای خطای اسکیمای قدیمی */
+function eplakSchemaErrorHint(): string {
+    return 'ساختار دیتابیس از نسخه‌ی کد عقب‌تر است. در پنل مدیریت: تنظیمات ← «ترمیم ساختار دیتابیس» (اگر خطا ماند، کاربر دیتابیس اجازه‌ی ALTER TABLE ندارد).';
 }
 
 /* اجرای همگام‌سازی کامل؛ $force برای دکمه‌ی «ترمیم اسکیما» در پنل تنظیمات */
@@ -882,6 +1001,11 @@ function eplakRunSchemaSync(PDO $pdo, bool $force = false): array {
     /* ستون‌های ویژه‌ی MySQL که تعریف‌شان در متن CREATE TABLE نیست */
     if (!eplakIsSqlite($pdo)) {
         eplakMysqlLegacyAlters($pdo, $report);
+    }
+    /* ستون‌های تازه اضافه شدند؛ حافظه‌ی «کدام ستون هست» باید تازه شود تا همان
+       درخواست مسیر سازگارِ (بدون ستون) را انتخاب نکند. */
+    if ($report['added']) {
+        eplakTableColumnCacheReset();
     }
 
     /* نسخه فقط وقتی ثبت می‌شود که هیچ ستونی جا نمانده باشد؛ وگرنه درخواست بعدی

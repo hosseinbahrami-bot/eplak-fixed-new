@@ -147,6 +147,97 @@ ok('کاربر اعلان تازه را در فهرست خود می‌بیند',
 const notSeenByOther = pickJson(await run(`$_GET = ['phone' => '09120000011']; $_SERVER['REQUEST_METHOD'] = 'GET'; require '${APP}/api/notifications.php';`));
 ok('کاربر دیگر این اعلان را نمی‌بیند (حریم خصوصی)', !(notSeenByOther?.notifications || []).some((n) => String(n.body).includes('EP-1403-0042')));
 
+/* ---------- دیتابیس قدیمی: ستون‌های تازه وجود ندارند ---------- */
+/* دو حالت واقعی روی هاست (دقیقاً همان چیزی که باعث شد اعلانِ ثبت درخواست در اپ
+   دیده نشود و ارسال اعلان از پنل ادمین با خطا بخوابد):
+     الف) کاربر دیتابیس اجازه‌ی ALTER TABLE ندارد → همگام‌سازیِ ناموفق تا ۱۰
+          دقیقه تکرار نمی‌شود (schema_sync_retry_at)؛ پس پرس‌وجوها باید «بدون»
+          ستون‌های نبوده کار کنند و هرگز ۵۰۰ ندهند.
+     ب) نشانِ schema_version در دیتابیس «به‌روز» ثبت شده ولی ستون‌ها واقعاً
+          نیستند → ترمیم باید خودکار و بدون فشردن دکمه‌ی دستی انجام شود.
+   بررسی وجود ستون با PDO خام انجام می‌شود تا خودِ bootstrap (و همگام‌سازی‌اش)
+   نتیجه را تغییر ندهد. */
+console.log('\n=== دیتابیس قدیمی (بدون send_id / read_flag / badge) ===');
+const rawCol = (table, col) => run(`$raw = new PDO('sqlite:${DB}');
+echo (int) $raw->query("SELECT COUNT(*) FROM pragma_table_info('${table}') WHERE name='${col}'")->fetchColumn();`);
+
+const dropped = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+$pdo->exec('ALTER TABLE notifications DROP COLUMN send_id');
+$pdo->exec('ALTER TABLE notifications DROP COLUMN read_flag');
+$pdo->exec('ALTER TABLE news DROP COLUMN badge');
+eplakTableColumnCacheReset();
+eplakSetAppSetting($pdo, 'schema_version', EPLAK_SCHEMA_VERSION);   /* وانمود: نسخه به‌روز است */
+eplakSetAppSetting($pdo, 'schema_sync_retry_at', (string) (time() + 600)); /* وانمود: ALTER ممکن نیست */
+echo json_encode([
+  'send_id'   => (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='send_id'")->fetchColumn(),
+  'read_flag' => (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='read_flag'")->fetchColumn(),
+  'badge'     => (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('news') WHERE name='badge'")->fetchColumn(),
+  'version'   => (string) eplakAppSetting($pdo, 'schema_version', ''),
+  'const'     => EPLAK_SCHEMA_VERSION,
+]);`));
+ok('آماده‌سازی: ستون‌های تازه واقعاً برداشته شدند', dropped?.send_id === 0 && dropped?.read_flag === 0 && dropped?.badge === 0, JSON.stringify(dropped));
+ok('آماده‌سازی: نسخه‌ی اسکیما «به‌روز» ثبت شده (شرطِ حالت ب)', !!dropped?.version && dropped?.version === dropped?.const, JSON.stringify({ version: dropped?.version, code: dropped?.const }));
+
+const legacyList = pickJson(await run(`$_GET = ['phone' => '09120000001']; $_SERVER['REQUEST_METHOD'] = 'GET'; require '${APP}/api/notifications.php';`));
+ok('فهرست اعلان‌ها روی دیتابیس قدیمی ۵۰۰ نمی‌دهد (باگ اصلی)', legacyList?.success === true, JSON.stringify(legacyList));
+ok('اعلان‌های همان کاربر هنوز دیده می‌شوند', (legacyList?.notifications || []).length >= 1, String((legacyList?.notifications || []).length));
+ok('پاسخ، خطای «Unknown column» ندارد', !JSON.stringify(legacyList || {}).includes('Unknown column'), JSON.stringify(legacyList));
+
+const legacyNews = pickJson(await run(`$_GET = ['type' => 'all']; $_SERVER['REQUEST_METHOD'] = 'GET'; require '${APP}/api/news.php';`));
+ok('اخبار هم بدون ستون badge کار می‌کند', legacyNews?.success === true && Array.isArray(legacyNews?.items), JSON.stringify(legacyNews).slice(0, 200));
+
+const legacySend = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+require_once '${APP}/admin/includes/functions.php';
+$n = sendNotification($pdo, 'اعلان گروهی از پنل', 'بدون ستون send_id', 'all', [], 'admin');
+echo json_encode(['count' => $n, 'rows' => (int) $pdo->query("SELECT COUNT(*) FROM notifications WHERE title='اعلان گروهی از پنل'")->fetchColumn()]);`));
+ok('ارسال اعلان از پنل ادمین روی دیتابیس قدیمی کار می‌کند', legacySend?.count > 0 && legacySend?.rows > 0, JSON.stringify(legacySend));
+
+const legacyEvent = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+require_once '${APP}/shared/notify_events.php';
+$out = eplakNotifyRequestCreated($pdo, '09120000009', 'درخواست', 'EP-LEGACY-1');
+echo json_encode(['ok' => $out['ok'], 'id' => $out['id'], 'error' => $out['error']]);`));
+ok('اعلانِ «ثبت درخواست» بدون read_flag هم ساخته می‌شود (باگ گزارش‌شده)', legacyEvent?.ok === true && legacyEvent?.id > 0, JSON.stringify(legacyEvent));
+
+const legacySeen = pickJson(await run(`$_GET = ['phone' => '09120000009']; $_SERVER['REQUEST_METHOD'] = 'GET'; require '${APP}/api/notifications.php';`));
+ok('همان اعلانِ ثبت درخواست در فهرست اپ دیده می‌شود', (legacySeen?.notifications || []).some((n) => String(n.body).includes('EP-LEGACY-1')), JSON.stringify((legacySeen?.notifications || []).map((n) => n.body).slice(0, 3)));
+
+const legacyRead = pickJson(await run(`$_POST = ['action' => 'read', 'phone' => '09120000009', 'all' => '1']; $_SERVER['REQUEST_METHOD'] = 'POST'; require '${APP}/api/notifications.php';`));
+ok('«همه را خواندم» روی دیتابیس قدیمی کار می‌کند', legacyRead?.success === true && legacyRead?.marked >= 1, JSON.stringify(legacyRead));
+const legacyDelete = pickJson(await run(`$_POST = ['action' => 'delete', 'phone' => '09120000009', 'all' => '1']; $_SERVER['REQUEST_METHOD'] = 'POST'; require '${APP}/api/notifications.php';`));
+ok('حذف اعلان روی دیتابیس قدیمی کار می‌کند', legacyDelete?.success === true, JSON.stringify(legacyDelete));
+
+/* حالتِ «ترمیم ممکن است» → باید خودکار و بدون دکمه انجام شود */
+await run(`require '${APP}/admin/includes/db.php'; eplakSetAppSetting($pdo, 'schema_sync_retry_at', '0'); echo 'retry-cleared';`);
+const healed = pickJson(await run(`require '${APP}/admin/includes/db.php';
+echo json_encode([
+  'send_id'   => (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='send_id'")->fetchColumn(),
+  'read_flag' => (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='read_flag'")->fetchColumn(),
+  'badge'     => (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('news') WHERE name='badge'")->fetchColumn(),
+  'added'     => eplakSchemaSyncReport()['added'],
+  'failed'    => eplakSchemaSyncReport()['failed'],
+  'missing'   => eplakSchemaMissingColumns($pdo),
+]);`));
+ok('ستون‌های جاافتاده خودکار برگشتند (بدون فشردن دکمه‌ی ترمیم)', healed?.send_id === 1 && healed?.read_flag === 1 && healed?.badge === 1, JSON.stringify(healed));
+ok('ترمیم، ستون‌ها را «اضافه‌شده» گزارش می‌کند', Array.isArray(healed?.added) && healed.added.length >= 3, JSON.stringify(healed?.added));
+ok('ترمیم بدون شکست بود', Array.isArray(healed?.failed) && healed.failed.length === 0, JSON.stringify(healed?.failed));
+ok('پس از ترمیم، ستون حیاتیِ نبوده باقی نمانده', Array.isArray(healed?.missing) && healed.missing.length === 0, JSON.stringify(healed?.missing));
+
+/* حالت ب (واقعیِ سایت): نسخه «به‌روز» است ولی ستون نیست → درخواست بعدی ترمیم می‌کند */
+await run(`$raw = new PDO('sqlite:${DB}'); $raw->exec('ALTER TABLE notifications DROP COLUMN send_id'); echo 'dropped-again';`);
+ok('ستون دوباره برداشته شد', String(await rawCol('notifications', 'send_id')).trim() === '0');
+const autoHeal = pickJson(await run(`require '${APP}/admin/includes/db.php';
+echo json_encode([
+  'send_id' => (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='send_id'")->fetchColumn(),
+  'version' => (string) eplakAppSetting($pdo, 'schema_version', ''),
+]);`));
+ok('با نسخه‌ی «به‌روز» هم ستونِ نبوده خودکار ترمیم می‌شود', autoHeal?.send_id === 1, JSON.stringify(autoHeal));
+
+const healedList = pickJson(await run(`$_GET = ['phone' => '09120000001']; $_SERVER['REQUEST_METHOD'] = 'GET'; require '${APP}/api/notifications.php';`));
+ok('پس از ترمیم، فهرست اعلان‌ها سالم می‌ماند', healedList?.success === true && (healedList?.notifications || []).length >= 1, JSON.stringify(healedList).slice(0, 200));
+
 /* ---------- نقطه‌ی بررسی اینترنت ---------- */
 console.log('\n=== api/ping.php (پایه‌ی پرده‌ی «بدون اینترنت») ===');
 const pong = pickJson(await run(`$_SERVER['REQUEST_METHOD'] = 'GET'; ob_start(); require '${APP}/api/ping.php'; $o = ob_get_clean(); echo $o;`));

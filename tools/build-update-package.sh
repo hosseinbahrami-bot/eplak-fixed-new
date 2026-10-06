@@ -37,6 +37,7 @@ for f in .htaccess index.html index.php sw.js manifest.json shared/bootstrap.php
          shared/webpush.php shared/media.php shared/notification_reads.php shared/fcm.php \
          shared/notify_events.php shared/fa_datetime.php shared/tiles.php \
          api/_common.php api/ping.php api/push.php api/media.php api/tiles.php api/reports.php api/notifications.php \
+         api/news.php api/tickets.php \
          admin/settings.php admin/login.php admin/report_detail.php admin/notification_view.php \
          admin/version.php \
          assets/js/ep-map.js assets/js/ep-camera.js assets/js/icons.js \
@@ -46,7 +47,8 @@ for f in .htaccess index.html index.php sw.js manifest.json shared/bootstrap.php
          api/places.php admin/places.php shared/places_store.php \
          docs/DEPLOY_UPDATE_FA.md docs/DEPLOY_UPDATE_EN.md docs/CITY_MAP_FA.md docs/CITY_MAP_EN.md \
          docs/REPORT_MEDIA_GPS_FA.md docs/REPORT_MEDIA_GPS_EN.md \
-         docs/FIREBASE_SETUP_FA.md docs/FIREBASE_SETUP_EN.md; do
+         docs/FIREBASE_SETUP_FA.md docs/FIREBASE_SETUP_EN.md \
+         docs/NOTIFICATIONS_FIX_FA.md; do
   if has "$f"; then echo "   ✅ $f"; else echo "   ❌ $f گم شده!"; exit 1; fi
 done
 for f in shared/config.php data/eplak.sqlite uploads/.htaccess; do

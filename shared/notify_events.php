@@ -64,8 +64,14 @@ function eplakNotifyUser(PDO $pdo, string $phone, string $title, string $body, a
     $body  = eplakNotifyTrim($body, 900);
 
     /* ۱) ذخیره در جدول اعلان‌ها (برای فهرست داخل اپ و سایت) */
+    /* ستون read_flag در دیتابیس‌های خیلی قدیمی ممکن است نباشد (هاستی که ALTER
+       TABLE در آن ممکن نیست)؛ در آن صورت اعلان «بدون» آن ستون نوشته می‌شود تا
+       اعلانِ ثبت درخواست بی‌صدا از بین نرود. */
+    $insertSql = eplakTableHasColumn($pdo, 'notifications', 'read_flag')
+        ? 'INSERT INTO notifications (user_phone, title, body, read_flag) VALUES (:phone, :title, :body, 0)'
+        : 'INSERT INTO notifications (user_phone, title, body) VALUES (:phone, :title, :body)';
     try {
-        $stmt = $pdo->prepare('INSERT INTO notifications (user_phone, title, body, read_flag) VALUES (:phone, :title, :body, 0)');
+        $stmt = $pdo->prepare($insertSql);
         try {
             $stmt->execute([':phone' => $phone, ':title' => $title, ':body' => $body]);
         } catch (Throwable $first) {
@@ -81,7 +87,7 @@ function eplakNotifyUser(PDO $pdo, string $phone, string $title, string $body, a
             $title = $safeTitle;
             $body  = $safeBody;
             /* دستور تازه (اجرای دوباره‌ی دستورِ خطادار روی بعضی درایورها خطای «API misuse» می‌دهد) */
-            $retry = $pdo->prepare('INSERT INTO notifications (user_phone, title, body, read_flag) VALUES (:phone, :title, :body, 0)');
+            $retry = $pdo->prepare($insertSql);
             $retry->execute([':phone' => $phone, ':title' => $title, ':body' => $body]);
         }
         $out['id'] = (int) $pdo->lastInsertId();

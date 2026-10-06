@@ -66,6 +66,16 @@ if (is_file(__DIR__ . '/../shared/places_store.php')) {
 $serverMarkers[] = ['label' => 'جدول اماکن شهری (city_places) ساخته شده و قابل استفاده است',
     'ok' => function_exists('eplakPlacesEnsureTable') && eplakPlacesEnsureTable($pdo)];
 
+/* ستون‌های حیاتی دیتابیس — نبودِ هر کدام یعنی فهرست اعلان‌های اپ و اخبار با
+   خطای ۵۰۰ («Unknown column») از کار می‌افتند و ارسال اعلان از پنل شکست می‌خورد.
+   این بررسی فقط می‌خواند؛ ترمیم با دکمه‌ی «ترمیم ساختار دیتابیس» در تنظیمات است. */
+$schemaMissing = function_exists('eplakSchemaMissingColumns') ? eplakSchemaMissingColumns($pdo) : [];
+$serverMarkers[] = [
+    'label' => 'ستون‌های حیاتی دیتابیس (notifications.send_id / read_flag، news.badge، reports.client_ref)'
+             . ($schemaMissing ? ' — ⚠️ نبوده: ' . implode('، ', $schemaMissing) : ''),
+    'ok'    => $schemaMissing === [],
+];
+
 /* وضعیت اعلان‌ها */
 require_once __DIR__ . '/../shared/fcm.php';
 require_once __DIR__ . '/../shared/webpush.php';

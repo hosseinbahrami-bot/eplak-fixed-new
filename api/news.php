@@ -36,8 +36,14 @@ if ($type === 'news' || $type === 'tip') {
 }
 
 try {
+    /* سازگاری با دیتابیس قدیمی: ستون‌هایی مثل badge که روی هاست اضافه نشده‌اند
+       (کاربر دیتابیس اجازه‌ی ALTER TABLE ندارد) به‌صورت NULL انتخاب می‌شوند تا کل
+       فهرست اخبار با خطای ۵۰۰ «Unknown column» از کار نیفتد. */
+    $columns = eplakSelectColumns($pdo, 'news', [
+        'id', 'type', 'title', 'summary', 'body', 'icon', 'badge', 'image_url', 'sort_order', 'updated_at',
+    ]);
     $stmt = $pdo->prepare(
-        "SELECT id, type, title, summary, body, icon, badge, image_url, sort_order, updated_at
+        "SELECT $columns
          FROM news $where
          ORDER BY sort_order ASC, id DESC
          LIMIT $limit"
@@ -73,5 +79,11 @@ try {
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 } catch (Throwable $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    error_log('[eplak-news] ' . $e->getMessage());
+    $payload = ['success' => false, 'error' => $e->getMessage()];
+    if (eplakIsSchemaError($e->getMessage())) {
+        $payload['schema'] = 'out_of_date';
+        $payload['hint']   = eplakSchemaErrorHint();
+    }
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
 }

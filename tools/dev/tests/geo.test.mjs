@@ -299,8 +299,9 @@ const reportsDdl = bootstrap.match(/CREATE TABLE IF NOT EXISTS reports \([\s\S]*
 ok('هر دو نسخه‌ی اسکیما (SQLite و MySQL) ستون مختصات دارند',
   reportsDdl.length === 2 && reportsDdl.every((d) => /\blat\b/.test(d) && /\blng\b/.test(d) && /location_accuracy/.test(d)),
   `تعداد DDL=${reportsDdl.length}`);
+const schemaVersionGeo = (bootstrap.match(/EPLAK_SCHEMA_VERSION', '([^']+)'/) || [])[1] || '';
 ok('نسخه‌ی اسکیما برای افزودن خودکار جدول‌ها/ستون‌ها بالا رفته است',
-  /EPLAK_SCHEMA_VERSION', '2026-10-03\.1'/.test(bootstrap));
+  schemaVersionGeo >= '2026-10-03.1', schemaVersionGeo);
 ok('جدول روند رسیدگی (report_events) در هر دو درایور ساخته می‌شود',
   (bootstrap.match(/CREATE TABLE IF NOT EXISTS report_events/g) || []).length === 2);
 ok('کمکی بررسی وجود ستون در هسته تعریف شده است', /function eplakTableHasColumn/.test(bootstrap));
@@ -400,7 +401,7 @@ ok('کش‌باستر فایل‌های تغییر‌یافته به‌روز ش
   && /assets\/js\/icons\.js\?v=13/.test(indexHtml)
   && /core\/state\.js\?v=12/.test(indexHtml) && /core\/i18n\.js\?v=15/.test(indexHtml)
   && /modules\/profile\.js\?v=12/.test(indexHtml) && /modules\/services\.js\?v=13/.test(indexHtml)
-  && /modules\/live\.js\?v=15/.test(indexHtml) && /modules\/city-live\.js\?v=13/.test(indexHtml));
+  && /modules\/live\.js\?v=16/.test(indexHtml) && /modules\/city-live\.js\?v=13/.test(indexHtml));
 
 /* ══════════ ۸) پایش زنده: پیش‌پرواز و سقف حجم بدنه ══════════ */
 console.log('\n=== پایش زنده (live-check) ===');

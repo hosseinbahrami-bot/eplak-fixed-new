@@ -86,7 +86,7 @@ function eplakNotificationMarkRead(PDO $pdo, array $ids, string $readerKey, stri
     /* ۲) سازگاری با نسخه‌های قدیمی: ردیفِ خودِ کاربر هم read_flag می‌گیرد.
           ردیف مشترک «all» عمداً تغییر نمی‌کند. */
     $phoneKey = preg_replace('/[^0-9+]/', '', trim($phone)) ?? '';
-    if ($phoneKey !== '' && $phoneKey !== 'all') {
+    if ($phoneKey !== '' && $phoneKey !== 'all' && eplakTableHasColumn($pdo, 'notifications', 'read_flag')) {
         try {
             $in  = implode(',', array_fill(0, count($ids), '?'));
             $par = $ids;

@@ -830,16 +830,25 @@ function sendNotification(PDO $pdo, string $title, string $body, string $targetT
         ]);
         $sendId = (int)$pdo->lastInsertId();
 
-        $ins = $pdo->prepare(
-            'INSERT INTO notifications (user_phone, title, body, send_id) VALUES (:phone, :title, :body, :send)'
-        );
+        /* ستون send_id در دیتابیس‌های قدیمی (هاستی که ALTER TABLE در آن ممکن
+           نیست) وجود ندارد؛ در آن حالت اعلان «بدون» آن ستون نوشته می‌شود تا
+           ارسال اعلان از پنل با خطای «Unknown column 'send_id'» شکست نخورد.
+           تنها چیزی که از دست می‌رود، گروه‌بندی ردیف‌ها در صفحه‌ی جزئیات ارسال است. */
+        $hasSendId = eplakTableHasColumn($pdo, 'notifications', 'send_id');
+        $sql = $hasSendId
+            ? 'INSERT INTO notifications (user_phone, title, body, send_id) VALUES (:phone, :title, :body, :send)'
+            : 'INSERT INTO notifications (user_phone, title, body) VALUES (:phone, :title, :body)';
+        $ins = $pdo->prepare($sql);
         foreach ($phones as $phone) {
-            $ins->execute([
+            $row = [
                 ':phone' => $phone,
                 ':title' => $title,
                 ':body'  => $body,
-                ':send'  => $sendId,
-            ]);
+            ];
+            if ($hasSendId) {
+                $row[':send'] = $sendId;
+            }
+            $ins->execute($row);
         }
         $pdo->commit();
     } catch (Throwable $e) {
@@ -928,6 +937,11 @@ function getNotificationSendById(PDO $pdo, int $id): ?array {
 }
 
 function getNotificationRecipients(PDO $pdo, int $sendId): array {
+    /* دیتابیس قدیمی بدون ستون send_id → صفحه‌ی جزئیات ارسال به‌جای خطای ۵۰۰،
+       فهرست خالی نشان می‌دهد (اعلان‌ها خودشان ارسال شده‌اند). */
+    if (!eplakTableHasColumn($pdo, 'notifications', 'send_id')) {
+        return [];
+    }
     $stmt = $pdo->prepare('SELECT * FROM notifications WHERE send_id = :id ORDER BY id ASC');
     $stmt->execute([':id' => $sendId]);
     return $stmt->fetchAll();

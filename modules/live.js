@@ -640,6 +640,30 @@
     }
   }
 
+  /* ───────────────────────────────────────────────────────────
+     خطای «دریافت اعلان‌ها از سرور» باید دیده شود
+
+     پیش‌تر اگر سرور خطا می‌داد (مثلاً ۵۰۰ به‌خاطر ستونِ نبوده در دیتابیس)،
+     فهرست اعلان‌ها بی‌صدا «خالی» می‌ماند و هیچ‌کس نمی‌فهمید مشکل از سرور است
+     یا از نبودِ اعلان. حالا علت، همان‌جا در صفحه‌ی اعلان‌ها نوشته می‌شود
+     (متن راهنما از پاسخ سرور: فیلدهای hint / error).
+  ─────────────────────────────────────────────────────────── */
+  var notifSyncError = '';
+
+  function setNotifSyncError(message) {
+    var next = String(message || '').trim();
+    if (next === notifSyncError) return;
+    notifSyncError = next;
+    try { renderDeviceNotice(); } catch (e) {}
+  }
+
+  function serverHintOf(data) {
+    if (!data) return '';
+    var hint = data.hint ? String(data.hint) : '';
+    if (!hint && data.error) hint = String(data.error);
+    return hint;
+  }
+
   async function syncNotifications() {
     try {
       var phone = '';
@@ -653,12 +677,28 @@
       // If user hasn't logged in, query broadcast notifications ('all')
       var queryPhone = phone || 'all';
       const res = await fetch(apiBase() + '/notifications.php?phone=' + encodeURIComponent(queryPhone) + '&t=' + Date.now(), { cache: 'no-store' });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        var bodyHint = '';
+        try {
+          var bodyData = await res.clone().json();
+          bodyHint = serverHintOf(bodyData);
+        } catch (e) {}
+        setNotifSyncError('⚠️ سرور فهرست اعلان‌ها را با خطا برگرداند (کد ' + res.status + ')'
+          + (bodyHint ? ' — ' + bodyHint : '')
+          + '. اعلان‌های ذخیره‌شده روی همین دستگاه نمایش داده می‌شوند و چند لحظه بعد دوباره تلاش می‌شود.');
+        return false;
+      }
       const data = await res.json();
-      if (!data || data.success !== true) return false;
+      if (!data || data.success !== true) {
+        setNotifSyncError('⚠️ سرور فهرست اعلان‌ها را نفرستاد'
+          + (serverHintOf(data) ? ' — ' + serverHintOf(data) : '') + '.');
+        return false;
+      }
       applyNotifications(data.notifications || []);
+      setNotifSyncError('');
       return true;
     } catch (e) {
+      setNotifSyncError('⚠️ اتصال به سرور اعلان‌ها برقرار نشد؛ اینترنت را بررسی کنید. اعلان‌های ذخیره‌شده روی همین دستگاه نمایش داده می‌شوند.');
       return false;
     }
   }
@@ -1261,6 +1301,11 @@
     }
 
     box.innerHTML = text;
+    if (notifSyncError) {
+      box.innerHTML = '<div id="notifSyncError" style="border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;'
+        + 'border-radius:10px;padding:8px 10px;margin:0 0 8px;font-weight:600;">' + escapeText(notifSyncError) + '</div>'
+        + box.innerHTML;
+    }
     box.style.display = 'block';
   }
   window.renderDeviceNotice = renderDeviceNotice;

@@ -24,9 +24,13 @@ echo " کاوش اعلان‌ها روی سرور زنده: $BASE"
 echo " زمان: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "═══════════════════════════════════════════════════════════════"
 
+out_file() {  # نام کاوش → مسیر فایل خروجی
+  echo "$OUT_DIR/$(echo "$1" | tr ' /?&=' '_____' ).txt"
+}
+
 probe() {  # probe <نام> <متد> <آدرس> [بدنه] [هدرهای اضافی]
   local name="$1" method="$2" url="$3" body="${4:-}" hdr="${5:-}"
-  local out="$OUT_DIR/$(echo "$name" | tr ' /?&=' '_____' ).txt"
+  local out; out="$(out_file "$name")"
   echo
   echo "──── $name"
   echo "     $method $url"
@@ -67,6 +71,13 @@ probe "places"                        GET  "$API/places.php"
 probe "users"                         GET  "$API/users.php"
 probe "push"                          GET  "$API/push.php"
 
+# ۴-۲) بقیه‌ی endpointهای دیتابیس‌دار — اگر ستونِ دیگری هم روی هاست جا افتاده
+#       باشد (مثل reports.client_ref)، این‌جا با «Unknown column» معلوم می‌شود.
+probe "reports-list"                  GET  "$API/reports.php?phone=$PHONE"
+probe "tickets-list"                  GET  "$API/tickets.php?phone=$PHONE"
+probe "users-profile"                 GET  "$API/users.php?phone=$PHONE"
+probe "media-head"                    GET  "$API/media.php?action=list&id=1"
+
 # ۵) صفحه‌ی ورود پنل (بدون لاگین) — برای دیدن اینکه دیتابیس بالا است
 probe "admin-login-page"              GET  "$BASE/admin/login.php"
 probe "admin-notifications-page"      GET  "$BASE/admin/notifications.php"
@@ -96,4 +107,53 @@ for f in "$OUT_DIR"/*.txt; do
 done
 
 echo
+echo "═══════════════════════════════════════════════════════════════"
+echo " داوری (انتظار: اعلان‌ها و اخبار باید ۲۰۰ و success:true باشند)"
+echo "═══════════════════════════════════════════════════════════════"
+VERDICT_FAIL=0
+: > "$OUT_DIR/verdict.txt"
+expect() {  # expect <نام کاوش> <کد انتظار> [رشته‌ی انتظار در بدنه] [حیاتی؟]
+  local name="$1" want="$2" needle="${3:-}" critical="${4:-yes}"
+  local f; f="$(out_file "$name")"
+  if [ ! -f "$f" ]; then
+    printf '%-30s ❌ پاسخی ثبت نشد\n' "$name" | tee -a "$OUT_DIR/verdict.txt"
+    [ "$critical" = yes ] && VERDICT_FAIL=1
+    return 0
+  fi
+  local code; code="$(grep -o '\[HTTP [0-9]*\]' "$f" | tail -1)"
+  local status="✅"
+  if [ "$code" != "[$want]" ]; then
+    status="❌ انتظار $want بود، $code شد"; [ "$critical" = yes ] && VERDICT_FAIL=1
+  elif [ -n "$needle" ] && ! grep -qF -- "$needle" "$f"; then
+    status="❌ «$needle» در بدنه نبود"; [ "$critical" = yes ] && VERDICT_FAIL=1
+  fi
+  printf '%-30s %s %s\n' "$name" "$code" "$status" | tee -a "$OUT_DIR/verdict.txt"
+}
+
+expect "notifications-phone"      "HTTP 200" '"success":true'
+expect "notifications-no-param"   "HTTP 200" '"success":true'
+expect "notifications-guest"      "HTTP 200" '"success":true'
+expect "notifications-phone-plus98" "HTTP 200" '"success":true'
+expect "notifications-mark-read"  "HTTP 200" '"success":true'
+expect "news"                     "HTTP 200" '"success":true'
+expect "ping"                     "HTTP 200" '"success":true'
+expect "places"                   "HTTP 200" '"success":true'
+expect "departments"              "HTTP 200" '"success":true'
+expect "reports-list"             "HTTP 200" '"success":true' no
+expect "tickets-list"             "HTTP 200" '"success":true' no
+expect "users-profile"            "HTTP 200" '"success":true' no
+expect "admin-login-page"         "HTTP 200" ''               no
+
+echo
+if [ "$VERDICT_FAIL" -eq 0 ]; then
+  echo "✅ داوری: اعلان‌ها و اخبار روی سرور زنده سالم‌اند."
+  echo "   (اگر هنوز در اپ اعلانی دیده نمی‌شود، مسئله سمت کلاینت/شماره‌ی کاربر است.)"
+else
+  echo "❌ داوری: دست‌کم یکی از endpointهای حیاتی اعلان/اخبار روی سرور زنده خطا داد."
+  echo "   → بدنه‌ی پاسخ همان بالا نوشته شده؛ اگر «Unknown column» بود، بسته‌ی به‌روزرسانی"
+  echo "     روی هاست باز شود (خودش دیتابیس را ترمیم می‌کند) یا در پنل: تنظیمات ← ترمیم ساختار دیتابیس."
+fi
+
+echo
 echo "✅ کاوش تمام شد؛ همه‌ی پاسخ‌ها در پوشه‌ی «$OUT_DIR» ذخیره شد."
+exit $VERDICT_FAIL

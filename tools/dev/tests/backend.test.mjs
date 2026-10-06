@@ -48,7 +48,7 @@ ok('بذرها اجرا شدند (۶ خبر/دانستنی + ۶۵ واحد)', db
 const wanted = ['notifications', 'notification_reads', 'notification_deletes', 'device_tokens', 'push_subscriptions', 'report_media', 'app_settings'];
 const missing = wanted.filter((t) => !(db?.tables || []).includes(t));
 ok('همه‌ی جدول‌های لازم ساخته شدند', missing.length === 0, 'گم‌شده: ' + missing.join(', '));
-ok('نسخه‌ی ساختار دیتابیس تازه ثبت شد', /^2026-(09-30|10-0[123])\./.test(String(db?.schema)), String(db?.schema));
+ok('نسخه‌ی ساختار دیتابیس تازه ثبت شد', /^2026-(09-30|10-[0-9]{2})\./.test(String(db?.schema)) && String(db?.schema) >= '2026-10-03.1', String(db?.schema));
 ok('ستون شناسه‌ی یکتای درخواست به جدول گزارش‌ها اضافه شد (پایه‌ی جلوگیری از تکرار)',
   (db?.report_cols || []).includes('client_ref'), JSON.stringify(db?.report_cols || []));
 ok('ستون‌های شمارش فایربیس ساخته شدند', (db?.send_cols || []).includes('fcm_sent') && (db?.send_cols || []).includes('fcm_failed'), JSON.stringify(db?.send_cols));
@@ -380,6 +380,8 @@ echo json_encode([
   'schema_in_db' => $stored === EPLAK_SCHEMA_VERSION,
   'badge_ok' => substr_count($html, 'pill-ok'),
   'badge_bad' => substr_count($html, 'pill-bad'),
+  'critical_cols' => strpos($html, 'ستون‌های حیاتی دیتابیس') !== false,
+  'critical_missing' => strpos($html, 'نبوده:') !== false,
   'fcm_hint' => strpos($html, 'فایربیس') !== false,
   'apk_hint' => strpos($html, 'بررسی نسخه') !== false,
 ]);`));
@@ -388,6 +390,8 @@ ok('نسخه‌ی کد در صفحه نشان داده می‌شود', ver?.has_
 ok('هم‌خوانی نسخه‌ی دیتابیس تأیید می‌شود', ver?.schema_in_db === true);
 ok('فایل‌های نسخه‌ی جدید «هست» علامت خورده‌اند', (ver?.badge_ok || 0) >= 5, JSON.stringify({ ok: ver?.badge_ok, bad: ver?.badge_bad }));
 ok('وضعیت فایربیس و اعلان مرورگر نمایش داده می‌شود', ver?.fcm_hint === true);
+ok('ستون‌های حیاتی دیتابیس بررسی و «سالم» گزارش می‌شوند',
+  ver?.critical_cols === true && ver?.critical_missing !== true, JSON.stringify({ shown: ver?.critical_cols, missing: ver?.critical_missing }));
 
 console.log('\n=== هم‌خوانی منوی پنل ===');
 const fsx = await import('fs');
