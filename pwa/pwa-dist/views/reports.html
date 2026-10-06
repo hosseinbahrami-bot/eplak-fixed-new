@@ -1,0 +1,1554 @@
+<!--
+  ============================================================
+  reports.html - صفحه ثبت و پیگیری گزارش‌ها با نقشه گوگل
+  شامل: ثبت گزارش در ۴ مرحله + نمایش نقشه برای انتخاب موقعیت
+  ============================================================
+-->
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ثبت گزارش - ای‌پلاک</title>
+
+  <!-- Google Maps API -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places&callback=initMap" async defer></script>
+
+  <style>
+    /* ===== RESET & BASE ===== */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --teal: #00c9a7;
+      --teal-dark: #0a8f7a;
+      --teal-light: rgba(0, 201, 167, 0.15);
+      --bg-grad1: #0f172a;
+      --bg-grad2: #1e293b;
+      --bg-screen: rgba(15, 23, 42, 0.92);
+      --text-muted: #94a3b8;
+      --text-primary: #f1f5f9;
+      --card-border: rgba(255,255,255,0.08);
+      --card-bg: rgba(255,255,255,0.05);
+      --shadow: 0 8px 32px rgba(0,0,0,0.2);
+      --success: #22c55e;
+      --success-bg: #1a3a2a;
+      --warning: #f59e0b;
+      --warning-bg: #3a2a1a;
+      --danger: #ef4444;
+      --danger-bg: #3a1a1a;
+      --info: #3b82f6;
+      --info-bg: #1a2a3a;
+      --radius-md: 12px;
+      --radius-xl: 20px;
+      --radius-full: 9999px;
+      --font-family: 'Tahoma', 'Segoe UI', Tahoma, Arial, sans-serif;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background: var(--bg-grad1);
+      color: var(--text-primary);
+      direction: rtl;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    /* ===== BACKGROUND ===== */
+    .bg-city {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background: linear-gradient(180deg, var(--bg-grad1) 0%, var(--bg-grad2) 100%);
+    }
+    .bg-orb {
+      position: fixed;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .orb-1 {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(0, 201, 167, 0.12) 0%, transparent 70%);
+      top: -100px;
+      right: -100px;
+    }
+    .orb-2 {
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.08) 0%, transparent 70%);
+      bottom: -80px;
+      left: -80px;
+    }
+
+    /* ===== SCREENS ===== */
+    .screen {
+      display: none;
+      min-height: 100vh;
+      flex-direction: column;
+      position: relative;
+    }
+    .screen.active {
+      display: flex;
+    }
+
+    /* ===== TOP HEADER ===== */
+    .top-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--card-border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .notif-btn {
+      background: rgba(255,255,255,0.06);
+      border: none;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-primary);
+      font-size: 18px;
+      cursor: pointer;
+      transition: 0.3s;
+      touch-action: manipulation;
+      position: relative;
+    }
+    .notif-btn:hover, .notif-btn:active {
+      background: rgba(255,255,255,0.12);
+    }
+    .notif-dot {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 8px;
+      height: 8px;
+      background: var(--danger);
+      border-radius: 50%;
+    }
+    .theme-toggle {
+      display: flex;
+      gap: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 20px;
+      padding: 4px;
+    }
+    .theme-toggle button {
+      background: transparent;
+      border: none;
+      border-radius: 16px;
+      padding: 4px 10px;
+      font-size: 14px;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: 0.3s;
+      touch-action: manipulation;
+    }
+    .theme-toggle button.active {
+      background: rgba(255,255,255,0.12);
+      color: var(--text-primary);
+    }
+
+    /* ===== SCREEN CONTENT ===== */
+    .screen-content {
+      flex: 1;
+      padding: 10px 16px 80px;
+      position: relative;
+      z-index: 10;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .screen-content.center {
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+
+    /* ===== FORM HEADER ===== */
+    .form-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 4px;
+    }
+    .form-arrow {
+      background: rgba(255,255,255,0.06);
+      border: none;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-primary);
+      font-size: 18px;
+      cursor: pointer;
+      transition: 0.3s;
+      touch-action: manipulation;
+    }
+    .form-arrow:hover, .form-arrow:active {
+      background: rgba(255,255,255,0.12);
+    }
+    .form-title {
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    /* ===== STEPS BAR ===== */
+    .steps-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 6px 0;
+      flex-wrap: nowrap;
+    }
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(255,255,255,0.06);
+      color: var(--text-muted);
+      border: 2px solid rgba(255,255,255,0.08);
+      transition: 0.3s;
+    }
+    .step.active .step-num {
+      background: var(--teal);
+      color: white;
+      border-color: var(--teal);
+    }
+    .step.done .step-num {
+      background: var(--teal-dark);
+      color: white;
+      border-color: var(--teal-dark);
+    }
+    .step-label {
+      font-size: 9px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .step.active .step-label {
+      color: var(--teal);
+    }
+    .step-line {
+      flex: 1;
+      height: 2px;
+      background: rgba(255,255,255,0.08);
+      min-width: 16px;
+      max-width: 40px;
+    }
+    .step-line.done {
+      background: var(--teal-dark);
+    }
+
+    /* ===== ISSUE TYPES ===== */
+    .issue-types {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 4px 16px 8px;
+      flex-wrap: nowrap;
+      -webkit-overflow-scrolling: touch;
+    }
+    .issue-type {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-width: 60px;
+      padding: 10px 8px;
+      background: var(--card-bg);
+      border: 2px solid transparent;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: 0.3s;
+      touch-action: manipulation;
+    }
+    .issue-type:hover, .issue-type:active {
+      background: rgba(255,255,255,0.08);
+    }
+    .issue-type.active {
+      border-color: var(--teal);
+      background: var(--teal-light);
+    }
+    .issue-type .icon {
+      font-size: 24px;
+    }
+    .issue-type span:last-child {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .issue-type.active span:last-child {
+      color: var(--teal);
+    }
+
+    /* ===== INPUTS ===== */
+    .input-field {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      font-size: 15px;
+      font-family: var(--font-family);
+      transition: 0.3s;
+    }
+    .input-field:focus {
+      outline: none;
+      border-color: var(--teal);
+      background: rgba(255,255,255,0.08);
+    }
+    .input-field::placeholder {
+      color: var(--text-muted);
+    }
+    .input-field:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .text-area {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      font-size: 15px;
+      font-family: var(--font-family);
+      resize: vertical;
+      min-height: 100px;
+      transition: 0.3s;
+    }
+    .text-area:focus {
+      outline: none;
+      border-color: var(--teal);
+      background: rgba(255,255,255,0.08);
+    }
+    .text-area::placeholder {
+      color: var(--text-muted);
+    }
+
+    .char-count {
+      text-align: left;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      direction: ltr;
+    }
+
+    /* ===== GLASS CARD ===== */
+    .glass-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-xl);
+      padding: 18px 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    /* ===== DIVIDER ===== */
+    .divider {
+      height: 1px;
+      background: var(--card-border);
+      margin: 4px 0;
+    }
+
+    /* ===== BUTTONS ===== */
+    .btn-teal {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+      color: white;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.3s;
+      touch-action: manipulation;
+      min-height: 50px;
+      font-family: var(--font-family);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-teal:hover, .btn-teal:active {
+      opacity: 0.85;
+      transform: translateY(-1px);
+    }
+    .btn-teal.secondary {
+      background: transparent;
+      box-shadow: none;
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+    }
+    .btn-teal.blue {
+      background: linear-gradient(135deg, #1d6fd9, #1457ad);
+      box-shadow: 0 4px 24px rgba(30, 110, 220, 0.25);
+    }
+    .btn-teal.outline {
+      background: transparent;
+      border: 1px solid var(--teal);
+      color: var(--teal);
+    }
+    .btn-teal.outline:hover {
+      background: var(--teal-light);
+    }
+
+    /* ===== STATUS BADGES ===== */
+    .status-pending {
+      color: var(--warning);
+      background: var(--warning-bg);
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-progress {
+      color: var(--info);
+      background: var(--info-bg);
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-done {
+      color: var(--success);
+      background: var(--success-bg);
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* ===== BADGE COUNT ===== */
+    .badge-count {
+      background: var(--teal);
+      color: white;
+      padding: 2px 10px;
+      border-radius: var(--radius-full);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    /* ===== FILTER TABS ===== */
+    .filter-tab {
+      padding: 6px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--card-border);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: 0.3s;
+      white-space: nowrap;
+      font-family: var(--font-family);
+      touch-action: manipulation;
+      min-height: 36px;
+    }
+    .filter-tab.active {
+      background: var(--teal);
+      color: white;
+      border-color: var(--teal);
+    }
+    .filter-tab:hover, .filter-tab:active {
+      border-color: var(--teal);
+      color: var(--teal);
+    }
+    .filter-tab.active:hover, .filter-tab.active:active {
+      color: white;
+    }
+
+    /* ===== REPORT ITEM ===== */
+    .report-item {
+      padding: 14px 16px;
+      background: var(--card-bg);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--card-border);
+      margin-bottom: 10px;
+      transition: 0.3s;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .report-item:hover, .report-item:active {
+      border-color: var(--teal);
+      background: rgba(255,255,255,0.08);
+    }
+    .report-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .report-item-title {
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .report-item-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .report-item-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+    .report-tag {
+      font-size: 11px;
+      background: rgba(255,255,255,0.05);
+      padding: 2px 10px;
+      border-radius: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ===== TIMELINE ===== */
+    .timeline-item {
+      display: flex;
+      gap: 12px;
+      padding: 8px 0;
+      border-right: 2px solid var(--card-border);
+      padding-right: 16px;
+      position: relative;
+    }
+    .timeline-item:last-child {
+      border-right-color: transparent;
+    }
+    .timeline-item .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-right: -8px;
+      margin-top: 4px;
+    }
+    .timeline-item .dot.done { background: var(--success); }
+    .timeline-item .dot.progress { background: var(--info); }
+    .timeline-item .dot.pending { background: var(--warning); }
+    .timeline-item .content {
+      flex: 1;
+    }
+    .timeline-item .title {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .timeline-item .time {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* ===== SECTION TITLE ===== */
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    /* ===== MAP ===== */
+    #mapContainer {
+      width: 100%;
+      height: 280px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--card-border);
+      position: relative;
+    }
+    #mapContainer iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+    .map-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-muted);
+      background: rgba(255,255,255,0.03);
+    }
+    .map-placeholder .icon {
+      font-size: 48px;
+      margin-bottom: 8px;
+    }
+
+    /* ===== PHOTO PREVIEW ===== */
+    .photo-preview {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .photo-thumb {
+      width: 80px;
+      height: 80px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--card-border);
+      position: relative;
+    }
+    .photo-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .photo-thumb .remove-photo {
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--danger);
+      color: white;
+      border: none;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
+    }
+
+    /* ===== NAV BAR ===== */
+    .nav-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 0 12px;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid var(--card-border);
+      z-index: 30;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.3s;
+      padding: 4px 12px;
+      touch-action: manipulation;
+      font-family: var(--font-family);
+    }
+    .nav-item svg {
+      width: 24px;
+      height: 24px;
+    }
+    .nav-item.active {
+      color: var(--teal);
+    }
+    .nav-item:hover, .nav-item:active {
+      color: var(--teal);
+    }
+
+    /* ===== TOAST ===== */
+    .toast {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.85);
+      color: white;
+      padding: 12px 24px;
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      z-index: 9999;
+      font-family: var(--font-family);
+      max-width: 90%;
+      text-align: center;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    /* ===== BOTTOM PAD ===== */
+    .bottom-pad { height: 20px; }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 480px) {
+      .top-header { padding: 12px 16px; }
+      .screen-content { padding: 8px 12px 80px; gap: 12px; }
+      .issue-type { min-width: 50px; padding: 8px 6px; }
+      .issue-type .icon { font-size: 20px; }
+      .issue-type span:last-child { font-size: 10px; }
+      .step-num { width: 24px; height: 24px; font-size: 10px; }
+      .step-label { font-size: 8px; }
+      #mapContainer { height: 200px; }
+      .photo-thumb { width: 60px; height: 60px; }
+      .nav-item { padding: 2px 8px; }
+      .nav-item svg { width: 20px; height: 20px; }
+      .nav-item { font-size: 9px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-city">
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+  </div>
+
+  <!-- ========================================================== -->
+  <!-- ===== SCREEN: صفحه اصلی گزارش‌ها ===== -->
+  <!-- ========================================================== -->
+  <div class="screen active" id="screen-reports">
+    <div class="top-header">
+      <button class="notif-btn" onclick="showToast('اعلان‌ها')">🔔<span class="notif-dot"></span></button>
+      <div style="font-size:18px; font-weight:800; color:var(--teal);">ای‌پلاک</div>
+      <div class="theme-toggle">
+        <button class="active" onclick="setTheme('light')">☀️</button>
+        <button onclick="setTheme('dark')">🌙</button>
+      </div>
+    </div>
+
+    <div class="screen-content">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:0 4px;">
+        <span class="badge-count" id="reportsCountBadge">۴</span>
+        <h2 style="font-size:18px; font-weight:800;">گزارش‌های من</h2>
+      </div>
+
+      <div style="display:flex; gap:8px; overflow-x:auto; padding:4px 0;" id="reportsFilterTabs">
+        <button class="filter-tab active" data-filter="all" onclick="filterReports('all', this)">همه</button>
+        <button class="filter-tab" data-filter="pending" onclick="filterReports('pending', this)">در انتظار</button>
+        <button class="filter-tab" data-filter="progress" onclick="filterReports('progress', this)">بررسی</button>
+        <button class="filter-tab" data-filter="done" onclick="filterReports('done', this)">انجام شده</button>
+      </div>
+
+      <div id="reportsListWrap">
+        <div class="report-item" data-status="pending" onclick="showReportDetail('RPT-001')">
+          <div class="report-item-header">
+            <span class="report-item-title">مشکل در سیستم مالی</span>
+            <span class="status-pending">🕐 در انتظار</span>
+          </div>
+          <div class="report-item-meta">کد: #RPT-001 • ۱۴۰۳/۰۱/۱۵</div>
+          <div class="report-item-tags">
+            <span class="report-tag">مالی</span>
+            <span class="report-tag">حسابداری</span>
+          </div>
+        </div>
+
+        <div class="report-item" data-status="progress" onclick="showReportDetail('RPT-002')">
+          <div class="report-item-header">
+            <span class="report-item-title">درخواست تعویض کنتور</span>
+            <span class="status-progress">🔄 در حال بررسی</span>
+          </div>
+          <div class="report-item-meta">کد: #RPT-002 • ۱۴۰۳/۰۱/۱۴</div>
+          <div class="report-item-tags">
+            <span class="report-tag">آب و فاضلاب</span>
+            <span class="report-tag">فنی</span>
+          </div>
+        </div>
+
+        <div class="report-item" data-status="done" onclick="showReportDetail('RPT-003')">
+          <div class="report-item-header">
+            <span class="report-item-title">تعمیر ترانس برق</span>
+            <span class="status-done">✅ انجام شده</span>
+          </div>
+          <div class="report-item-meta">کد: #RPT-003 • ۱۴۰۳/۰۱/۱۰</div>
+          <div class="report-item-tags">
+            <span class="report-tag">برق</span>
+            <span class="report-tag">عمرانی</span>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-teal" onclick="startNewReport()">
+        <span>➕ ثبت گزارش جدید</span>
+      </button>
+
+      <div class="bottom-pad"></div>
+    </div>
+
+    <div class="nav-bar">
+      <button class="nav-item" onclick="window.location.href='profile.html'">پروفایل</button>
+      <button class="nav-item" onclick="window.location.href='index.html'">خانه</button>
+      <button class="nav-item active" onclick="window.location.href='reports.html'">گزارش‌ها</button>
+      <button class="nav-item" onclick="window.location.href='tracking.html'">پیگیری</button>
+    </div>
+  </div>
+
+
+  <!-- ========================================================== -->
+  <!-- ===== SCREEN: مرحله ۱ - توضیحات ===== -->
+  <!-- ========================================================== -->
+  <div class="screen" id="screen-report-step1">
+    <div class="top-header">
+      <button class="notif-btn" onclick="showToast('اعلان‌ها')">🔔</button>
+      <div style="font-size:18px; font-weight:800; color:var(--teal);">ای‌پلاک</div>
+      <div class="theme-toggle">
+        <button class="active" onclick="setTheme('light')">☀️</button>
+        <button onclick="setTheme('dark')">🌙</button>
+      </div>
+    </div>
+
+    <div class="screen-content">
+      <div class="form-header">
+        <button class="form-arrow" onclick="showScreen('screen-reports')">→</button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="form-title">ثبت درخواست جدید</span>
+          <span style="font-size:18px;">←</span>
+        </div>
+      </div>
+
+      <div class="steps-bar">
+        <div class="step active"><div class="step-num">1</div><span class="step-label">توضیحات</span></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-num">2</div><span class="step-label">موقعیت</span></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-num">3</div><span class="step-label">تصاویر</span></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-num">4</div><span class="step-label">تایید</span></div>
+      </div>
+
+      <div style="padding:0 4px;">
+        <p style="font-size:14px; font-weight:600; color:var(--text-muted); text-align:right; margin-bottom:10px;">نوع مشکل را انتخاب کنید</p>
+      </div>
+
+      <div class="issue-types" id="issueTypesWrap">
+        <div class="issue-type active" onclick="selectIssue(this)" data-label="سایر">
+          <span class="icon">⋯</span><span>سایر</span>
+        </div>
+        <div class="issue-type" onclick="selectIssue(this)" data-label="نظافت">
+          <span class="icon">🧹</span><span>نظافت</span>
+        </div>
+        <div class="issue-type" onclick="selectIssue(this)" data-label="زیرساخت">
+          <span class="icon">🔧</span><span>زیرساخت</span>
+        </div>
+        <div class="issue-type" onclick="selectIssue(this)" data-label="فضای سبز">
+          <span class="icon">🌳</span><span>فضای سبز</span>
+        </div>
+        <div class="issue-type" onclick="selectIssue(this)" data-label="روشنایی">
+          <span class="icon">💡</span><span>روشنایی</span>
+        </div>
+        <div class="issue-type" onclick="selectIssue(this)" data-label="آب و فاضلاب">
+          <span class="icon">💧</span><span>آب و فاضلاب</span>
+        </div>
+      </div>
+
+      <div style="padding:0 4px;">
+        <p style="font-size:13px; font-weight:600; color:var(--text-muted); text-align:right; margin-bottom:8px;">توضیحات مشکل</p>
+        <textarea class="text-area" id="reportDescInput" placeholder="لطفاً مشکل را با جزئیات توضیح دهید..." oninput="updateCount(this)" maxlength="300"></textarea>
+        <div class="char-count" id="charCount">0/300</div>
+      </div>
+
+      <button class="btn-teal" onclick="goReportStep2()">
+        <span>مرحله بعد</span><span style="font-size:18px;">←</span>
+      </button>
+
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
+
+
+  <!-- ========================================================== -->
+  <!-- ===== SCREEN: مرحله ۲ - موقعیت با نقشه ===== -->
+  <!-- ========================================================== -->
+  <div class="screen" id="screen-report-step2">
+    <div class="top-header">
+      <button class="notif-btn" onclick="showToast('اعلان‌ها')">🔔</button>
+      <div style="font-size:18px; font-weight:800; color:var(--teal);">ای‌پلاک</div>
+      <div class="theme-toggle">
+        <button class="active" onclick="setTheme('light')">☀️</button>
+        <button onclick="setTheme('dark')">🌙</button>
+      </div>
+    </div>
+
+    <div class="screen-content">
+      <div class="form-header">
+        <button class="form-arrow" onclick="showScreen('screen-report-step1')">→</button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="form-title">موقعیت مکانی مشکل</span>
+          <span style="font-size:18px;">←</span>
+        </div>
+      </div>
+
+      <div class="steps-bar">
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">توضیحات</span></div>
+        <div class="step-line done"></div>
+        <div class="step active"><div class="step-num">2</div><span class="step-label">موقعیت</span></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-num">3</div><span class="step-label">تصاویر</span></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-num">4</div><span class="step-label">تایید</span></div>
+      </div>
+
+      <!-- ===== نقشه گوگل ===== -->
+      <div id="mapContainer">
+        <div id="map"></div>
+      </div>
+
+      <button class="btn-teal blue" onclick="useCurrentLocation()">
+        <span>📡</span><span>استفاده از موقعیت فعلی من</span>
+      </button>
+
+      <div style="padding:0 4px;">
+        <p style="font-size:13px; font-weight:600; color:var(--text-muted); text-align:right; margin-bottom:8px;">یا آدرس را وارد کنید</p>
+        <input type="text" id="reportLocationInput" class="input-field" placeholder="مثلاً: خیابان امام خمینی، نرسیده به میدان اصلی">
+      </div>
+
+      <div style="display:flex; gap:8px; align-items:center; padding:0 4px;">
+        <span style="font-size:13px; color:var(--text-muted);">📍 موقعیت انتخاب شده:</span>
+        <span id="selectedLocationDisplay" style="font-size:13px; font-weight:600; color:var(--teal);">هیچ موقعیتی انتخاب نشده</span>
+      </div>
+
+      <button class="btn-teal" onclick="goReportStep3()">
+        <span>مرحله بعد</span><span style="font-size:18px;">←</span>
+      </button>
+
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
+
+
+  <!-- ========================================================== -->
+  <!-- ===== SCREEN: مرحله ۳ - تصاویر ===== -->
+  <!-- ========================================================== -->
+  <div class="screen" id="screen-report-step3">
+    <div class="top-header">
+      <button class="notif-btn" onclick="showToast('اعلان‌ها')">🔔</button>
+      <div style="font-size:18px; font-weight:800; color:var(--teal);">ای‌پلاک</div>
+      <div class="theme-toggle">
+        <button class="active" onclick="setTheme('light')">☀️</button>
+        <button onclick="setTheme('dark')">🌙</button>
+      </div>
+    </div>
+
+    <div class="screen-content">
+      <div class="form-header">
+        <button class="form-arrow" onclick="showScreen('screen-report-step2')">→</button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="form-title">افزودن تصویر</span>
+          <span style="font-size:18px;">←</span>
+        </div>
+      </div>
+
+      <div class="steps-bar">
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">توضیحات</span></div>
+        <div class="step-line done"></div>
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">موقعیت</span></div>
+        <div class="step-line done"></div>
+        <div class="step active"><div class="step-num">3</div><span class="step-label">تصاویر</span></div>
+        <div class="step-line"></div>
+        <div class="step"><div class="step-num">4</div><span class="step-label">تایید</span></div>
+      </div>
+
+      <label for="reportPhotoInput" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; height:130px; border:2px dashed var(--card-border); border-radius:var(--radius-md); background:var(--card-bg); cursor:pointer; transition:0.3s;">
+        <span style="font-size:30px;">📷</span>
+        <span style="font-size:13px; font-weight:700; color:var(--text-muted);">برای افزودن تصویر ضربه بزنید</span>
+        <span style="font-size:11px; color:var(--text-muted);">حداکثر ۳ تصویر</span>
+      </label>
+      <input type="file" id="reportPhotoInput" accept="image/*" multiple style="display:none;" onchange="addReportPhotos(this)">
+
+      <div class="photo-preview" id="reportPhotosPreview"></div>
+
+      <button class="btn-teal" onclick="goReportStep4()">
+        <span>مرحله بعد</span><span style="font-size:18px;">←</span>
+      </button>
+
+      <button class="btn-teal secondary" onclick="goReportStep4()">
+        رد کردن و ادامه بدون تصویر
+      </button>
+
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
+
+
+  <!-- ========================================================== -->
+  <!-- ===== SCREEN: مرحله ۴ - تایید نهایی ===== -->
+  <!-- ========================================================== -->
+  <div class="screen" id="screen-report-step4">
+    <div class="top-header">
+      <button class="notif-btn" onclick="showToast('اعلان‌ها')">🔔</button>
+      <div style="font-size:18px; font-weight:800; color:var(--teal);">ای‌پلاک</div>
+      <div class="theme-toggle">
+        <button class="active" onclick="setTheme('light')">☀️</button>
+        <button onclick="setTheme('dark')">🌙</button>
+      </div>
+    </div>
+
+    <div class="screen-content">
+      <div class="form-header">
+        <button class="form-arrow" onclick="showScreen('screen-report-step3')">→</button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="form-title">بازبینی و تایید نهایی</span>
+          <span style="font-size:18px;">←</span>
+        </div>
+      </div>
+
+      <div class="steps-bar">
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">توضیحات</span></div>
+        <div class="step-line done"></div>
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">موقعیت</span></div>
+        <div class="step-line done"></div>
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">تصاویر</span></div>
+        <div class="step-line done"></div>
+        <div class="step active"><div class="step-num">4</div><span class="step-label">تایید</span></div>
+      </div>
+
+      <div class="glass-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0;">
+          <span id="confirmIssueType" style="font-size:13px; font-weight:700; color:var(--teal);">سایر</span>
+          <span style="font-size:13px; color:var(--text-muted);">نوع مشکل</span>
+        </div>
+        <div class="divider"></div>
+        <div style="text-align:right; padding:6px 0;">
+          <p style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">توضیحات</p>
+          <p id="confirmDescText" style="font-size:13px; line-height:1.7;">—</p>
+        </div>
+        <div class="divider"></div>
+        <div style="text-align:right; padding:6px 0;">
+          <p style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">موقعیت</p>
+          <p id="confirmLocationText" style="font-size:13px;">—</p>
+        </div>
+        <div class="divider"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0;">
+          <span id="confirmPhotoCount" style="font-size:13px;">۰ تصویر</span>
+          <span style="font-size:13px; color:var(--text-muted);">تصاویر پیوست</span>
+        </div>
+      </div>
+
+      <button class="btn-teal" onclick="submitNewReport()">
+        <span>ثبت نهایی گزارش</span><span style="font-size:18px;">✓</span>
+      </button>
+
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
+
+
+  <!-- ========================================================== -->
+  <!-- ===== SCREEN: موفقیت ===== -->
+  <!-- ========================================================== -->
+  <div class="screen" id="screen-report-success">
+    <div class="screen-content center" style="justify-content:center; align-items:center; text-align:center; gap:16px; padding:0 26px 80px;">
+      <div style="width:90px; height:90px; background:rgba(0,201,167,0.15); border:2px solid var(--teal); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:44px;">✅</div>
+      <h2 style="font-size:19px; font-weight:800;">گزارش شما با موفقیت ثبت شد</h2>
+      <p style="font-size:13px; color:var(--text-muted); line-height:1.8;">کارشناسان شهرداری ورامین در اسرع وقت به درخواست شما رسیدگی خواهند کرد</p>
+      <div class="glass-card" style="padding:14px 22px; display:flex; align-items:center; gap:10px;">
+        <span style="font-size:13px; color:var(--text-muted);">کد پیگیری:</span>
+        <span id="successTrackCode" style="font-size:15px; font-weight:800; color:var(--teal); direction:ltr;">EP-1403-0045</span>
+      </div>
+      <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
+        <button class="btn-teal" onclick="showScreen('screen-reports')">مشاهده گزارش‌های من</button>
+        <button class="btn-teal secondary" onclick="window.location.href='index.html'">بازگشت به خانه</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ========================================================== -->
+  <!-- ===== SCREEN: جزئیات گزارش ===== -->
+  <!-- ========================================================== -->
+  <div class="screen" id="screen-report-detail">
+    <div class="top-header">
+      <button class="notif-btn" onclick="showScreen('screen-reports')">→</button>
+      <div style="font-size:16px; font-weight:800;">جزئیات گزارش</div>
+      <div style="width:40px;"></div>
+    </div>
+
+    <div class="screen-content">
+      <div class="glass-card">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="width:50px;height:50px;border-radius:var(--radius-md);background:var(--teal-light);display:flex;align-items:center;justify-content:center;font-size:24px;">📋</div>
+          <div style="flex:1; text-align:right;">
+            <h3 id="detailTitle" style="font-size:15px; font-weight:800;">مشکل در سیستم مالی</h3>
+            <p id="detailDate" style="font-size:12px; color:var(--text-muted); margin-top:2px;">۱۴۰۳/۰۱/۱۵</p>
+          </div>
+          <span id="detailStatus" class="status-pending">🕐 در انتظار</span>
+        </div>
+        <div class="divider"></div>
+        <div style="text-align:right; padding:4px 0;">
+          <p style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">کد پیگیری</p>
+          <p id="detailCode" style="font-size:13px; font-weight:700; color:var(--teal); direction:ltr; text-align:right;">RPT-001</p>
+        </div>
+        <div style="text-align:right; padding:4px 0;">
+          <p style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">موقعیت</p>
+          <p id="detailLocation" style="font-size:13px;">خیابان امام خمینی، نبش کوچه ۱۲</p>
+        </div>
+        <div style="text-align:right; padding:4px 0;">
+          <p style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">توضیحات</p>
+          <p id="detailDesc" style="font-size:13px; line-height:1.8;">سیستم مالی از ساعت ۱۰ صبح دچار مشکل شده و عملیات ثبت فاکتور با خطا مواجه می‌شود.</p>
+        </div>
+      </div>
+
+      <div class="section-title" style="padding:0 4px;">⏱️ روند رسیدگی</div>
+      <div class="glass-card" id="detailTimeline">
+        <div class="timeline-item">
+          <div class="dot done"></div>
+          <div class="content">
+            <div class="title">ثبت گزارش</div>
+            <div class="time">۱۴۰۳/۰۱/۱۵ - ۱۰:۳۰</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="dot progress"></div>
+          <div class="content">
+            <div class="title">بررسی اولیه</div>
+            <div class="time">۱۴۰۳/۰۱/۱۶ - ۰۸:۰۰</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="dot pending"></div>
+          <div class="content">
+            <div class="title">پاسخ نهایی</div>
+            <div class="time">در انتظار</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-teal" onclick="showScreen('screen-reports')">بازگشت به لیست گزارش‌ها</button>
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
+
+
+  <!-- ========================================================== -->
+  <!-- ===== SCRIPTS ===== -->
+  <!-- ========================================================== -->
+  <script>
+    // ===== متغیرهای سراسری =====
+    let selectedIssue = 'سایر';
+    let selectedLocation = '';
+    let selectedLat = null;
+    let selectedLng = null;
+    let uploadedPhotos = [];
+    let map = null;
+    let marker = null;
+    let geocoder = null;
+
+    // ===== نمایش صفحه =====
+    function showScreen(screenId) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      const target = document.getElementById(screenId);
+      if (target) target.classList.add('active');
+
+      // اگر صفحه نقشه است، نقشه را ریسایز کن
+      if (screenId === 'screen-report-step2') {
+        setTimeout(() => {
+          if (map) google.maps.event.trigger(map, 'resize');
+        }, 100);
+      }
+    }
+
+    // ===== Toast =====
+    function showToast(msg) {
+      const existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2500);
+    }
+
+    // ===== تغییر تم =====
+    function setTheme(mode) {
+      const btns = document.querySelectorAll('.theme-toggle button');
+      btns.forEach(b => b.classList.remove('active'));
+      if (mode === 'light') btns[0].classList.add('active');
+      else btns[1].classList.add('active');
+      showToast('حالت ' + (mode === 'light' ? 'روشن' : 'تاریک') + ' فعال شد');
+    }
+
+    // ===== فیلتر گزارش‌ها =====
+    function filterReports(status, el) {
+      document.querySelectorAll('.filter-tab').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+
+      document.querySelectorAll('.report-item').forEach(item => {
+        if (status === 'all' || item.dataset.status === status) {
+          item.style.display = '';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    }
+
+    // ===== نمایش جزئیات گزارش =====
+    function showReportDetail(code) {
+      showScreen('screen-report-detail');
+      document.getElementById('detailCode').textContent = code;
+    }
+
+    // ===== شروع گزارش جدید =====
+    function startNewReport() {
+      // ریست فرم
+      selectedIssue = 'سایر';
+      selectedLocation = '';
+      selectedLat = null;
+      selectedLng = null;
+      uploadedPhotos = [];
+      document.getElementById('reportDescInput').value = '';
+      document.getElementById('reportLocationInput').value = '';
+      document.getElementById('selectedLocationDisplay').textContent = 'هیچ موقعیتی انتخاب نشده';
+      document.getElementById('reportPhotosPreview').innerHTML = '';
+      document.getElementById('charCount').textContent = '0/300';
+
+      // ریست issue types
+      document.querySelectorAll('.issue-type').forEach(el => el.classList.remove('active'));
+      document.querySelector('.issue-type[data-label="سایر"]').classList.add('active');
+
+      // حذف مارکر از نقشه
+      if (marker) { marker.setMap(null); marker = null; }
+
+      showScreen('screen-report-step1');
+    }
+
+    // ===== انتخاب نوع مشکل =====
+    function selectIssue(el) {
+      document.querySelectorAll('.issue-type').forEach(i => i.classList.remove('active'));
+      el.classList.add('active');
+      selectedIssue = el.dataset.label;
+    }
+
+    // ===== شمارش کاراکتر =====
+    function updateCount(el) {
+      document.getElementById('charCount').textContent = el.value.length + '/300';
+    }
+
+    // ===== مرحله ۱ → ۲ =====
+    function goReportStep2() {
+      const desc = document.getElementById('reportDescInput').value.trim();
+      if (desc.length < 5) {
+        showToast('⚠️ لطفاً توضیحات را با جزئیات بیشتری وارد کنید');
+        return;
+      }
+      showScreen('screen-report-step2');
+      // بارگذاری نقشه اگر هنوز بارگذاری نشده
+      if (!map) initMap();
+      setTimeout(() => { if (map) google.maps.event.trigger(map, 'resize'); }, 200);
+    }
+
+    // ===== مرحله ۲ → ۳ =====
+    function goReportStep3() {
+      const loc = document.getElementById('reportLocationInput').value.trim();
+      if (!selectedLat && !selectedLng && !loc) {
+        showToast('⚠️ لطفاً موقعیت را روی نقشه انتخاب کنید یا آدرس را وارد کنید');
+        return;
+      }
+      if (loc) {
+        selectedLocation = loc;
+        document.getElementById('selectedLocationDisplay').textContent = loc;
+      }
+      showScreen('screen-report-step3');
+    }
+
+    // ===== مرحله ۳ → ۴ =====
+    function goReportStep4() {
+      // ذخیره اطلاعات برای تایید
+      const desc = document.getElementById('reportDescInput').value.trim();
+      const loc = document.getElementById('selectedLocationDisplay').textContent;
+
+      document.getElementById('confirmIssueType').textContent = selectedIssue;
+      document.getElementById('confirmDescText').textContent = desc || '—';
+      document.getElementById('confirmLocationText').textContent = loc || '—';
+      document.getElementById('confirmPhotoCount').textContent = uploadedPhotos.length + ' تصویر';
+
+      showScreen('screen-report-step4');
+    }
+
+    // ===== ثبت نهایی =====
+    function submitNewReport() {
+      showToast('✅ گزارش شما با موفقیت ثبت شد');
+      // نمایش کد پیگیری تصادفی
+      const code = 'EP-1403-' + String(Math.floor(Math.random() * 9000) + 1000);
+      document.getElementById('successTrackCode').textContent = code;
+      showScreen('screen-report-success');
+    }
+
+    // ===== آپلود تصاویر =====
+    function addReportPhotos(input) {
+      const files = input.files;
+      const preview = document.getElementById('reportPhotosPreview');
+
+      for (let i = 0; i < Math.min(files.length, 3); i++) {
+        if (uploadedPhotos.length >= 3) {
+          showToast('⚠️ حداکثر ۳ تصویر مجاز است');
+          break;
+        }
+        const file = files[i];
+        uploadedPhotos.push(file);
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const div = document.createElement('div');
+          div.className = 'photo-thumb';
+          div.innerHTML = `
+            <img src="${e.target.result}" alt="تصویر">
+            <button class="remove-photo" onclick="removePhoto(this, '${file.name}')">✕</button>
+          `;
+          preview.appendChild(div);
+        };
+        reader.readAsDataURL(file);
+      }
+      input.value = '';
+    }
+
+    function removePhoto(el, fileName) {
+      uploadedPhotos = uploadedPhotos.filter(f => f.name !== fileName);
+      el.closest('.photo-thumb').remove();
+      if (uploadedPhotos.length === 0) {
+        document.getElementById('reportPhotosPreview').innerHTML = '';
+      }
+    }
+
+    // ==========================================================
+    // ===== GOOGLE MAPS =====
+    // ==========================================================
+
+    function initMap() {
+      // موقعیت پیش‌فرض: ورامین
+      const defaultLocation = { lat: 35.3200, lng: 51.6800 };
+
+      map = new google.maps.Map(document.getElementById('map'), {
+        center: defaultLocation,
+        zoom: 14,
+        mapTypeId: google.maps.MapTypeId.ROADMAP,
+        styles: [
+          { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+          {
+            featureType: 'administrative.locality',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#d59563' }]
+          },
+          {
+            featureType: 'poi',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#d59563' }]
+          },
+          {
+            featureType: 'poi.park',
+            elementType: 'geometry',
+            stylers: [{ color: '#263c3f' }]
+          },
+          {
+            featureType: 'poi.park',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#6b9a76' }]
+          },
+          {
+            featureType: 'road',
+            elementType: 'geometry',
+            stylers: [{ color: '#38414e' }]
+          },
+          {
+            featureType: 'road',
+            elementType: 'geometry.stroke',
+            stylers: [{ color: '#212a37' }]
+          },
+          {
+            featureType: 'road',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#9ca5b3' }]
+          },
+          {
+            featureType: 'road.highway',
+            elementType: 'geometry',
+            stylers: [{ color: '#746855' }]
+          },
+          {
+            featureType: 'road.highway',
+            elementType: 'geometry.stroke',
+            stylers: [{ color: '#1f2835' }]
+          },
+          {
+            featureType: 'road.highway',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#f3d19c' }]
+          },
+          {
+            featureType: 'transit',
+            elementType: 'geometry',
+            stylers: [{ color: '#2f3948' }]
+          },
+          {
+            featureType: 'transit.station',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#d59563' }]
+          },
+          {
+            featureType: 'water',
+            elementType: 'geometry',
+            stylers: [{ color: '#17263c' }]
+          },
+          {
+            featureType: 'water',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#515c6d' }]
+          },
+          {
+            featureType: 'water',
+            elementType: 'labels.text.stroke',
+            stylers: [{ color: '#17263c' }]
+          }
+        ]
+      });
+
+      // کلیک روی نقشه برای انتخاب موقعیت
+      map.addListener('click', function(e) {
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+        placeMarker(lat, lng);
+        getAddressFromLatLng(lat, lng);
+      });
+
+      geocoder = new google.maps.Geocoder();
+    }
+
+    function placeMarker(lat, lng) {
+      if (marker) marker.setMap(null);
+      marker = new google.maps.Marker({
+        position: { lat: lat, lng: lng },
+        map: map,
+        draggable: true,
+        animation: google.maps.Animation.DROP,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: '#00c9a7',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2
+        }
+      });
+
+      selectedLat = lat;
+      selectedLng = lng;
+      document.getElementById('selectedLocationDisplay').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+
+      // درگ مارکر
+      marker.addListener('dragend', function(e) {
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+        selectedLat = lat;
+        selectedLng = lng;
+        document.getElementById('selectedLocationDisplay').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+        getAddressFromLatLng(lat, lng);
+      });
+    }
+
+    function getAddressFromLatLng(lat, lng) {
+      if (!geocoder) return;
+      geocoder.geocode({ location: { lat: lat, lng: lng } }, function(results, status) {
+        if (status === 'OK' && results[0]) {
+          const address = results[0].formatted_address;
+          document.getElementById('reportLocationInput').value = address;
+          document.getElementById('selectedLocationDisplay').textContent = address;
+          selectedLocation = address;
+        }
+      });
+    }
+
+    function useCurrentLocation() {
+      if (navigator.geolocation) {
+        showToast('📍 در حال دریافت موقعیت...');
+        navigator.geolocation.getCurrentPosition(function(position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          map.setCenter({ lat: lat, lng: lng });
+          map.setZoom(16);
+          placeMarker(lat, lng);
+          getAddressFromLatLng(lat, lng);
+          showToast('✅ موقعیت شما انتخاب شد');
+        }, function() {
+          showToast('⚠️ امکان دریافت موقعیت وجود ندارد. لطفاً دستی انتخاب کنید');
+        });
+      } else {
+        showToast('⚠️ مرورگر شما از موقعیت پشتیبانی نمی‌کند');
+      }
+    }
+
+    // ==========================================================
+    // ===== ورود به صفحه نقشه =====
+    // ==========================================================
+
+    // اگر صفحه لود شد و نقشه آماده نبود، بارگذاری کن
+    document.addEventListener('DOMContentLoaded', function() {
+      // اگر در صفحه نقشه هستیم، نقشه را بارگذاری کن
+      if (document.getElementById('screen-report-step2').classList.contains('active')) {
+        setTimeout(initMap, 500);
+      }
+    });
+
+    // ===== نمایش صفحه نقشه =====
+    const originalShowScreen = showScreen;
+    showScreen = function(screenId) {
+      originalShowScreen(screenId);
+      if (screenId === 'screen-report-step2') {
+        setTimeout(() => {
+          if (!map) initMap();
+          if (map) google.maps.event.trigger(map, 'resize');
+        }, 300);
+      }
+    };
+
+    // ===== برای استفاده در onclick =====
+    window.showScreen = showScreen;
+    window.selectIssue = selectIssue;
+    window.updateCount = updateCount;
+    window.goReportStep2 = goReportStep2;
+    window.goReportStep3 = goReportStep3;
+    window.goReportStep4 = goReportStep4;
+    window.submitNewReport = submitNewReport;
+    window.addReportPhotos = addReportPhotos;
+    window.removePhoto = removePhoto;
+    window.initMap = initMap;
+    window.useCurrentLocation = useCurrentLocation;
+    window.startNewReport = startNewReport;
+    window.filterReports = filterReports;
+    window.showReportDetail = showReportDetail;
+    window.setTheme = setTheme;
+    window.showToast = showToast;
+  </script>
+
+</body>
+</html>

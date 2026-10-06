@@ -1,0 +1,160 @@
+<!--
+  views/dashboard.html — مرجع/مستندسازی صفحات: پیشخوان (اخبار، پرداخت، نقشه، اعلان‌ها)
+
+  توجه مهم: این فایل صرفاً برای مرجع و مستندسازی ساختار است و
+  به‌صورت مستقیم توسط مرورگر بارگذاری نمی‌شود. در فایل اصلی
+  app_01.html همه‌ی ۲۲ صفحه (screen) داخل یک سند HTML واحد
+  (index.html) قرار دارند و جابجایی بین آن‌ها با تابع showScreen()
+  در core/router.js و با تغییر کلاس CSS انجام می‌شود (بدون تغییر
+  آدرس URL و بدون fetch). این روش عیناً حفظ شده تا رفتار و ظاهر
+  اپلیکیشن اصلی به‌هیچ‌وجه تغییر نکند.
+-->
+
+<!-- ===== screen-news.html ===== -->
+  <div class="screen" id="screen-news">
+    <div class="bg-city" style="background:linear-gradient(180deg,var(--bg-grad1) 0%,var(--bg-grad2) 100%);">
+      <div class="bg-orb orb-1" style="opacity:0.3;"></div>
+    </div>
+    <div style="background:var(--bg-screen); position:absolute; inset:0; z-index:2;"></div>
+
+    <div class="top-header" style="position:relative;z-index:20;">
+      <button class="notif-btn" onclick="showScreen('screen-home')">→</button>
+      <div style="font-size:16px; font-weight:800;">اخبار و اطلاعیه‌ها</div>
+      <div style="width:40px;"></div>
+    </div>
+
+    <div class="screen-content" style="position:relative;z-index:10; gap:12px; padding:0 16px 20px;">
+      <div id="newsListWrap" style="display:flex; flex-direction:column; gap:12px;"></div>
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
+
+<!-- ===== screen-news-detail.html ===== -->
+  <div class="screen" id="screen-news-detail">
+    <div class="bg-city" style="background:linear-gradient(180deg,var(--bg-grad1) 0%,var(--bg-grad2) 100%);">
+      <div class="bg-orb orb-1" style="opacity:0.3;"></div>
+    </div>
+    <div style="background:var(--bg-screen); position:absolute; inset:0; z-index:2;"></div>
+
+    <div class="top-header" style="position:relative;z-index:20;">
+      <button class="notif-btn" onclick="showScreen('screen-news')">→</button>
+      <div style="font-size:16px; font-weight:800;">جزئیات خبر</div>
+      <div style="width:40px;"></div>
+    </div>
+
+    <div class="screen-content" style="position:relative;z-index:10; gap:14px; padding:0 16px 20px;">
+      <div class="promo-img" style="width:100%; height:140px;">
+        <div id="newsDetailImg" class="promo-img-bg" style="font-size:48px;">📢</div>
+      </div>
+      <h2 id="newsDetailTitle" style="font-size:17px; font-weight:800; text-align:right;">—</h2>
+      <p id="newsDetailDate" style="font-size:12px; color:var(--text-muted); text-align:right;">—</p>
+      <p id="newsDetailBody" style="font-size:13px; line-height:2; text-align:right; color:var(--text-light);">—</p>
+      <button class="btn-teal" onclick="showScreen('screen-news')">بازگشت به اخبار</button>
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
+
+<!-- ===== screen-payment.html ===== -->
+  <div class="screen" id="screen-payment">
+    <div class="bg-city" style="background:linear-gradient(180deg,var(--bg-grad1) 0%,var(--bg-grad2) 100%);">
+      <div class="bg-orb orb-1" style="opacity:0.3;"></div>
+    </div>
+    <div style="background:var(--bg-screen); position:absolute; inset:0; z-index:2;"></div>
+
+    <div class="top-header" style="position:relative;z-index:20;">
+      <button class="notif-btn" onclick="showScreen('screen-home')">→</button>
+      <div style="font-size:16px; font-weight:800;">پرداخت عوارض</div>
+      <div style="width:40px;"></div>
+    </div>
+
+    <div class="screen-content" style="position:relative;z-index:10; gap:12px; padding:0 16px 20px;">
+      <div class="glass-card" style="padding:16px 20px; display:flex; align-items:center; justify-content:space-between;">
+        <div style="text-align:right;">
+          <p style="font-size:12px; color:var(--text-muted);">مجموع بدهی</p>
+          <p id="paymentTotalDebt" style="font-size:18px; font-weight:800; color:var(--orange); margin-top:4px;">—</p>
+        </div>
+        <div style="font-size:30px;">💳</div>
+      </div>
+
+      <div class="reports-list" id="paymentListWrap"></div>
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
+
+<!-- ===== screen-payment-detail.html ===== -->
+  <div class="screen" id="screen-payment-detail">
+    <div class="bg-city" style="background:linear-gradient(180deg,var(--bg-grad1) 0%,var(--bg-grad2) 100%);">
+      <div class="bg-orb orb-1" style="opacity:0.3;"></div>
+    </div>
+    <div style="background:var(--bg-screen); position:absolute; inset:0; z-index:2;"></div>
+
+    <div class="top-header" style="position:relative;z-index:20;">
+      <button class="notif-btn" onclick="showScreen('screen-payment')">→</button>
+      <div style="font-size:16px; font-weight:800;">جزئیات قبض</div>
+      <div style="width:40px;"></div>
+    </div>
+
+    <div class="screen-content" style="position:relative;z-index:10; gap:14px; padding:0 16px 20px;">
+      <div class="glass-card" style="padding:18px; display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; justify-content:space-between;"><span style="font-size:13px; color:var(--text-muted);">عنوان</span><span id="payDetailTitle" style="font-size:13px; font-weight:700;">—</span></div>
+        <div class="divider"></div>
+        <div style="display:flex; justify-content:space-between;"><span style="font-size:13px; color:var(--text-muted);">شماره قبض</span><span id="payDetailCode" style="font-size:13px; direction:ltr;">—</span></div>
+        <div class="divider"></div>
+        <div style="display:flex; justify-content:space-between;"><span style="font-size:13px; color:var(--text-muted);">مهلت پرداخت</span><span id="payDetailDue" style="font-size:13px;">—</span></div>
+        <div class="divider"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center;"><span style="font-size:13px; color:var(--text-muted);">وضعیت</span><span id="payDetailStatus" class="report-status status-pending">در انتظار</span></div>
+        <div class="divider"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center;"><span style="font-size:14px; color:var(--text-muted);">مبلغ قابل پرداخت</span><span id="payDetailAmount" style="font-size:18px; font-weight:800; color:var(--orange);">—</span></div>
+      </div>
+
+      <button class="btn-teal" id="payNowBtn" onclick="payInvoice()">پرداخت آنلاین</button>
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
+
+<!-- ===== screen-map.html ===== -->
+  <div class="screen" id="screen-map">
+    <div class="bg-city" style="background:linear-gradient(180deg,var(--bg-grad1) 0%,var(--bg-grad2) 100%);">
+      <div class="bg-orb orb-1" style="opacity:0.3;"></div>
+    </div>
+    <div style="background:var(--bg-screen); position:absolute; inset:0; z-index:2;"></div>
+
+    <div class="top-header" style="position:relative;z-index:20;">
+      <button class="notif-btn" onclick="showScreen('screen-home')">→</button>
+      <div style="font-size:16px; font-weight:800;">نقشه شهر</div>
+      <div style="width:40px;"></div>
+    </div>
+
+    <div class="screen-content" style="position:relative;z-index:10; gap:14px; padding:0 16px 20px;">
+      <div class="glass-card" style="height:170px; position:relative; background:linear-gradient(135deg, rgba(0,80,70,0.25), rgba(0,60,90,0.25)); display:flex; align-items:center; justify-content:center;">
+        <div style="font-size:36px;">🗺️</div>
+        <div style="position:absolute; top:14px; right:18px; font-size:20px;">📍</div>
+        <div style="position:absolute; bottom:24px; left:40px; font-size:18px;">📍</div>
+        <div style="position:absolute; top:40%; left:20%; font-size:16px;">📍</div>
+      </div>
+
+      <div class="section-title" style="padding:0 4px;">اماکن و خدمات نزدیک</div>
+      <div class="menu-list" id="mapPlacesWrap" style="padding:0;"></div>
+
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
+
+<!-- ===== screen-notifications.html ===== -->
+  <div class="screen" id="screen-notifications">
+    <div class="bg-city" style="background:linear-gradient(180deg,var(--bg-grad1) 0%,var(--bg-grad2) 100%);">
+      <div class="bg-orb orb-1" style="opacity:0.3;"></div>
+    </div>
+    <div style="background:var(--bg-screen); position:absolute; inset:0; z-index:2;"></div>
+
+    <div class="top-header" style="position:relative;z-index:20;">
+      <button class="notif-btn" onclick="showScreen('screen-home')">→</button>
+      <div style="font-size:16px; font-weight:800;">اعلان‌ها</div>
+      <button class="edit-btn" style="font-size:11px; width:auto; padding:8px 10px;" onclick="markAllNotifsRead()">خواندن همه</button>
+    </div>
+
+    <div class="screen-content" style="position:relative;z-index:10; gap:10px; padding:0 16px 20px;">
+      <div class="reports-list" id="notifListWrap"></div>
+      <div class="bottom-pad"></div>
+    </div>
+  </div>
