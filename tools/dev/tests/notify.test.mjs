@@ -179,6 +179,7 @@ echo json_encode([
 ok('آماده‌سازی: ستون‌های تازه واقعاً برداشته شدند', dropped?.send_id === 0 && dropped?.read_flag === 0 && dropped?.badge === 0, JSON.stringify(dropped));
 ok('آماده‌سازی: نسخه‌ی اسکیما «به‌روز» ثبت شده (شرطِ حالت ب)', !!dropped?.version && dropped?.version === dropped?.const, JSON.stringify({ version: dropped?.version, code: dropped?.const }));
 
+/* الف) مسیرهای سازگار: حتی وقتی ترمیم ممکن نیست، هیچ‌چیز نمی‌خوابد */
 const legacyList = pickJson(await run(`$_GET = ['phone' => '09120000001']; $_SERVER['REQUEST_METHOD'] = 'GET'; require '${APP}/api/notifications.php';`));
 ok('فهرست اعلان‌ها روی دیتابیس قدیمی ۵۰۰ نمی‌دهد (باگ اصلی)', legacyList?.success === true, JSON.stringify(legacyList));
 ok('اعلان‌های همان کاربر هنوز دیده می‌شوند', (legacyList?.notifications || []).length >= 1, String((legacyList?.notifications || []).length));
@@ -186,13 +187,6 @@ ok('پاسخ، خطای «Unknown column» ندارد', !JSON.stringify(legacyLi
 
 const legacyNews = pickJson(await run(`$_GET = ['type' => 'all']; $_SERVER['REQUEST_METHOD'] = 'GET'; require '${APP}/api/news.php';`));
 ok('اخبار هم بدون ستون badge کار می‌کند', legacyNews?.success === true && Array.isArray(legacyNews?.items), JSON.stringify(legacyNews).slice(0, 200));
-
-const legacySend = pickJson(await run(`
-require '${APP}/admin/includes/db.php';
-require_once '${APP}/admin/includes/functions.php';
-$n = sendNotification($pdo, 'اعلان گروهی از پنل', 'بدون ستون send_id', 'all', [], 'admin');
-echo json_encode(['count' => $n, 'rows' => (int) $pdo->query("SELECT COUNT(*) FROM notifications WHERE title='اعلان گروهی از پنل'")->fetchColumn()]);`));
-ok('ارسال اعلان از پنل ادمین روی دیتابیس قدیمی کار می‌کند', legacySend?.count > 0 && legacySend?.rows > 0, JSON.stringify(legacySend));
 
 const legacyEvent = pickJson(await run(`
 require '${APP}/admin/includes/db.php';
@@ -209,8 +203,46 @@ ok('«همه را خواندم» روی دیتابیس قدیمی کار می‌
 const legacyDelete = pickJson(await run(`$_POST = ['action' => 'delete', 'phone' => '09120000009', 'all' => '1']; $_SERVER['REQUEST_METHOD'] = 'POST'; require '${APP}/api/notifications.php';`));
 ok('حذف اعلان روی دیتابیس قدیمی کار می‌کند', legacyDelete?.success === true, JSON.stringify(legacyDelete));
 
-/* حالتِ «ترمیم ممکن است» → باید خودکار و بدون دکمه انجام شود */
-await run(`require '${APP}/admin/includes/db.php'; eplakSetAppSetting($pdo, 'schema_sync_retry_at', '0'); echo 'retry-cleared';`);
+/* ب) ارسال اعلان از پنل وقتی ترمیم «ممکن نیست» (همان حالت هاست بدون ALTER):
+      ارسال باید موفق بماند و اعلان‌ها در اپ دیده شوند — بدون ستون send_id.
+      خطای واقعیِ گزارش‌شده: «Unknown column 'send_id' in 'INSERT INTO'» */
+const legacySend = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+require_once '${APP}/admin/includes/functions.php';
+$before = (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='send_id'")->fetchColumn();
+$n = sendNotification($pdo, 'اعلان گروهی از پنل', 'بدون ستون send_id', 'all', [], 'admin');
+$after = (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='send_id'")->fetchColumn();
+$rows = (int) $pdo->query("SELECT COUNT(*) FROM notifications WHERE title='اعلان گروهی از پنل'")->fetchColumn();
+echo json_encode(['count' => $n, 'before' => $before, 'after' => $after, 'rows' => $rows, 'recipients' => count(getNotificationRecipients($pdo, 1))]);`));
+ok('ارسال اعلان از پنل بدون ستون send_id هم موفق است (دیگر خطا نمی‌دهد)', (legacySend?.count || 0) > 0 && (legacySend?.rows || 0) > 0, JSON.stringify(legacySend));
+ok('وقتی ترمیم ممکن نیست، ستون ساخته نمی‌شود و صفحه‌ی گیرندگان خالی می‌ماند (نه خطا)',
+  legacySend?.before === 0 && legacySend?.after === 0 && legacySend?.recipients === 0, JSON.stringify(legacySend));
+
+const legacySendSeen = pickJson(await run(`$_GET = ['phone' => '09120000002']; $_SERVER['REQUEST_METHOD'] = 'GET'; require '${APP}/api/notifications.php';`));
+ok('اعلانِ ارسال‌شده از پنل در فهرست اپ دیده می‌شود', (legacySendSeen?.notifications || []).some((n) => String(n.title).includes('اعلان گروهی از پنل')), JSON.stringify((legacySendSeen?.notifications || []).map((n) => n.title).slice(0, 4)));
+
+/* ب-۲) همان ارسال، ولی وقتی ترمیم «ممکن» است → خودش ستون را برمی‌گرداند و
+        اعلان‌ها به همان ارسال پیوند می‌خورند (صفحه‌ی گیرندگان کامل می‌شود) */
+/* ستون‌ها از مرحله‌ی «الف» هنوز نبوده‌اند؛ فقط مهلتِ ترمیم برداشته می‌شود */
+const healedSend = pickJson(await run(`
+require '${APP}/admin/includes/db.php';                       /* همگام‌سازی: هنوز مهلتِ ۱۰ دقیقه‌ای رد نشده → رد می‌شود */
+eplakSetAppSetting($pdo, 'schema_sync_retry_at', '0');         /* حالا ترمیم ممکن است */
+require_once '${APP}/admin/includes/functions.php';
+$before = (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='send_id'")->fetchColumn();
+$n = sendNotification($pdo, 'اعلان بعد از ترمیم', 'با send_id', 'all', [], 'admin');
+$after = (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='send_id'")->fetchColumn();
+$sendId = (int) $pdo->query('SELECT MAX(id) FROM notification_sends')->fetchColumn();
+$linked = (int) $pdo->query("SELECT COUNT(*) FROM notifications WHERE send_id = $sendId")->fetchColumn();
+echo json_encode(['count' => $n, 'before' => $before, 'after' => $after, 'linked' => $linked, 'recipients' => count(getNotificationRecipients($pdo, $sendId))]);`));
+ok('هنگام ارسال، ستون send_id خودکار ترمیم شد', healedSend?.before === 0 && healedSend?.after === 1, JSON.stringify(healedSend));
+ok('اعلان‌ها به همان «ارسال» پیوند خوردند (صفحه‌ی گیرندگان کار می‌کند)',
+  (healedSend?.linked || 0) > 0 && healedSend?.linked === healedSend?.recipients, JSON.stringify(healedSend));
+
+/* ج) حالتِ واقعیِ سایت: نسخه «به‌روز» است ولی ستون نیست → درخواست بعدی ترمیم می‌کند */
+await run(`$raw = new PDO('sqlite:${DB}'); $raw->exec('ALTER TABLE notifications DROP COLUMN send_id'); echo 'dropped-again';`);
+ok('ستون دوباره برداشته شد', String(await rawCol('notifications', 'send_id')).trim() === '0');
+/* مهلتِ ترمیم در مرحله‌ی قبل پاک شده (retry_at = 0)؛ پس «اولین درخواست بعدی»
+   باید خودش ستون را برگرداند — همان چیزی که روی هاست اتفاق می‌افتد. */
 const healed = pickJson(await run(`require '${APP}/admin/includes/db.php';
 echo json_encode([
   'send_id'   => (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='send_id'")->fetchColumn(),
@@ -219,21 +251,13 @@ echo json_encode([
   'added'     => eplakSchemaSyncReport()['added'],
   'failed'    => eplakSchemaSyncReport()['failed'],
   'missing'   => eplakSchemaMissingColumns($pdo),
+  'version'   => (string) eplakAppSetting($pdo, 'schema_version', ''),
 ]);`));
-ok('ستون‌های جاافتاده خودکار برگشتند (بدون فشردن دکمه‌ی ترمیم)', healed?.send_id === 1 && healed?.read_flag === 1 && healed?.badge === 1, JSON.stringify(healed));
-ok('ترمیم، ستون‌ها را «اضافه‌شده» گزارش می‌کند', Array.isArray(healed?.added) && healed.added.length >= 3, JSON.stringify(healed?.added));
-ok('ترمیم بدون شکست بود', Array.isArray(healed?.failed) && healed.failed.length === 0, JSON.stringify(healed?.failed));
-ok('پس از ترمیم، ستون حیاتیِ نبوده باقی نمانده', Array.isArray(healed?.missing) && healed.missing.length === 0, JSON.stringify(healed?.missing));
-
-/* حالت ب (واقعیِ سایت): نسخه «به‌روز» است ولی ستون نیست → درخواست بعدی ترمیم می‌کند */
-await run(`$raw = new PDO('sqlite:${DB}'); $raw->exec('ALTER TABLE notifications DROP COLUMN send_id'); echo 'dropped-again';`);
-ok('ستون دوباره برداشته شد', String(await rawCol('notifications', 'send_id')).trim() === '0');
-const autoHeal = pickJson(await run(`require '${APP}/admin/includes/db.php';
-echo json_encode([
-  'send_id' => (int) $pdo->query("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='send_id'")->fetchColumn(),
-  'version' => (string) eplakAppSetting($pdo, 'schema_version', ''),
-]);`));
-ok('با نسخه‌ی «به‌روز» هم ستونِ نبوده خودکار ترمیم می‌شود', autoHeal?.send_id === 1, JSON.stringify(autoHeal));
+ok('ستونِ جاافتاده خودکار برگشت (بدون فشردن دکمه‌ی ترمیم)', healed?.send_id === 1, JSON.stringify(healed));
+ok('ترمیم، ستون‌ها را «اضافه‌شده» گزارش می‌کند و شکستی ندارد',
+  Array.isArray(healed?.added) && healed.added.length >= 1 && Array.isArray(healed?.failed) && healed.failed.length === 0,
+  JSON.stringify({ added: healed?.added, failed: healed?.failed }));
+ok('پس از ترمیم، ستون حیاتیِ نبوده باقی نمانده', Array.isArray(healed?.missing) && healed.missing.length === 0 && healed?.read_flag === 1 && healed?.badge === 1, JSON.stringify(healed));
 
 const healedList = pickJson(await run(`$_GET = ['phone' => '09120000001']; $_SERVER['REQUEST_METHOD'] = 'GET'; require '${APP}/api/notifications.php';`));
 ok('پس از ترمیم، فهرست اعلان‌ها سالم می‌ماند', healedList?.success === true && (healedList?.notifications || []).length >= 1, JSON.stringify(healedList).slice(0, 200));

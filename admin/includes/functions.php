@@ -815,45 +815,91 @@ function sendNotification(PDO $pdo, string $title, string $body, string $targetT
         return 0;
     }
 
-    $pdo->beginTransaction();
-    try {
-        $stmt = $pdo->prepare(
-            'INSERT INTO notification_sends (title, body, target_type, recipients_count, created_by)
-             VALUES (:title, :body, :target, :count, :by)'
-        );
-        $stmt->execute([
-            ':title' => $title,
-            ':body'  => $body,
-            ':target' => $targetType === 'all' ? 'all' : 'selected',
-            ':count' => count($phones),
-            ':by'    => $createdBy,
-        ]);
-        $sendId = (int)$pdo->lastInsertId();
+    /* نوشتن در دیتابیس — با «ترمیم خودکار» اگر ستونی جا افتاده باشد.
+       روی دیتابیس قدیمی همین INSERT با خطای
+       «Unknown column 'send_id' in 'INSERT INTO'» شکست می‌خورد و مدیر نمی‌توانست
+       اعلان بفرستد؛ حالا یک‌بار همگام‌سازیِ اجباری اسکیما اجرا و دستور دوباره
+       تلاش می‌شود (بدون نیاز به کار دستی). اگر ترمیم ممکن نباشد (کاربر دیتابیس
+       اجازه‌ی ALTER TABLE ندارد)، اعلان «بدون» ستون send_id نوشته می‌شود تا ارسال
+       هرگز شکست نخورد؛ تنها چیزی که از دست می‌رود گروه‌بندی ردیف‌ها در صفحه‌ی
+       «گیرندگان» است. */
+    $sendId  = 0;
+    $attempt = 0;
+    while (true) {
+        $attempt++;
+        try {
+            $pdo->beginTransaction();
 
-        /* ستون send_id در دیتابیس‌های قدیمی (هاستی که ALTER TABLE در آن ممکن
-           نیست) وجود ندارد؛ در آن حالت اعلان «بدون» آن ستون نوشته می‌شود تا
-           ارسال اعلان از پنل با خطای «Unknown column 'send_id'» شکست نخورد.
-           تنها چیزی که از دست می‌رود، گروه‌بندی ردیف‌ها در صفحه‌ی جزئیات ارسال است. */
-        $hasSendId = eplakTableHasColumn($pdo, 'notifications', 'send_id');
-        $sql = $hasSendId
-            ? 'INSERT INTO notifications (user_phone, title, body, send_id) VALUES (:phone, :title, :body, :send)'
-            : 'INSERT INTO notifications (user_phone, title, body) VALUES (:phone, :title, :body)';
-        $ins = $pdo->prepare($sql);
-        foreach ($phones as $phone) {
-            $row = [
-                ':phone' => $phone,
+            $stmt = $pdo->prepare(
+                'INSERT INTO notification_sends (title, body, target_type, recipients_count, created_by)
+                 VALUES (:title, :body, :target, :count, :by)'
+            );
+            $stmt->execute([
                 ':title' => $title,
                 ':body'  => $body,
-            ];
-            if ($hasSendId) {
-                $row[':send'] = $sendId;
+                ':target' => $targetType === 'all' ? 'all' : 'selected',
+                ':count' => count($phones),
+                ':by'    => $createdBy,
+            ]);
+            $sendId = (int)$pdo->lastInsertId();
+
+            $hasSendId = eplakTableHasColumn($pdo, 'notifications', 'send_id');
+            if (!$hasSendId) {
+                /* ستون لازم نیست: یک‌بار «ترمیم اجباری» تلاش می‌شود (اگر ترمیمِ
+                   قبلی شکست خورده باشد، همان نشانِ ۱۰ دقیقه‌ای جلوی تکرار را
+                   می‌گیرد تا ارسال کند نشود). */
+                try {
+                    if ((int) eplakAppSetting($pdo, 'schema_sync_retry_at', '0') <= time()) {
+                        $repair = eplakRunSchemaSync($pdo, true);
+                        if (!empty($repair['added'])) {
+                            error_log('[eplak-notify] ساختار دیتابیس هنگام ارسال اعلان ترمیم شد: '
+                                . implode('، ', $repair['added']));
+                        }
+                    }
+                } catch (Throwable $ignore) {
+                    /* ترمیم ممکن نبود → مسیر سازگار (بدون ستون) ادامه می‌یابد */
+                }
+                $hasSendId = eplakTableHasColumn($pdo, 'notifications', 'send_id');
             }
-            $ins->execute($row);
+            $sql = $hasSendId
+                ? 'INSERT INTO notifications (user_phone, title, body, send_id) VALUES (:phone, :title, :body, :send)'
+                : 'INSERT INTO notifications (user_phone, title, body) VALUES (:phone, :title, :body)';
+            $ins = $pdo->prepare($sql);
+            foreach ($phones as $phone) {
+                $row = [
+                    ':phone' => $phone,
+                    ':title' => $title,
+                    ':body'  => $body,
+                ];
+                if ($hasSendId) {
+                    $row[':send'] = $sendId;
+                }
+                $ins->execute($row);
+            }
+
+            $pdo->commit();
+            break;
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            /* یک‌بار تلاش برای ترمیم ساختار دیتابیس و تکرار نوشتن */
+            if ($attempt === 1
+                && function_exists('eplakIsSchemaError')
+                && eplakIsSchemaError($e->getMessage())) {
+                try {
+                    $repair = eplakRunSchemaSync($pdo, true);
+                    if (!empty($repair['added'])) {
+                        error_log('[eplak-notify] ساختار دیتابیس هنگام ارسال اعلان ترمیم شد: '
+                            . implode('، ', $repair['added']));
+                        continue;
+                    }
+                } catch (Throwable $ignore) {
+                    /* ترمیم ممکن نبود → همان مسیر سازگار (بدون ستون) ادامه می‌یابد */
+                }
+            }
+            throw $e;
         }
-        $pdo->commit();
-    } catch (Throwable $e) {
-        $pdo->rollBack();
-        throw $e;
     }
 
     /* ── اعلان پس‌زمینه (Web Push) ────────────────────────────────────────

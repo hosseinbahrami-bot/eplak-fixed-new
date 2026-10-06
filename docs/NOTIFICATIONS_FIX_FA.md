@@ -60,7 +60,8 @@ return (string) eplakAppSetting($pdo, 'schema_version', '') !== EPLAK_SCHEMA_VER
 | `shared/bootstrap.php` | نسخه‌ی اسکیما به `2026-10-06.1` بالا رفت. `eplakSchemaSyncNeeded()` افزون بر نسخه، **ستون‌های حیاتی** را هم بررسی می‌کند (`eplakSchemaCriticalColumns()` / `eplakSchemaMissingColumns()`)؛ پس حتی با نشانه‌ی «به‌روز» هم ترمیم خودکار انجام می‌شود. کمک‌تابع‌های تازه: `eplakSelectColumns()` (ستونِ نبوده → `NULL`)، `eplakInsertRow()` (INSERT فقط با ستون‌های موجود)، `eplakIsSchemaError()` و `eplakSchemaErrorHint()`، و `eplakTableColumnCacheReset()` (تازه‌سازی حافظه‌ی ستون‌ها بعد از ALTER). |
 | `api/notifications.php` | فهرست، «خوانده‌شده» و «حذف» همگی **بدون** `send_id`/`read_flag` هم کار می‌کنند. شماره‌ی کاربر با `eplakNotifyNormalizePhone()` یکسان می‌شود (`+98…`/`9…`/رقم فارسی → `09xxxxxxxxx`) تا اعلان‌ها با قالب دیگری که ذخیره شده‌اند گم نشوند. در صورت خطا، پاسخ علاوه بر `error` فیلدهای `schema`/`hint`/`missing` هم دارد. |
 | `api/news.php` | ستون‌های نبوده (مثل `badge`) به‌صورت `NULL` انتخاب می‌شوند → دیگر ۵۰۰ نمی‌دهد. |
-| `admin/includes/functions.php` | `sendNotification()` بدون `send_id` هم اعلان را می‌نویسد (ارسال از پنل دیگر شکست نمی‌خورد)؛ `getNotificationRecipients()` روی دیتابیس قدیمی فهرست خالی می‌دهد به‌جای خطا. |
+| `admin/includes/functions.php` | `sendNotification()` **خودش را ترمیم می‌کند**: اگر ستون `send_id` نباشد، یک‌بار همگام‌سازیِ اجباری اسکیما اجرا می‌شود (با رعایت مهلتِ ۱۰ دقیقه‌ایِ تلاشِ ناموفق) و اگر ترمیم ممکن نبود، اعلان «بدون» آن ستون نوشته می‌شود → ارسال از پنل دیگر با `Unknown column 'send_id' in 'INSERT INTO'` شکست نمی‌خورد. `getNotificationRecipients()` هم روی دیتابیس قدیمی فهرست خالی می‌دهد به‌جای خطا. |
+| `admin/notifications.php` | اگر باز هم خطای اسکیمایی رخ دهد، پیامِ روی صفحه **علت و راه‌حل دقیق** را می‌نویسد (کدام ستون نیست، دکمه‌ی ترمیم کجاست، و دستور SQL جایگزین). |
 | `shared/notify_events.php` | اعلانِ «ثبت درخواست» بدون `read_flag` هم ساخته می‌شود (پیش‌تر بی‌صدا از بین می‌رفت). |
 | `shared/notification_reads.php` | به‌روزرسانی `read_flag` فقط وقتی آن ستون وجود داشته باشد. |
 | `admin/version.php`، `admin/settings.php` | وضعیت «ستون‌های حیاتی دیتابیس» نمایش داده می‌شود (سالم / کدام ستون نیست) + راهنمای ترمیم. |
@@ -78,8 +79,30 @@ return (string) eplakAppSetting($pdo, 'schema_version', '') !== EPLAK_SCHEMA_VER
 |---|---|
 | `tools/diag/probe-notifications.sh` | کاوش `reports/tickets/users/media` هم اضافه شد + بخش **«داوری»** که انتظارِ هر endpoint حیاتی را بررسی می‌کند و در صورت خرابی کد خروج ۱ می‌دهد (نتیجه در `diag-out/verdict.txt`). |
 | `.github/workflows/diagnostics.yml` | داوری در خلاصه‌ی اجرا نشان داده می‌شود؛ `live-check.sh` حتی اگر کاوش خطا داد اجرا می‌شود. |
-| `tools/dev/tests/notify.test.mjs` | ۱۸ آزمون تازه: «دیتابیس قدیمی بدون `send_id`/`read_flag`/`badge`» — فهرست اعلان‌ها، اخبار، ارسال از پنل، اعلانِ ثبت درخواست، خوانده‌شده و حذف باید بدون ۵۰۰ کار کنند؛ و ترمیم خودکار (با نسخه‌ی «به‌روز») باید ستون‌ها را برگرداند. |
+| `tools/dev/tests/notify.test.mjs` | ۲۲ آزمون تازه: «دیتابیس قدیمی بدون `send_id`/`read_flag`/`badge`» — فهرست اعلان‌ها، اخبار، اعلانِ ثبت درخواست، خوانده‌شده و حذف بدون ۵۰۰ کار می‌کنند؛ ارسال از پنل در دو حالت (ترمیم ممکن / ناموفق) موفق است؛ و ترمیم خودکار (با نسخه‌ی «به‌روز») ستون‌ها را برمی‌گرداند. |
 | `tools/dev/tests/backend.test.mjs`، `push.test.mjs`، `app.test.mjs`، `geo.test.mjs` | بررسی «ستون‌های حیاتی» در صفحه‌ی بررسی نسخه، دکمه‌ی «ترمیم ساختار دیتابیس»، و مقاوم‌سازی مقایسه‌ی نسخه‌ی اسکیما. |
+
+### اگر همین حالا خطا می‌گیرید (بدون آپلود)
+
+خطای `⚠️ خطا در ارسال: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'INSERT INTO'`
+یعنی کدِ روی هاست هنوز نسخه‌ی قدیمی است. سریع‌ترین راه‌ها:
+
+1. **پنل ادمین → تنظیمات → «بررسی و ترمیم ساختار دیتابیس»** (۱۰ ثانیه، بدون آپلود).
+2. اگر ترمیم ناموفق بود، در **phpMyAdmin** این سه خط اجرا شود (خطای
+   `Duplicate column name` یعنی آن ستون از قبل هست؛ نادیده بگیرید):
+
+```sql
+ALTER TABLE `notifications` ADD COLUMN `send_id` INT NULL;
+ALTER TABLE `notifications` ADD COLUMN `read_flag` TINYINT(1) DEFAULT 0;
+ALTER TABLE `news`          ADD COLUMN `badge` VARCHAR(120) NULL;
+```
+
+3. برای بررسی اینکه چه ستون‌هایی کم است:
+
+```sql
+SHOW COLUMNS FROM `notifications`;
+SHOW COLUMNS FROM `news`;
+```
 
 ## ۴) روی هاست چه کار کنم؟
 

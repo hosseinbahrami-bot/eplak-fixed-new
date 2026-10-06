@@ -141,7 +141,11 @@ expect "places"                   "HTTP 200" '"success":true'
 expect "departments"              "HTTP 200" '"success":true'
 expect "reports-list"             "HTTP 200" '"success":true' no
 expect "tickets-list"             "HTTP 200" '"success":true' no
-expect "users-profile"            "HTTP 200" '"success":true' no
+# users.php برای شماره‌ی آزمایشی (کاربر واقعی نیست) success:false برمی‌گرداند —
+# مهم «۲۰۰ بودن و JSON سالم» است، نه وجودِ آن کاربر.
+expect "users-profile"            "HTTP 200" '"success"'      no
+# media.php سرویسِ فایل است؛ برای شناسه‌ی ناموجود ۴۰۴ درست است (یعنی پرس‌وجو سالم بود)
+expect "media-head"               "HTTP 404" ''               no
 expect "admin-login-page"         "HTTP 200" ''               no
 
 echo

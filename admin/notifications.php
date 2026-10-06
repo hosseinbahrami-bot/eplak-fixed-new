@@ -32,6 +32,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             eplakRedirect('notifications.php?sent=' . $count);
         } catch (Throwable $e) {
             $message = '⚠️ خطا در ارسال: ' . $e->getMessage();
+            /* خطای «Unknown column» یعنی ساختار دیتابیس از کد عقب‌تر است؛ راهنمای
+               عملی همان‌جا نوشته می‌شود تا علت و راه‌حل برای مدیر روشن باشد. */
+            if (function_exists('eplakIsSchemaError') && eplakIsSchemaError($e->getMessage())) {
+                $missing = function_exists('eplakSchemaMissingColumns') ? eplakSchemaMissingColumns($pdo) : [];
+                $message .= ' | علت: ستون‌های لازم در دیتابیس نیستند'
+                    . ($missing ? ' (' . implode('، ', $missing) . ')' : '') . '.'
+                    . ' راه‌حل: منوی «تنظیمات» ← دکمه‌ی «بررسی و ترمیم ساختار دیتابیس».'
+                    . ' اگر ترمیم ناموفق ماند: کاربر دیتابیس اجازه‌ی ALTER TABLE ندارد'
+                    . ' (cPanel ← MySQL Databases ← کاربر ← All Privileges) یا در phpMyAdmin'
+                    . ' این دستور اجرا شود: ALTER TABLE `notifications` ADD COLUMN `send_id` INT NULL;';
+            }
         }
     }
 }
