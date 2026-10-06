@@ -1,0 +1,249 @@
+name: Deploy to host (FTP — branch)
+
+# ============================================================================
+#  آپلود خودکارِ بسته‌ی سایت روی هاست — از همین شاخه‌ی کاری (بدون ادغام در main)
+#
+#  چرا؟ مالک سایت با File Manager به مشکل خورده بود و تغییرات روی هاست نمی‌رفت؛
+#  پس همان کاری که deploy.yml برای main می‌کند، این‌جا برای شاخه‌ی کاری انجام
+#  می‌شود و «بعد از آپلود، سایت را از بیرون تأیید» هم می‌کند.
+#
+#  secret های لازم (Settings ← Secrets and variables ← Actions):
+#     FTP_HOST   → آدرس FTP هاست (مثلاً ftp.eplak.ir)
+#     FTP_USER   → نام کاربری FTP
+#     FTP_PASS   → رمز FTP
+#     FTP_DIR    → (اختیاری) مسیر مقصد. اگر خالی باشد «خودکار تشخیص» داده می‌شود:
+#                   اگر ریشه‌ی FTP پوشه‌ی public_html داشت → public_html/eplak-fixed
+#                   اگر ریشه‌ی FTP خودِ سایت بود (حساب FTP محدود به همان پوشه) → همان‌جا
+#     FTP_PORT   → (اختیاری) پیش‌فرض 21
+#     FTP_SCHEME → (اختیاری) ftp یا ftps؛ پیش‌فرض ftp
+#
+#  امنیت: فقط «نوشتن» فایل؛ هیچ فایلی روی هاست حذف نمی‌شود. داده‌ی سایت
+#  (data/، uploads/، shared/config.php) و کلیدها/گواهی‌ها هرگز آپلود نمی‌شوند و
+#  پیش از آپلود از پوشه‌ی موقت پاک می‌شوند. رمزها در لاگ چاپ نمی‌شوند.
+#
+#  اجرای دوباره: تغییرِ tools/deploy-trigger.txt (یک push کوچک).
+# ============================================================================
+
+on:
+  push:
+    branches: [main, 'arena/**']
+    paths:
+      - 'tools/deploy-trigger.txt'
+      - 'tools/build-update-package.sh'
+      - '.github/workflows/deploy-ftp-branch.yml'
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'آدرس پایه‌ی سایت برای تأیید بعد از آپلود'
+        required: false
+        default: 'https://eplak.ir/eplak-fixed'
+
+env:
+  EPLAK_BASE: https://eplak.ir/eplak-fixed
+  HOST_DIR: public_html/eplak-fixed
+
+permissions:
+  contents: write
+
+jobs:
+  ftp:
+    name: آپلود بسته روی هاست و تأیید زنده
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FTP_HOST: ${{ secrets.FTP_HOST }}
+      FTP_USER: ${{ secrets.FTP_USER }}
+      FTP_PASS: ${{ secrets.FTP_PASS }}
+      FTP_DIR_SECRET: ${{ secrets.FTP_DIR }}
+      FTP_PORT: ${{ secrets.FTP_PORT }}
+      FTP_SCHEME: ${{ secrets.FTP_SCHEME }}
+    steps:
+      - name: بررسی secret های FTP
+        id: guard
+        run: |
+          set -uo pipefail
+          if [ -z "${FTP_HOST:-}" ] || [ -z "${FTP_USER:-}" ] || [ -z "${FTP_PASS:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo '### ⏳ آپلود خودکار رد شد — secret های FTP نیستند'
+              echo
+              echo 'در مخزن: **Settings ← Secrets and variables ← Actions ← New repository secret**'
+              echo
+              echo '| نام secret | مقدار |'
+              echo '|---|---|'
+              echo '| `FTP_HOST` | آدرس FTP هاست (مثلاً `ftp.eplak.ir`) |'
+              echo '| `FTP_USER` | نام کاربری FTP |'
+              echo '| `FTP_PASS` | رمز FTP |'
+              echo '| `FTP_DIR` | (اختیاری) اگر خالی بماند خودش مسیر درست را پیدا می‌کند |'
+              echo
+              echo 'بعد از گذاشتنِ secret ها، یک push کوچک روی `tools/deploy-trigger.txt`'
+              echo 'همین ورک‌فلو را دوباره اجرا می‌کند.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=FTP secrets::secret های FTP در مخزن نیستند؛ آپلود خودکار رد شد."
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "FTP_PORT=${FTP_PORT:-21}" >> "$GITHUB_ENV"
+          echo "FTP_SCHEME=${FTP_SCHEME:-ftp}" >> "$GITHUB_ENV"
+
+      - name: دریافت کد
+        if: steps.guard.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+
+      - name: ساخت بسته‌ی سایت و آماده‌سازی پوشه‌ی آپلود
+        if: steps.guard.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          bash tools/build-update-package.sh
+          rm -rf staging
+          mkdir -p staging
+          unzip -q eplak-fixed-update.zip -d staging
+          # هیچ‌وقت داده‌ی سایت، کلیدها، یا فایل‌های CI/اپ روی هاست نمی‌روند
+          cd staging
+          rm -rf ios-app android-app pwa-dist pwa-evidence tools .github .git .vscode node_modules
+          rm -rf data uploads shared/config.php shared/eplak-fcm-service-account.json test-fixtures
+          rm -rf diag-out regression.log staging
+          find . -name '*service-account*.json' -delete || true
+          find . -name '*firebase-adminsdk*.json' -delete || true
+          find . \( -name '*.pem' -o -name '*.p12' -o -name '*.keystore' \) -delete || true
+          cd ..
+          echo "UPLOAD_FILES=$(find staging -type f | wc -l | tr -d ' ')" >> "$GITHUB_ENV"
+          echo "UPLOAD_SIZE=$(du -sh staging | cut -f1)" >> "$GITHUB_ENV"
+          echo "→ آماده‌ی آپلود: $(find staging -type f | wc -l) فایل"
+
+      - name: تست اتصال FTP و پیدا کردن مسیر درست
+        if: steps.guard.outputs.enabled == 'true'
+        run: |
+          set -uo pipefail
+          ROOT_URL="${FTP_SCHEME}://${FTP_HOST}:${FTP_PORT}/"
+          if ! curl -sS --connect-timeout 25 --max-time 90 -u "${FTP_USER}:${FTP_PASS}" \
+               --list-only "$ROOT_URL" > ftp-root.txt 2>ftp-root.err; then
+            echo "❌ اتصال FTP برقرار نشد:"
+            head -c 600 ftp-root.err
+            echo "::error title=FTP connection::اتصال FTP برقرار نشد (آدرس/نام کاربری/رمز/پورت ۲۱ یا باز بودن FTP روی هاست را بررسی کنید)."
+            exit 1
+          fi
+          echo "✅ اتصال FTP برقرار است. ریشه‌ی FTP:"
+          sed 's/^/   /' ftp-root.txt | head -20
+
+          DIR="${FTP_DIR_SECRET:-}"
+          DIR="${DIR#/}"; DIR="${DIR%/}"
+          if [ -z "$DIR" ]; then
+            if grep -qxiE 'public_html' ftp-root.txt; then
+              DIR="$HOST_DIR"
+              echo "→ ریشه public_html دارد؛ مسیر مقصد: $DIR"
+            elif grep -qxiE 'index\.html|api|admin|shared|modules' ftp-root.txt; then
+              DIR="."
+              echo "→ حساب FTP مستقیم به پوشه‌ی سایت وصل است؛ همان‌جا آپلود می‌شود."
+            else
+              DIR="$HOST_DIR"
+              echo "→ ریشه ناشناخته است؛ مسیر پیش‌فرض: $DIR"
+            fi
+          fi
+
+          # تأیید اینکه مقصد «واقعاً» پوشه‌ی سایت است (تا فایل‌ها جای اشتباه نروند)
+          if [ "$DIR" = "." ]; then LIST_URL="$ROOT_URL"; else LIST_URL="${FTP_SCHEME}://${FTP_HOST}:${FTP_PORT}/${DIR}/"; fi
+          if curl -sS --connect-timeout 25 --max-time 90 -u "${FTP_USER}:${FTP_PASS}" \
+               --list-only "$LIST_URL" > ftp-target.txt 2>ftp-target.err; then
+            echo "→ محتوای مسیر مقصد:"
+            sed 's/^/   /' ftp-target.txt | head -25
+            if ! grep -qxiE 'index\.html|api|admin' ftp-target.txt; then
+              echo "::error title=FTP_DIR::مسیر «${DIR}» شبیه پوشه‌ی سایت نیست (index.html/api/admin ندارد). برای جلوگیری از ریختن فایل‌ها در جای اشتباه، آپلود متوقف شد. مسیر درست را در secret FTP_DIR بگذارید."
+              exit 1
+            fi
+          else
+            echo "::error title=FTP_DIR::مسیر «${DIR}» روی سرور خوانده نشد: $(head -c 300 ftp-target.err)"
+            exit 1
+          fi
+          echo "FTP_DIR=$DIR" >> "$GITHUB_ENV"
+
+      - name: آپلود فایل‌ها (فایل‌به‌فایل، با ساخت پوشه‌ها)
+        if: steps.guard.outputs.enabled == 'true'
+        run: |
+          set -uo pipefail
+          export FTP_HOST FTP_USER FTP_PASS FTP_DIR FTP_PORT FTP_SCHEME
+          STATUS="$(pwd)/ftp-status.txt"; : > "$STATUS"; : > "$STATUS.err"; export STATUS
+          if [ "$FTP_DIR" = "." ]; then export FTP_PREFIX=""; else export FTP_PREFIX="/${FTP_DIR}"; fi
+          find staging -type f -print0 | sort -z | \
+            xargs -0 -P 6 -I{} bash -c '
+              f="{}"; rel="${f#staging/}"
+              if curl -sS --fail --ftp-create-dirs --connect-timeout 25 --max-time 300 \
+                   -u "${FTP_USER}:${FTP_PASS}" -T "$f" \
+                   "${FTP_SCHEME}://${FTP_HOST}:${FTP_PORT}${FTP_PREFIX}/${rel}" 2>>"${STATUS}.err"; then
+                echo "OK ${rel}" >> "$STATUS"
+              else
+                echo "FAIL ${rel}" >> "$STATUS"
+              fi'
+          DONE=$(grep -c '^OK '   "$STATUS" || true)
+          FAIL=$(grep -c '^FAIL ' "$STATUS" || true)
+          echo "FTP_DONE=${DONE}" >> "$GITHUB_ENV"
+          echo "FTP_FAIL=${FAIL}" >> "$GITHUB_ENV"
+          echo "→ ${DONE} فایل آپلود شد؛ ${FAIL} مورد ناموفق"
+          if [ "${FAIL}" -gt 0 ]; then
+            echo "موارد ناموفق (تا ۱۵ مورد):"
+            grep '^FAIL ' "$STATUS" | head -15 | sed 's/^/   /'
+            echo "نمونه‌ی خطاها:"
+            head -c 800 "$STATUS.err" | sed 's/^/   /'
+          fi
+          cp "$STATUS" ftp-status.log 2>/dev/null || true
+          [ "${FAIL}" -eq 0 ] || exit 1
+
+      - name: تأیید زنده‌ی سایت بعد از آپلود — اعلان‌ها و اخبار
+        if: steps.guard.outputs.enabled == 'true'
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          BASE="${{ github.event.inputs.base || env.EPLAK_BASE }}"
+          mkdir -p diag-out
+          # همین درخواست‌ها همگام‌سازی خودکار اسکیما را هم اجرا می‌کنند
+          sleep 5
+          bash tools/diag/probe-notifications.sh "$BASE" diag-out 2>&1 | tee diag-out/probe.log | tail -45
+
+      - name: پایش زنده‌ی کامل (گزارشی)
+        if: steps.guard.outputs.enabled == 'true'
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          BASE="${{ github.event.inputs.base || env.EPLAK_BASE }}"
+          EPLAK_BASE="$BASE" bash tools/live-check.sh 2>&1 | tee diag-out/live-check.log | tail -50
+
+      - name: خلاصه‌ی اجرا
+        if: always()
+        run: |
+          {
+            echo '### 🌐 آپلود روی هاست (FTP)'
+            echo
+            if [ "${{ steps.guard.outputs.enabled }}" != "true" ]; then
+              echo '⏳ secret های FTP نبودند → چیزی آپلود نشد (راهنما در بالای همین صفحه).'
+            else
+              echo '| مورد | مقدار |'
+              echo '|---|---|'
+              echo "| مسیر مقصد | \`${FTP_DIR:-?}\` |"
+              echo '| فایل‌ها | '"${UPLOAD_FILES:-?} (${UPLOAD_SIZE:-?})"' |'
+              echo '| آپلودشده | '"${FTP_DONE:-0}"' |'
+              echo '| ناموفق | '"${FTP_FAIL:-0}"' |'
+              echo
+              echo '**داوری بعد از آپلود** — اعلان‌ها و اخبار باید ۲۰۰ شوند:'
+              echo
+              echo '```'
+              cat diag-out/verdict.txt 2>/dev/null || echo '(داوری انجام نشد)'
+              echo '```'
+              echo
+              echo '```'
+              grep -E 'fcm_ready|کلیدهای فایربیس' diag-out/live-check.log 2>/dev/null | head -5 || true
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: انتشار گزارش روی برچسب گیت (artifacts/deploy)
+        if: always() && steps.guard.outputs.enabled == 'true'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          mkdir -p diag-out
+          cp ftp-status.log diag-out/ 2>/dev/null || true
+          cp ftp-root.txt   diag-out/ 2>/dev/null || true
+          cp ftp-target.txt diag-out/ 2>/dev/null || true
+          bash tools/ci/publish-artifacts.sh deploy diag-out
