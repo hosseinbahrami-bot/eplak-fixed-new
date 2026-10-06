@@ -70,6 +70,8 @@ probe "departments"                   GET  "$API/departments.php"
 probe "places"                        GET  "$API/places.php"
 probe "users"                         GET  "$API/users.php"
 probe "push"                          GET  "$API/push.php"
+# ۴-۳) وضعیت موتور اعلان گوشی: کلید فایربیس درست و هم‌پروژه با اپ هست یا نه؟
+probe "push-config"                   GET  "$API/push.php?action=config"
 
 # ۴-۲) بقیه‌ی endpointهای دیتابیس‌دار — اگر ستونِ دیگری هم روی هاست جا افتاده
 #       باشد (مثل reports.client_ref)، این‌جا با «Unknown column» معلوم می‌شود.
@@ -146,6 +148,7 @@ expect "tickets-list"             "HTTP 200" '"success":true' no
 expect "users-profile"            "HTTP 200" '"success"'      no
 # media.php سرویسِ فایل است؛ برای شناسه‌ی ناموجود ۴۰۴ درست است (یعنی پرس‌وجو سالم بود)
 expect "media-head"               "HTTP 404" ''               no
+expect "push-config"               "HTTP 200" '"fcm_ready":true' no
 expect "admin-login-page"         "HTTP 200" ''               no
 
 echo
