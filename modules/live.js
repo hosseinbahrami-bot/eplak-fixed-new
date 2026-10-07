@@ -640,6 +640,49 @@
     }
   }
 
+  /* ───────────────────────────────────────────────────────────
+     نتیجه‌ی آخرین «گرفتن اعلان‌ها از سرور»
+
+     کارفرما: «اعلان‌ها به کاربر نمی‌رسد و در بخش اعلان‌ها دیده نمی‌شود».
+     برای اینکه از داخل خود اپ بفهمیم مشکل سمت سرور است یا گوشی، وضعیت آخرین
+     همگام‌سازی زیر کادر اعلان‌ها نشان داده می‌شود:
+       • موفق و شمرده‌ی اعلان‌ها → سرور جواب داده (پس اگر خالی است، اعلانی ساخته نشده)
+       • ناموفق/خطای سرور → مشکل در درخواست یا پاسخ سرور (فایروال، خطای دیتابیس…)
+  ─────────────────────────────────────────────────────────── */
+  var notifSyncState = { ok: null, at: 0, count: 0, unread: 0, error: '' };
+
+  function notifSyncText() {
+    if (notifSyncState.ok === null) return '';
+    var when = '';
+    try {
+      when = faTime(new Date(notifSyncState.at)) || '';
+    } catch (e) {}
+    if (notifSyncState.ok) {
+      return '✅ آخرین بررسی سرور' + (when ? ' (' + when + ')' : '') + ': موفق — '
+        + toPersianDigitsLocal(notifSyncState.count) + ' اعلان'
+        + (notifSyncState.unread > 0 ? ' (' + toPersianDigitsLocal(notifSyncState.unread) + ' خوانده‌نشده)' : '');
+    }
+    return '⚠️ آخرین بررسی سرور' + (when ? ' (' + when + ')' : '') + ': ناموفق'
+      + (notifSyncState.error ? ' — ' + notifSyncState.error : '') + '. دوباره تلاش می‌شود…';
+  }
+
+  function toPersianDigitsLocal(value) {
+    try {
+      if (typeof toPersianDigits === 'function') return toPersianDigits(value);
+    } catch (e) {}
+    return String(value);
+  }
+
+  function markNotifSync(ok, data, error) {
+    notifSyncState.ok = !!ok;
+    notifSyncState.at = Date.now();
+    notifSyncState.error = String(error || '').slice(0, 120);
+    if (ok && data) {
+      notifSyncState.count = Number(data.count || (Array.isArray(data.notifications) ? data.notifications.length : 0)) || 0;
+      notifSyncState.unread = Number(data.unread || 0) || 0;
+    }
+  }
+
   async function syncNotifications() {
     try {
       var phone = '';
@@ -653,12 +696,24 @@
       // If user hasn't logged in, query broadcast notifications ('all')
       var queryPhone = phone || 'all';
       const res = await fetch(apiBase() + '/notifications.php?phone=' + encodeURIComponent(queryPhone) + '&t=' + Date.now(), { cache: 'no-store' });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        markNotifSync(false, null, 'کد پاسخ سرور: ' + res.status);
+        try { renderDeviceNotice(); } catch (e) {}
+        return false;
+      }
       const data = await res.json();
-      if (!data || data.success !== true) return false;
+      if (!data || data.success !== true) {
+        markNotifSync(false, null, (data && data.error) ? String(data.error) : 'پاسخ نامعتبر سرور');
+        try { renderDeviceNotice(); } catch (e) {}
+        return false;
+      }
+      markNotifSync(true, data, '');
       applyNotifications(data.notifications || []);
+      try { renderDeviceNotice(); } catch (e) {}
       return true;
     } catch (e) {
+      markNotifSync(false, null, (e && e.message) ? e.message : 'ارتباط برقرار نشد');
+      try { renderDeviceNotice(); } catch (err) {}
       return false;
     }
   }
@@ -1258,6 +1313,13 @@
     } else {
       text = '🔔 برای دریافت اعلان روی همین دستگاه، اجازه‌ی اعلان را بدهید. '
            + '<button type="button" onclick="requestPushPermission()" style="border:0;background:#ea580c;color:#fff;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">فعال‌سازی اعلان</button>';
+    }
+
+    /* وضعیت آخرین همگام‌سازی اعلان‌ها با سرور (برای عیب‌یابی «اعلان نیامد») */
+    var syncLine = notifSyncText();
+    if (syncLine) {
+      text += '<div id="notifSyncStatus" data-ok="' + (notifSyncState.ok ? '1' : '0') + '" '
+            + 'style="margin-top:6px;font-size:11.5px;opacity:0.85;">' + escapeText(syncLine) + '</div>';
     }
 
     box.innerHTML = text;

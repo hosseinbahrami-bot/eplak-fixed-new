@@ -395,7 +395,22 @@ if ($existingId > 0) {
         }
     }
 
-    $dupCode = 'EP-1403-' . str_pad((string) $existingId, 4, '0', STR_PAD_LEFT);
+    $dupCode = 'EP-1403-' . str_pad((string) ($existingId + 1000), 4, '0', STR_PAD_LEFT);
+
+    /* ── اعلان «درخواست ثبت شد» برای مسیر «تکراری» ────────────────────────
+       اگر همین درخواست قبلاً ساخته شده باشد، گزارش تازه‌ای ساخته نمی‌شود؛ ولی
+       ممکن بود همان لحظه‌ی اول، درج اعلان ناموفق مانده باشد (خطای دیتابیس/قید)
+       و کاربر هیچ اعلانی در فهرستش نبیند. این‌جا فقط در همان حالتِ «اعلان
+       وجود ندارد» ساخته می‌شود؛ پس اعلان تکراری هم ساخته نمی‌شود. */
+    try {
+        require_once __DIR__ . '/../shared/notify_events.php';
+        if (!eplakNotifyExistsForCode($pdo, $phone, $dupCode)) {
+            eplakNotifyRequestCreated($pdo, $phone, 'درخواست', $dupCode);
+        }
+    } catch (Throwable $e) {
+        error_log('[eplak-api:reports.dedupe-notify] ' . $e->getMessage());
+    }
+
     eplakJson([
         'success'       => true,
         'deduped'       => true,          /* اپ می‌فهمد گزارش تازه ساخته نشده */
@@ -511,7 +526,7 @@ try {
                     'success'       => true,
                     'deduped'       => true,
                     'id'            => $raceId,
-                    'tracking_code' => 'EP-1403-' . str_pad((string) $raceId, 4, '0', STR_PAD_LEFT),
+                    'tracking_code' => 'EP-1403-' . str_pad((string) ($raceId + 1000), 4, '0', STR_PAD_LEFT),
                     'media'         => [],
                     'media_count'   => 0,
                     'timeline'      => eplakReportEvents($pdo, $raceId),
@@ -601,7 +616,7 @@ try {
 /* ── اعلان فوری برای خودِ کاربر: «درخواست شما ثبت شد» ─────────────────
    این اعلان هم در فهرست اعلان‌های اپ/سایت دیده می‌شود و هم (اگر فایربیس فعال
    باشد) بلافاصله روی گوشی می‌رسد؛ حتی وقتی برنامه بسته است. */
-$trackingCode = 'EP-1403-' . str_pad((string) $insertId, 4, '0', STR_PAD_LEFT);
+$trackingCode = 'EP-1403-' . str_pad((string) ($insertId + 1000), 4, '0', STR_PAD_LEFT);
 
 /* گام‌های آغازین روند رسیدگی: «ثبت شد» و «ارجاع به واحد» */
 try {

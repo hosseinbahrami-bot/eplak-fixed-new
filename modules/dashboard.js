@@ -359,6 +359,16 @@
       ? window.i18n.getLanguage() === 'en'
       : (window.i18n && window.i18n.currentLang === 'en');
 
+    /* ترجمه‌ی محلی: اگر core/i18n.js (نسخه‌ی کش‌شده‌ی قدیمی یا ناقص) تابع t را
+       نساخته باشد، قبلاً همین یک خط خطا می‌داد و کل فهرست اعلان‌ها خالی می‌ماند
+       (اعلان روی سرور بود ولی کاربر هیچ‌چیز نمی‌دید). حالا متن جانشین می‌آید. */
+    const tr = (key, fallback) => {
+      try {
+        if (typeof t === 'function') return t(key, fallback);
+      } catch (e) {}
+      return fallback;
+    };
+
     if (notifications.length === 0) {
       wrap.innerHTML = `<div style="text-align:center; padding:30px 10px; color:var(--text-muted); font-size:13px;">${isEn ? 'No notifications to display' : 'اعلانی وجود ندارد'}</div>`;
     } else {
@@ -367,7 +377,7 @@
         const title = (isEn && enItem) ? enItem.title : n.title;
         const body = (isEn && enItem) ? enItem.body : n.body;
         const time = (isEn && enItem) ? enItem.time : (n.time || n.date || '');
-        const deleteLabel = t('notif_delete_one', isEn ? 'Delete this notification' : 'حذف این اعلان');
+        const deleteLabel = tr('notif_delete_one', isEn ? 'Delete this notification' : 'حذف این اعلان');
         return `
           <div class="report-item" onclick="markNotifRead('${n.id}')" style="${n.read ? 'opacity:0.6;' : ''}">
             ${!n.read ? '<span style="width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0;"></span>' : '<span style="width:8px;height:8px;flex-shrink:0;"></span>'}

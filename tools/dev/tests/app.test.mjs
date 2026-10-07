@@ -406,7 +406,7 @@ console.log('\n=== سرور: فایل‌های «در انتظار اتصال» 
   ok('فایل‌های جامانده‌ی در انتظار اتصال روی سرور پاک‌سازی می‌شوند',
     /eplakMediaCleanupStaged\(\$pdo, 86400\)/.test(reportsPhp) && /function eplakMediaCleanupStaged/.test(sharedMedia));
   ok('نسخه‌ی ساختار دیتابیس برای گذار به «اول فایل، بعد گزارش» بالا رفته است',
-    /EPLAK_SCHEMA_VERSION', '2026-10-03\.1'/.test(fs.readFileSync(path.join(ROOT, 'shared/bootstrap.php'), 'utf8')));
+    /EPLAK_SCHEMA_VERSION', '2026-10-0[37]\.1'/.test(fs.readFileSync(path.join(ROOT, 'shared/bootstrap.php'), 'utf8')));
 }
 
 console.log('\n=== عکس و فیلم با هم ارسال می‌شوند (موازی) ===');

@@ -690,7 +690,7 @@ function eplakUsersUpsertSql(PDO $pdo, bool $keepDefaultName = false): string {
    یک پله بالا ببرید؛ بقیه‌اش خودکار انجام می‌شود.
    ============================================================================ */
 if (!defined('EPLAK_SCHEMA_VERSION')) {
-    define('EPLAK_SCHEMA_VERSION', '2026-10-03.1');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
+    define('EPLAK_SCHEMA_VERSION', '2026-10-07.1');   /* + حذف قید خارجی قدیمی notifications.user_phone و افزودن notifications.send_id اگر جا مانده باشد (بدون این، ردیف مشترک «همه کاربران» کل تراکنش ارسال را برمی‌گرداند) */   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
 }
 
 /* تعریف جداول (همان متن CREATE TABLE) برای مقایسه با دیتابیس.
@@ -933,6 +933,61 @@ function eplakMysqlLegacyAlters(PDO $pdo, array &$report): void {
     $add('notification_sends', 'push_failed', 'INT NOT NULL DEFAULT 0');
     $add('notification_sends', 'fcm_sent', 'INT NOT NULL DEFAULT 0');
     $add('notification_sends', 'fcm_failed', 'INT NOT NULL DEFAULT 0');
+
+    eplakMysqlDropNotificationsForeignKeys($pdo, $report);
+}
+
+/* ── حذف قید‌های خارجیِ نسخه‌های قدیمی روی notifications ───────────────
+   دیتابیس‌های قدیمی (دامپ اولیه‌ی پروژه) روی `notifications.user_phone` یک
+   FOREIGN KEY به `users.phone` داشتند و همین قید یکی از دلیل‌های اصلی
+   «اعلان‌ها برای کاربر ارسال نمی‌شود» بود:
+
+     • اعلان گروهی پنل یک ردیف مشترک با user_phone='all' می‌سازد؛ «all» در
+       جدول users وجود ندارد → خطای قید → برگشت کل تراکنش → هیچ کاربری اعلان
+       نمی‌گرفت (اعلان‌های تکی همان ارسال هم قربانی همان تراکنش می‌شدند).
+     • ردیف اعلان کاربران مهمان (user_phone = '') هم همین‌طور.
+
+   پس این قید قدیمی حذف می‌شود. اگر کاربر دیتابیس اجازه‌ی ALTER نداشته باشد،
+   خطا فقط در گزارش همگام‌سازی ثبت می‌شود و لایه‌ی دومِ محافظت
+   (INSERT IGNORE در shared/notify_events.php و admin/includes/functions.php)
+   کار را ادامه می‌دهد. فقط MySQL — SQLite از ابتدا این قید را ندارد. */
+function eplakMysqlDropNotificationsForeignKeys(PDO $pdo, array &$report): void
+{
+    try {
+        $dbname = (string) $pdo->query('SELECT DATABASE()')->fetchColumn();
+        if ($dbname === '') {
+            return;
+        }
+        $stmt = $pdo->prepare(
+            'SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = :db AND TABLE_NAME = :tbl AND COLUMN_NAME = :col
+               AND REFERENCED_TABLE_NAME IS NOT NULL'
+        );
+        $stmt->execute([':db' => $dbname, ':tbl' => 'notifications', ':col' => 'user_phone']);
+        $names = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        foreach ($names as $name) {
+            $name = str_replace('`', '', (string) $name);
+            if ($name === '') {
+                continue;
+            }
+            try {
+                $pdo->exec('ALTER TABLE `notifications` DROP FOREIGN KEY `' . $name . '`');
+                $report['added'][] = 'notifications — حذف قید خارجی قدیمی (' . $name . ')';
+                error_log('[eplak-schema] قید خارجی قدیمی notifications.' . $name . ' حذف شد.');
+            } catch (\Throwable $e) {
+                /* نام قید در دامپ‌های مختلف فرق دارد؛ یک بار با نام استاندارد دامپ */
+                try {
+                    $pdo->exec('ALTER TABLE `notifications` DROP FOREIGN KEY `notifications_ibfk_1`');
+                    $report['added'][] = 'notifications — حذف قید خارجی قدیمی (notifications_ibfk_1)';
+                } catch (\Throwable $inner) {
+                    $report['failed'][] = 'notifications.' . $name . ' — حذف قید خارجی ناموفق: ' . $e->getMessage();
+                }
+            }
+        }
+    } catch (\Throwable $e) {
+        /* خواندن information_schema ممکن نشد — بی‌خطر است، ادامه می‌دهیم */
+        error_log('[eplak-schema] بررسی قیدهای خارجی notifications ممکن نشد: ' . $e->getMessage());
+    }
 }
 
 function eplakGetPdo(): PDO {

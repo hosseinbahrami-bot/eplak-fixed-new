@@ -619,7 +619,7 @@ $httpsOn = eplakIsHttpsRequest();
         <?php endif; ?>
       </section>
 
-      <section class="panel">
+      <section class="panel" id="schema">
         <h2><i class="fas fa-circle-info"></i> وضعیت فنی سرور</h2>
         <div class="kv-list">
           <div class="kv-row"><span class="kv-key">درایور دیتابیس</span><span class="kv-val"><?= htmlspecialchars($driver) ?></span></div>
