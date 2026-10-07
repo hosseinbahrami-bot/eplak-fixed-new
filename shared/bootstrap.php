@@ -690,7 +690,7 @@ function eplakUsersUpsertSql(PDO $pdo, bool $keepDefaultName = false): string {
    یک پله بالا ببرید؛ بقیه‌اش خودکار انجام می‌شود.
    ============================================================================ */
 if (!defined('EPLAK_SCHEMA_VERSION')) {
-    define('EPLAK_SCHEMA_VERSION', '2026-10-03.1');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
+    define('EPLAK_SCHEMA_VERSION', '2026-10-07.1');   /* + حذف قید خارجی قدیمی notifications.user_phone و افزودن notifications.send_id اگر جا مانده باشد (بدون این، ردیف مشترک «همه کاربران» کل تراکنش ارسال را برمی‌گرداند) */   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
 }
 
 /* تعریف جداول (همان متن CREATE TABLE) برای مقایسه با دیتابیس.

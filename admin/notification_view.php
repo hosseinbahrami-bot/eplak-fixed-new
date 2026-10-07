@@ -10,6 +10,10 @@ if (!$send) {
     eplakRedirect('notifications.php');
 }
 
+/* روی دیتابیس‌های قدیمی، ستون notifications.send_id ممکن است ساخته نشده باشد
+   (هاست بدون دسترسی ALTER). در آن حالت به‌جای خطای ۵۰۰، همان صفحه با یک هشدار
+   روشن نمایش داده می‌شود. */
+$recipientsReady = eplakNotificationSendIdReady($pdo);
 $recipients = getNotificationRecipients($pdo, $id);
 
 /* وضعیت «خوانده شدن» برای هر گیرنده:
@@ -21,11 +25,11 @@ $readCount = 0;
 $readCounts = eplakNotificationReadCounts($pdo, array_map(static fn($r) => (int) $r['id'], $recipients));
 $recipientRows = [];
 foreach ($recipients as $r) {
-    $nid      = (int) $r['id'];
-    $phone    = trim((string) $r['user_phone']);
+    $nid      = (int) ($r['id'] ?? 0);
+    $phone    = trim((string) ($r['user_phone'] ?? ''));
     $isShared = ($phone === 'all' || $phone === '');
     $readers  = (int) ($readCounts[$nid] ?? 0);
-    $isRead   = ((int) $r['read_flag'] === 1) || $readers > 0;
+    $isRead   = ((int) ($r['read_flag'] ?? 0) === 1) || $readers > 0;
 
     if ($isRead) {
         $readCount++;
@@ -35,7 +39,7 @@ foreach ($recipients as $r) {
         'shared'   => $isShared,
         'readers'  => $readers,
         'is_read'  => $isRead,
-        'created_at' => (string) $r['created_at'],
+        'created_at' => (string) ($r['created_at'] ?? ''),
     ];
 }
 $recipientTotal = count($recipientRows);
@@ -45,7 +49,7 @@ $recipientTotal = count($recipientRows);
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>جزئیات اعلان شماره <?= (int)$send['id'] ?></title>
+  <title>جزئیات اعلان شماره <?= (int) ($send['id'] ?? 0) ?></title>
   <link rel="stylesheet" href="assets/style.css?v=9">
   <script src="assets/theme.js?v=7"></script>
   <script src="assets/persian-digits.js?v=6"></script>
@@ -89,17 +93,41 @@ $recipientTotal = count($recipientRows);
         </div>
       </header>
 
+      <?php if (!$recipientsReady && $recipientRows): ?>
+        <section class="meta-card" style="margin: 0 24px 20px; border:2px solid #38bdf8; background:#f0f9ff;">
+          <h3 style="margin-bottom:8px; color:#0369a1;">ℹ️ این فهرست با تطبیق زمان و متن اعلان‌ها ساخته شده</h3>
+          <p style="line-height:2; color:#0c4a6e; font-size:13.5px; margin:0;">
+            دیتابیس این هاست هنوز ستون <code style="direction:ltr; display:inline-block;">notifications.send_id</code> را ندارد؛
+            پس ارتباط هر اعلان با ارسالش ثبت نشده است و این فهرست با تطبیق عنوان، متن و زمانِ همین ارسال ساخته شده است.
+            برای دقت کامل:
+            <a href="settings.php#schema" style="color:#0369a1; font-weight:700;">تنظیمات → ترمیم ساختار دیتابیس</a>.
+          </p>
+        </section>
+      <?php elseif (!$recipientsReady): ?>
+        <section class="meta-card" style="margin: 0 24px 20px; border:2px solid #f59e0b; background:#fffbeb;">
+          <h3 style="margin-bottom:8px; color:#b45309;">⚠️ فهرست گیرندگان این ارسال قابل نمایش نیست</h3>
+          <p style="line-height:2; color:#78350f; font-size:13.5px; margin:0;">
+            دیتابیس این هاست هنوز ستون <code style="direction:ltr; display:inline-block;">notifications.send_id</code> را ندارد؛
+            پس اعلان‌های هر ارسال به آن ارسال گره نخورده‌اند و نمی‌توان شمار گیرندگان و خوانده‌شدن را نشان داد.
+            اعلان‌ها در فهرست خودِ کاربران در اپ نمایش داده می‌شوند و این خطا فقط مربوط به همین صفحه‌ی گزارش پنل است.
+            برای ساخت این ستون و مرتب شدن این صفحه:
+            <a href="settings.php#schema" style="color:#b45309; font-weight:700;">تنظیمات → ترمیم ساختار دیتابیس</a>
+            را بزنید.
+          </p>
+        </section>
+      <?php endif; ?>
+
       <section class="meta-card" style="margin: 0 24px 20px;">
-        <h3 style="margin-bottom:10px;"><?= htmlspecialchars($send['title']) ?></h3>
-        <p style="line-height:1.9; color:var(--dark-600);"><?= nl2br(htmlspecialchars($send['body'])) ?></p>
+        <h3 style="margin-bottom:10px;"><?= htmlspecialchars((string) ($send['title'] ?? '')) ?></h3>
+        <p style="line-height:1.9; color:var(--dark-600);"><?= nl2br(htmlspecialchars((string) ($send['body'] ?? ''))) ?></p>
         <div class="stats-mini" style="margin-top:16px;">
           <div class="stat-item">گیرندگان <strong><?= $recipientTotal ?></strong></div>
           <div class="stat-item">خوانده شده <strong><?= $readCount ?></strong></div>
           <div class="stat-item">خوانده نشده <strong><?= $recipientTotal - $readCount ?></strong></div>
           <div class="stat-item">نوع ارسال
-            <strong><?= $send['target_type'] === 'all' ? 'همه کاربران' : 'کاربران انتخابی' ?></strong>
+            <strong><?= (($send['target_type'] ?? 'all') === 'all') ? 'همه کاربران' : 'کاربران انتخابی' ?></strong>
           </div>
-          <div class="stat-item">زمان <strong><?= htmlspecialchars($send['created_at']) ?></strong></div>
+          <div class="stat-item">زمان <strong><?= htmlspecialchars((string) ($send['created_at'] ?? '')) ?></strong></div>
         </div>
       </section>
 

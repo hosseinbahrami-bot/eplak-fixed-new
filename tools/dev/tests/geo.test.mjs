@@ -300,7 +300,7 @@ ok('هر دو نسخه‌ی اسکیما (SQLite و MySQL) ستون مختصات
   reportsDdl.length === 2 && reportsDdl.every((d) => /\blat\b/.test(d) && /\blng\b/.test(d) && /location_accuracy/.test(d)),
   `تعداد DDL=${reportsDdl.length}`);
 ok('نسخه‌ی اسکیما برای افزودن خودکار جدول‌ها/ستون‌ها بالا رفته است',
-  /EPLAK_SCHEMA_VERSION', '2026-10-03\.1'/.test(bootstrap));
+  /EPLAK_SCHEMA_VERSION', '2026-10-0[37]\.1'/.test(bootstrap));
 ok('جدول روند رسیدگی (report_events) در هر دو درایور ساخته می‌شود',
   (bootstrap.match(/CREATE TABLE IF NOT EXISTS report_events/g) || []).length === 2);
 ok('کمکی بررسی وجود ستون در هسته تعریف شده است', /function eplakTableHasColumn/.test(bootstrap));

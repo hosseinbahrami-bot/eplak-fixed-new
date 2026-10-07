@@ -48,7 +48,7 @@ ok('بذرها اجرا شدند (۶ خبر/دانستنی + ۶۵ واحد)', db
 const wanted = ['notifications', 'notification_reads', 'notification_deletes', 'device_tokens', 'push_subscriptions', 'report_media', 'app_settings'];
 const missing = wanted.filter((t) => !(db?.tables || []).includes(t));
 ok('همه‌ی جدول‌های لازم ساخته شدند', missing.length === 0, 'گم‌شده: ' + missing.join(', '));
-ok('نسخه‌ی ساختار دیتابیس تازه ثبت شد', /^2026-(09-30|10-0[123])\./.test(String(db?.schema)), String(db?.schema));
+ok('نسخه‌ی ساختار دیتابیس تازه ثبت شد', /^2026-(09-30|10-0[1-9])\./.test(String(db?.schema)), String(db?.schema));
 ok('ستون شناسه‌ی یکتای درخواست به جدول گزارش‌ها اضافه شد (پایه‌ی جلوگیری از تکرار)',
   (db?.report_cols || []).includes('client_ref'), JSON.stringify(db?.report_cols || []));
 ok('ستون‌های شمارش فایربیس ساخته شدند', (db?.send_cols || []).includes('fcm_sent') && (db?.send_cols || []).includes('fcm_failed'), JSON.stringify(db?.send_cols));

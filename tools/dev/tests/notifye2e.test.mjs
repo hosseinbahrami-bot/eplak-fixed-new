@@ -164,6 +164,79 @@ ok('فهرست اعلان‌ها با دیتابیس بدون send_id خطا ن�
   legacyList?.success === true && (legacyList?.notifications || []).some((n) => String(n.title).includes('بدون ستون send_id')),
   JSON.stringify(legacyList));
 
+/* ---------- ۵.۱) صفحه‌ی گیرندگان پنل روی همین دیتابیس بدون send_id ---------- */
+console.log('\n=== صفحه‌ی گیرندگان اعلان (پنل) روی دیتابیس بدون send_id ===');
+const legacySendId = Number(pickJson(await run(
+  `require '${APP}/admin/includes/db.php'; echo json_encode(['id' => (int) $pdo->query('SELECT MAX(id) FROM notification_sends')->fetchColumn()]);`))?.id || 0);
+
+const legacyView = await run(`
+$_SESSION = [];
+$_GET = ['id' => '${legacySendId}'];
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['SCRIPT_NAME'] = '/admin/notification_view.php';
+$_SERVER['PHP_SELF'] = '/admin/login.php';
+require '${APP}/admin/auth.php';
+$_SESSION['admin_logged_in'] = true; $_SESSION['admin_id'] = 1; $_SESSION['admin_username'] = 'admin';
+ob_start(); require '${APP}/admin/notification_view.php'; $html = ob_get_clean();
+echo json_encode([
+  'len'    => strlen($html),
+  'fatal'  => (strpos($html, 'Fatal error') !== false) || (strpos($html, 'Uncaught') !== false),
+  'banner' => strpos($html, 'قابل نمایش نیست') !== false,
+], JSON_UNESCAPED_UNICODE);`);
+const lv = pickJson(legacyView);
+ok('صفحه‌ی گیرندگان روی دیتابیس بدون send_id دیگر خطای سرور نمی‌دهد (باگ ۵۰۰)',
+  lv && lv.fatal !== true && (lv.len || 0) > 1000, JSON.stringify({ len: lv?.len, fatal: lv?.fatal, err: String(legacyView).slice(0, 200) }));
+ok('به‌جای خطا، هشدار «ترمیم ساختار دیتابیس» نشان داده می‌شود', lv?.banner === true, JSON.stringify(lv));
+
+const legacyRecipients = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+require '${APP}/admin/includes/functions.php';
+echo json_encode(['count' => count(getNotificationRecipients($pdo, ${legacySendId}))]);`));
+ok('getNotificationRecipients روی دیتابیس بدون send_id خطا نمی‌دهد (با تطبیق زمان/متن، فهرست گیرندگان پر می‌شود)',
+  legacyRecipients?.count >= 0, JSON.stringify(legacyRecipients));
+
+const legacySend = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+require '${APP}/admin/includes/functions.php';
+$count = sendNotification($pdo, 'اعلان روی دیتابیس قدیمی', 'بدون ستون send_id', 'all', [], 'admin');
+echo json_encode(['count' => $count, 'rows' => (int) $pdo->query('SELECT COUNT(*) FROM notifications')->fetchColumn()]);`));
+ok('ارسال از پنل روی دیتابیس بدون send_id هم اعلان کاربران را درج می‌کند (از دست نمی‌رود)',
+  (legacySend?.rows || 0) > 0, JSON.stringify(legacySend));
+
+const legacyFallback = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+require '${APP}/admin/includes/functions.php';
+$lastSend = (int) $pdo->query('SELECT MAX(id) FROM notification_sends')->fetchColumn();
+$send = getNotificationSendById($pdo, $lastSend);
+$rows = getNotificationRecipients($pdo, $lastSend);
+$titles = [];
+foreach ($rows as $r) { $titles[] = (string) $r['title']; }
+echo json_encode(['count' => count($rows), 'titles' => array_values(array_unique($titles))], JSON_UNESCAPED_UNICODE);`));
+ok('روی دیتابیس بدون send_id، فهرست گیرندگان با تطبیق زمان/متن پیدا می‌شود (صفحه‌ی پنل خالی نمی‌ماند)',
+  (legacyFallback?.count || 0) > 0 && (legacyFallback?.titles || []).indexOf('اعلان روی دیتابیس قدیمی') !== -1,
+  JSON.stringify(legacyFallback));
+
+/* ---------- ۵.۲) صفحه‌ی عیب‌یابی اعلان‌ها ---------- */
+console.log('\n=== صفحه‌ی عیب‌یابی اعلان (admin/notif_diag.php) ===');
+const diag = await run(`
+$_SESSION = [];
+$_GET = [];
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['SCRIPT_NAME'] = '/admin/notif_diag.php';
+$_SERVER['PHP_SELF'] = '/admin/login.php';
+require '${APP}/admin/auth.php';
+$_SESSION['admin_logged_in'] = true; $_SESSION['admin_id'] = 1; $_SESSION['admin_username'] = 'admin';
+ob_start(); require '${APP}/admin/notif_diag.php'; $html = ob_get_clean();
+echo json_encode([
+  'len'   => strlen($html),
+  'fatal' => (strpos($html, 'Fatal error') !== false) || (strpos($html, 'Uncaught') !== false),
+  'cols'  => strpos($html, 'notifications') !== false,
+  'probe' => strpos($html, 'کوئری صفحه‌ی گیرندگان') !== false,
+], JSON_UNESCAPED_UNICODE);`);
+const dg = pickJson(diag);
+ok('صفحه‌ی عیب‌یابی بدون خطا رندر می‌شود و ستون‌های جدول‌ها را نشان می‌دهد',
+  dg && dg.fatal !== true && dg.cols === true && (dg.len || 0) > 2000, JSON.stringify({ len: dg?.len, fatal: dg?.fatal, err: String(diag).slice(0, 200) }));
+
 /* ---------- ۶) درخواست تکراری: اعلان تکراری ساخته نشود ---------- */
 console.log('\n=== ثبت تکراری همان درخواست ===');
 /* پیش از سنجش، اعلان‌های آزمون‌های قبلی پاک می‌شوند تا شمارش دقیق باشد */
