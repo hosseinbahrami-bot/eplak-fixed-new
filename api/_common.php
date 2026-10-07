@@ -45,12 +45,56 @@ function eplakNormalizePhone(?string $raw): string {
     $raw = str_replace($fa, $en, $raw);
     $raw = str_replace($ar, $en, $raw);
     $raw = preg_replace('/[\s\-()]+/', '', $raw);
+    /* پیش‌شماره‌ی بین‌المللی با دو صفر: 00989121112233 → 09121112233
+       (برخی گوشی‌ها/دفترچه‌ها شماره را این‌گونه ذخیره و ارسال می‌کنند.) */
+    if (strpos($raw, '00') === 0) {
+        $raw = substr($raw, 2);
+    }
     if (preg_match('/^\+?98(9\d{9})$/', $raw, $m)) {
         $raw = '0' . $m[1];
     } elseif (preg_match('/^(9\d{9})$/', $raw, $m)) {
         $raw = '0' . $m[1];
     }
     return preg_match('/^09\d{9}$/', $raw) ? $raw : '';
+}
+
+/* همه‌ی قالب‌هایی که یک شماره‌ی موبایل ممکن است با آن‌ها در دیتابیس ذخیره شده باشد.
+
+   چرا لازم است؟ نسخه‌های قدیمی اپ/پنل شماره را بدون پاک‌سازی ذخیره می‌کردند؛ پس
+   ردیف‌هایی با «+98912…»، «0098…»، «98912…»، رقم فارسی یا بدون صفرِ ابتدایی در
+   جدول‌ها مانده است. اگر جست‌وجو فقط با قالب استاندارد «09…» انجام شود، کاربر
+   اعلان‌های خودش (و اعلان «درخواست شما ثبت شد») را نمی‌بیند. این تابع همه‌ی
+   قالب‌های محتملِ همان شماره را برمی‌گرداند تا با «IN» جست‌وجو شود. */
+function eplakPhoneVariants(?string $raw): array {
+    $raw = trim((string) $raw);
+    if ($raw === '') {
+        return [];
+    }
+    $fa = ['0' => '۰', '1' => '۱', '2' => '۲', '3' => '۳', '4' => '۴',
+           '5' => '۵', '6' => '۶', '7' => '۷', '8' => '۸', '9' => '۹'];
+    $out = [];
+    $add = static function ($value) use (&$out): void {
+        $value = trim((string) $value);
+        if ($value !== '') {
+            $out[$value] = true;
+        }
+    };
+    $add($raw);
+    $norm = eplakNormalizePhone($raw);
+    if ($norm !== '') {
+        $add($norm);                                  /* 09121112233 */
+        $withoutZero = substr($norm, 1);              /* 9121112233  */
+        $add($withoutZero);
+        $add('98' . $withoutZero);                    /* 989121112233 */
+        $add('+98' . $withoutZero);
+        $add('0098' . $withoutZero);
+        $add(strtr($norm, $fa));                      /* ۰۹۱۲۱۱۱۲۲۳۳ */
+        $add(strtr($withoutZero, $fa));
+    } else {
+        /* شماره‌ی غیرِ موبایل ایران: فقط همان رفتار قدیمی (حذف نویسه‌های اضافه) */
+        $add(preg_replace('/[^0-9+]/', '', $raw) ?? '');
+    }
+    return array_keys($out);
 }
 
 function eplakReadJsonBody(): array {

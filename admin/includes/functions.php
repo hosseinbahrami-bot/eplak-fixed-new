@@ -810,7 +810,30 @@ function sendNotification(PDO $pdo, string $title, string $body, string $targetT
         }
     }
 
-    $phones = array_values(array_unique(array_filter(array_map('trim', $phones), static fn($p) => $p !== '')));
+    /* شماره‌ی گیرندگان با همان قالب استاندارد «09xxxxxxxxx» ذخیره می‌شود.
+       چرا؟ اگر شماره‌ای با «+98…» یا رقم فارسی در جدول users مانده باشد، ردیف
+       اعلان زیر شماره‌ای دیگر درج می‌شد و اپ آن را در فهرست خودِ کاربر پیدا
+       نمی‌کرد (همان باگ «اعلان برای کاربر نمی‌آید»). ردیف مشترک «all» دست‌نخورده
+       می‌ماند. */
+    if (!function_exists('eplakNotifyNormalizePhone')) {
+        $eventsFile = __DIR__ . '/../../shared/notify_events.php';
+        if (file_exists($eventsFile)) {
+            require_once $eventsFile;
+        }
+    }
+    $phones = array_values(array_unique(array_filter(array_map(static function ($p) {
+        $p = trim((string) $p);
+        if ($p === '' || $p === 'all') {
+            return $p;
+        }
+        if (function_exists('eplakNotifyNormalizePhone')) {
+            $normalized = eplakNotifyNormalizePhone($p);
+            if ($normalized !== '') {
+                return $normalized;
+            }
+        }
+        return $p;
+    }, $phones), static fn($p) => $p !== '')));
     if (!$phones) {
         return 0;
     }
@@ -830,20 +853,65 @@ function sendNotification(PDO $pdo, string $title, string $body, string $targetT
         ]);
         $sendId = (int)$pdo->lastInsertId();
 
-        $ins = $pdo->prepare(
-            'INSERT INTO notifications (user_phone, title, body, send_id) VALUES (:phone, :title, :body, :send)'
-        );
+        /* ── درج ردیف اعلان برای هر گیرنده ────────────────────────────────
+           نکته‌ی مهم (باگ واقعی «اعلان‌ها برای کاربر ارسال نمی‌شود»): روی
+           دیتابیس‌های قدیمی، notify.user_phone یک FOREIGN KEY به users.phone
+           داشت. ردیف مشترک «all» (برای کاربران مهمان و کاربرانی که تازه وارد
+           شده‌اند) در جدول users وجود ندارد؛ پس INSERT خطای قید می‌داد و چون
+           همه‌ی ردیف‌ها در یک تراکنش بودند، «همه‌ی» اعلان‌ها برمی‌گشت و هیچ
+           کاربری اعلان نمی‌گرفت. حالا اگر یک ردیف رد شود، بقیه درج می‌شوند و
+           علت در لاگ می‌ماند. (همگام‌سازی اسکیما هم این قید قدیمی را حذف
+           می‌کند؛ اینجا لایه‌ی دوم محافظت است.) */
+        $insertRow = static function (array $params) use ($pdo): int {
+            $sqlite = function_exists('eplakIsSqlite') && eplakIsSqlite($pdo);
+            $attempts = [
+                'INSERT INTO notifications (user_phone, title, body, send_id) VALUES (:phone, :title, :body, :send)',
+                ($sqlite ? 'INSERT OR IGNORE' : 'INSERT IGNORE')
+                    . ' INTO notifications (user_phone, title, body, send_id) VALUES (:phone, :title, :body, :send)',
+            ];
+            $last = null;
+            foreach ($attempts as $sql) {
+                try {
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    if ((int) $stmt->rowCount() > 0) {
+                        return 1;
+                    }
+                    $last = new RuntimeException('ردیف اعلان درج نشد (احتمالاً قید کلید خارجی روی user_phone).');
+                } catch (Throwable $e) {
+                    $last = $e;
+                }
+            }
+            throw $last ?: new RuntimeException('درج اعلان ناموفق بود.');
+        };
+
+        $failed = [];
         foreach ($phones as $phone) {
-            $ins->execute([
-                ':phone' => $phone,
-                ':title' => $title,
-                ':body'  => $body,
-                ':send'  => $sendId,
-            ]);
+            try {
+                $insertRow([
+                    ':phone' => $phone,
+                    ':title' => $title,
+                    ':body'  => $body,
+                    ':send'  => $sendId,
+                ]);
+            } catch (Throwable $rowError) {
+                $failed[] = $phone . ' (' . $rowError->getMessage() . ')';
+                error_log('[eplak-notify] درج اعلان برای ' . $phone . ' ناموفق: ' . $rowError->getMessage());
+            }
         }
         $pdo->commit();
+
+        if ($failed && count($failed) === count($phones)) {
+            /* هیچ گیرنده‌ای ثبت نشد → مدیر باید علت را ببیند، نه پیام «موفق» */
+            throw new RuntimeException('ثبت اعلان برای هیچ‌یک از گیرندگان انجام نشد. نمونه‌ی خطا: ' . $failed[0]);
+        }
+        if ($failed) {
+            error_log('[eplak-notify] ' . count($failed) . ' ردیف اعلان درج نشد: ' . implode(' | ', array_slice($failed, 0, 5)));
+        }
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw $e;
     }
 

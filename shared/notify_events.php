@@ -32,10 +32,119 @@ function eplakNotifyNormalizePhone(string $phone): string
     $en = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
     $p  = str_replace($ar, $en, str_replace($fa, $en, trim($phone)));
     $p  = preg_replace('/[^0-9+]/', '', $p) ?? '';
+    if (strpos($p, '00') === 0) {
+        $p = substr($p, 2);   /* 00989121112233 → 989121112233 */
+    }
     if (preg_match('/^\+?98(9\d{9})$/', $p, $m) || preg_match('/^(9\d{9})$/', $p, $m)) {
         return '0' . $m[1];
     }
     return $p;
+}
+
+/**
+ * درج یک ردیف اعلان با چند لایه‌ی محافظت.
+ *
+ * چرا این تابع جدا شده است؟ روی هاست‌های واقعی دو چیز باعث می‌شد درج اعلان
+ * بی‌صدا شکست بخورد و هیچ اعلانی (نه در فهرست اپ، نه روی گوشی) دیده نشود:
+ *   ۱) دیتابیس‌های قدیمی روی notifications.user_phone یک FOREIGN KEY به
+ *      users.phone داشتند. اعلان‌های گروهی با user_phone='all' ذخیره می‌شوند
+ *      و این ردیف در users وجود ندارد؛ پس INSERT خطای قید می‌داد. در
+ *      sendNotification پنل، این خطا کل تراکنش را برمی‌گرداند و هیچ کاربری
+ *      اعلان نمی‌گرفت.
+ *   ۲) جدول‌هایی که با utf8 سه‌بایتی ساخته شده‌اند، ایموجی چهاربایتی (مثل 📣)
+ *      را نمی‌پذیرند.
+ *
+ * ترتیب تلاش‌ها:
+ *   INSERT عادی → (در صورت خطای نویسه) بدون ایموجی چهاربایتی → INSERT IGNORE
+ *   (محرومیت کلید خارجی در MySQL با IGNORE نادیده گرفته می‌شود تا بقیه‌ی
+ *   گیرندگان اعلان را از دست ندهند) → ترکیب هر دو.
+ *
+ * @return int شناسه‌ی ردیف تازه (۰ یعنی هیچ ردیفی درج نشد)
+ * @throws Throwable فقط وقتی هیچ‌کدام از تلاش‌ها جواب ندهد
+ */
+function eplakNotificationInsert(PDO $pdo, string $phone, string $title, string $body): int
+{
+    $sqlite = function_exists('eplakIsSqlite') && eplakIsSqlite($pdo);
+    $lastError = null;
+
+    /* دستورهای کامل و صریح؛ بر اساس ستون‌های واقعیِ همین دیتابیس.
+       روی بعضی هاست‌های قدیمی ستون read_flag وجود ندارد و INSERT با
+       «Unknown column 'read_flag'» شکست می‌خورد (همان باگ «اعلان ساخته نمی‌شود»).
+       در آن حالت همان درج بدون آن ستون انجام می‌شود. */
+    $hasReadColumn = !function_exists('eplakTableHasColumn')
+        || eplakTableHasColumn($pdo, 'notifications', 'read_flag');
+    if ($hasReadColumn) {
+        $insertPlain = 'INSERT INTO notifications (user_phone, title, body, read_flag) VALUES (:phone, :title, :body, 0)';
+        $insertIgnore = $sqlite
+            ? 'INSERT OR IGNORE INTO notifications (user_phone, title, body, read_flag) VALUES (:phone, :title, :body, 0)'
+            : 'INSERT IGNORE INTO notifications (user_phone, title, body, read_flag) VALUES (:phone, :title, :body, 0)';
+    } else {
+        $insertPlain = 'INSERT INTO notifications (user_phone, title, body) VALUES (:phone, :title, :body)';
+        $insertIgnore = $sqlite
+            ? 'INSERT OR IGNORE INTO notifications (user_phone, title, body) VALUES (:phone, :title, :body)'
+            : 'INSERT IGNORE INTO notifications (user_phone, title, body) VALUES (:phone, :title, :body)';
+    }
+
+    $attempts = [
+        ['sql' => $insertPlain,  'text' => 'as-is'],
+        ['sql' => $insertIgnore, 'text' => 'as-is'],
+    ];
+    $safeTitle = function_exists('eplakStripAstralChars') ? eplakStripAstralChars($title) : $title;
+    $safeBody  = function_exists('eplakStripAstralChars') ? eplakStripAstralChars($body) : $body;
+    if ($safeTitle !== $title || $safeBody !== $body) {
+        /* ایموجی چهاربایتی دارد؛ این دو حالت هم امتحان می‌شوند */
+        $attempts[] = ['sql' => $insertPlain,  'text' => 'stripped'];
+        $attempts[] = ['sql' => $insertIgnore, 'text' => 'stripped'];
+    }
+
+    foreach ($attempts as $attempt) {
+        $useTitle = $attempt['text'] === 'stripped' ? $safeTitle : $title;
+        $useBody  = $attempt['text'] === 'stripped' ? $safeBody  : $body;
+        try {
+            /* دستور تازه در هر تلاش (اجرای دوباره‌ی دستور خطادار روی بعضی درایورها
+               خطای «API misuse» می‌دهد) */
+            $stmt = $pdo->prepare($attempt['sql']);
+            $stmt->execute([':phone' => $phone, ':title' => $useTitle, ':body' => $useBody]);
+            /* rowCount معیار درست «درج شد یا نه» است؛ در MySQL با INSERT IGNORE
+               ردیفی که قید را نقض کند بی‌صدا رد می‌شود (lastInsertId صفر می‌ماند) */
+            if ((int) $stmt->rowCount() > 0) {
+                if ($attempt['text'] === 'stripped') {
+                    error_log('[eplak-notify-event] اعلان بدون ایموجی چهاربایتی ذخیره شد (جدول utf8 سه‌بایتی).');
+                }
+                return (int) $pdo->lastInsertId();
+            }
+            /* IGNORE ردیف را رد کرده است (مثلاً قید کلید خارجی روی user_phone) */
+            $lastError = new RuntimeException('درج اعلان با INSERT IGNORE رد شد (احتمالاً قید کلید خارجی روی user_phone).');
+        } catch (Throwable $e) {
+            $lastError = $e;
+        }
+    }
+
+    throw $lastError ?: new RuntimeException('درج اعلان ناموفق بود.');
+}
+
+/**
+ * آیا برای این شماره/کد پیگیری از قبل اعلانی ساخته شده است؟
+ *
+ * کاربرد: مسیر «درخواست تکراری» در api/reports.php. اگر گزارش قبلاً ساخته شده
+ * ولی اعلانش (به هر دلیلی) ثبت نشده باشد، همان اعلان یک‌بار ساخته می‌شود؛
+ * ولی اگر اعلان هست، دوباره ساخته نمی‌شود (اعلان تکراری در فهرست کاربر).
+ */
+function eplakNotifyExistsForCode(PDO $pdo, string $phone, string $code): bool
+{
+    $phone = eplakNotifyNormalizePhone($phone);
+    $code  = trim($code);
+    if ($phone === '' || $code === '') {
+        return false;
+    }
+    try {
+        $stmt = $pdo->prepare('SELECT id FROM notifications WHERE user_phone = :p AND (title LIKE :c OR body LIKE :c2) LIMIT 1');
+        $stmt->execute([':p' => $phone, ':c' => '%' . $code . '%', ':c2' => '%' . $code . '%']);
+        return (bool) $stmt->fetchColumn();
+    } catch (Throwable $e) {
+        /* در بدترین حالت «هست» فرض می‌کنیم تا اعلان تکراری ساخته نشود */
+        return true;
+    }
 }
 
 /**
@@ -65,26 +174,7 @@ function eplakNotifyUser(PDO $pdo, string $phone, string $title, string $body, a
 
     /* ۱) ذخیره در جدول اعلان‌ها (برای فهرست داخل اپ و سایت) */
     try {
-        $stmt = $pdo->prepare('INSERT INTO notifications (user_phone, title, body, read_flag) VALUES (:phone, :title, :body, 0)');
-        try {
-            $stmt->execute([':phone' => $phone, ':title' => $title, ':body' => $body]);
-        } catch (Throwable $first) {
-            /* اگر جدول با utf8 سه‌بایتی ساخته شده باشد، ایموجی چهاربایتی (مثل 📣 در
-               عنوان یا 👍 در متن پاسخ مدیر) ذخیره نمی‌شود و کل اعلان بی‌صدا از بین
-               می‌رفت. یک‌بار بدون آن نویسه‌ها دوباره تلاش می‌کنیم. */
-            $safeTitle = eplakStripAstralChars($title);
-            $safeBody  = eplakStripAstralChars($body);
-            if ($safeTitle === $title && $safeBody === $body) {
-                throw $first;
-            }
-            error_log('[eplak-notify-event] ذخیره‌ی اعلان با ایموجی ناموفق بود؛ بدون ایموجی ذخیره شد: ' . $first->getMessage());
-            $title = $safeTitle;
-            $body  = $safeBody;
-            /* دستور تازه (اجرای دوباره‌ی دستورِ خطادار روی بعضی درایورها خطای «API misuse» می‌دهد) */
-            $retry = $pdo->prepare('INSERT INTO notifications (user_phone, title, body, read_flag) VALUES (:phone, :title, :body, 0)');
-            $retry->execute([':phone' => $phone, ':title' => $title, ':body' => $body]);
-        }
-        $out['id'] = (int) $pdo->lastInsertId();
+        $out['id'] = eplakNotificationInsert($pdo, $phone, $title, $body);
         $out['ok'] = true;
     } catch (Throwable $e) {
         $out['error'] = $e->getMessage();
@@ -126,6 +216,31 @@ function eplakNotifyUser(PDO $pdo, string $phone, string $title, string $body, a
             error_log('[eplak-notify-event] ارسال فوری فایربیس ناموفق: ' . $e->getMessage());
             $out['push'] = ['outcome' => 'failed', 'devices' => 0, 'sent' => 0, 'failed' => 0,
                             'error' => $e->getMessage(), 'hint' => 'خطای داخلی هنگام ارسال اعلان گوشی.'];
+        }
+    }
+
+    /* ۳) اگر اعلان سیستمی از مسیر فایربیس نرفت (کلید فایربیس تنظیم نشده، سرور به
+          گوگل نمی‌رسد، یا کاربر با مرورگر/PWA وارد شده)، همان پیام از مسیر
+          «اعلان پس‌زمینه‌ی مرورگر» (Web Push) فرستاده می‌شود تا کاربری که اپش
+          بسته است هم خبر بگیرد. قبلاً این مسیر فقط برای «پاسخ مدیر» بود و
+          اعلان «درخواست شما ثبت شد» روی گوشی نمی‌رسید. */
+    if (empty($out['pushed']) && function_exists('eplakPushNotifyPhone')) {
+        try {
+            $push = eplakPushNotifyPhone($pdo, $phone, $title, $body, [
+                'url'  => 'index.html#screen-notifications',
+                'tag'  => 'eplak-' . ($extra['kind'] ?? 'event') . '-' . ($extra['code'] ?? $out['id']),
+                'kind' => (string) ($extra['kind'] ?? ''),
+            ]);
+            if (((int) ($push['sent'] ?? 0)) > 0) {
+                $out['pushed'] = true;
+                $out['push'] = array_merge($out['push'] ?? [], [
+                    'outcome' => 'sent_web',
+                    'sent'    => (int) $push['sent'],
+                    'hint'    => '',
+                ]);
+            }
+        } catch (Throwable $e) {
+            error_log('[eplak-notify-event] پوش مرورگر ناموفق: ' . $e->getMessage());
         }
     }
 

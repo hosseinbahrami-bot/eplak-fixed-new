@@ -9,6 +9,11 @@
 #  چه چیزی آزمایش می‌شود؟
 #    syntax     → همه‌ی فایل‌های PHP و JS از نظر نحوی سالم‌اند
 #    notify     → «خوانده شدن» اعلان برای هر کاربر جدا، پنل درست نشان می‌دهد
+#    notifye2e  → «سرتاسریِ اعلان با PHP واقعی (php-wasm)»: ثبت درخواست در اپ →
+#                 دیدن همان اعلان در فهرست خودِ کاربر؛ قالب‌های شماره‌ی گوشی؛ ارسال
+#                 از پنل (تکی/گروهی)؛ دیتابیس قدیمی با قید خارجی یا بدون send_id؛
+#                 دیتابیس بدون ستون send_id؛ ثبت تکراری (ساخته نشدن اعلان تکراری)
+#                 و یکسان بودن کد پیگیریِ ثبت/فهرست/متن اعلان
 #    app        → درخواست‌های اپ (خوانده‌شده، اعلان سیستمی، ثبت توکن فایربیس)
 #    otp        → ارسال OTP آموت، اعتبارسنجی سمت سرور، انقضا و محدودیت تلاش/ارسال
 #    pushcrypto → رمزنگاری اعلان مرورگر و امضای VAPID
@@ -95,7 +100,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "syntax" ]; then
   run_step "بررسی نحوی JS"  node "$WORK/js-syntax.mjs"  "$ROOT"
 fi
 
-for t in notify app pushcrypto fcm backend security online geo upload tiles push places placesadmin otp ios pwa; do
+for t in notify notifye2e app pushcrypto fcm backend security online geo upload tiles push places placesadmin otp ios pwa; do
   if [ "$TARGET" = "all" ] || [ "$TARGET" = "$t" ]; then
     if [ -f "$WORK/$t.test.mjs" ]; then
       run_step "آزمون $t" node "$WORK/$t.test.mjs"

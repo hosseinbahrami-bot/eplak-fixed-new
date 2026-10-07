@@ -396,7 +396,7 @@ ok('کش‌باستر فایل‌های تغییر‌یافته به‌روز ش
   /core\/storage\.js\?v=21/.test(indexHtml) && /modules\/reports\.js\?v=27/.test(indexHtml)
   && /assets\/js\/ep-camera\.js\?v=2/.test(indexHtml)
   && /ep-map\.js\?v=4/.test(indexHtml) && /core\/router\.js\?v=14/.test(indexHtml)
-  && /assets\/css\/style\.css\?v=91/.test(indexHtml)
+  && /assets\/css\/style\.css\?v=93/.test(indexHtml)
   && /assets\/js\/icons\.js\?v=13/.test(indexHtml)
   && /core\/state\.js\?v=12/.test(indexHtml) && /core\/i18n\.js\?v=15/.test(indexHtml)
   && /modules\/profile\.js\?v=12/.test(indexHtml) && /modules\/services\.js\?v=13/.test(indexHtml)
