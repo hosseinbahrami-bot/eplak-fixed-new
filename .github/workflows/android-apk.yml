@@ -91,11 +91,16 @@ jobs:
           set -euo pipefail
           cp android-app/app/build/outputs/apk/debug/app-debug.apk "$APK_NAME"
           sha256sum "$APK_NAME" | tee "$APK_NAME.sha256"
+          SIZE="$(du -h "$APK_NAME" | cut -f1 | tr -d ' ')"
+          SHA="$(cut -d' ' -f1 "$APK_NAME.sha256")"
+          VER="$(grep -m1 "versionName" android-app/app/build.gradle | sed "s/.*'\(.*\)'.*/\1/")"
           {
-            echo "APK_SIZE=$(du -h "$APK_NAME" | cut -f1 | tr -d ' ')"
-            echo "APK_SHA=$(cut -d' ' -f1 "$APK_NAME.sha256")"
-            echo "APK_VERSION=$(grep -m1 "versionName" android-app/app/build.gradle | sed "s/.*'\(.*\)'.*/\1/")"
+            echo "APK_SIZE=$SIZE"
+            echo "APK_SHA=$SHA"
+            echo "APK_VERSION=$VER"
           } >> "$GITHUB_ENV"
+          # لاگ کامل اجرا همیشه قابل دانلود نیست؛ پس نتیجه‌ی ساخت در annotation هم می‌آید.
+          echo "::notice title=APK::نسخه‌ی $VER · حجم $SIZE · sha256=$SHA · شاخه‌ی $GITHUB_REF_NAME · کامیت ${GITHUB_SHA:0:7}"
 
       # ── بازرسی APK ────────────────────────────────────────────────────────
       # «فایل وبِ داخل APK» باید دقیقاً همان فایلِ مخزن باشد. اگر این بررسی رد
@@ -121,8 +126,17 @@ jobs:
           echo "APK_WEB_FILES=$FILES" >> "$GITHUB_ENV"
           echo "✅ $FILES فایل وب داخل APK است"
           # کش‌باسترِ live.js هم باید بالا رفته باشد (وگرنه اپ همان فایل قدیمی را می‌خواند)
-          grep -o 'modules/live.js?v=[0-9]*' apk-check/assets/index.html | head -1
-          [ "$MISSING" -eq 0 ] && [ "$DIFF" -eq 0 ] || exit 1
+          CACHE="$(grep -o 'modules/live.js?v=[0-9]*' apk-check/assets/index.html | head -1 || true)"
+          if [ -z "$CACHE" ]; then
+            echo "::error::کش‌باستر modules/live.js در index.htmlِ داخل APK پیدا نشد"
+            exit 1
+          fi
+          echo "✅ کش‌باستر داخل APK: $CACHE"
+          if [ "$MISSING" -ne 0 ] || [ "$DIFF" -ne 0 ]; then
+            echo "::error::بازرسی APK رد شد: $MISSING فایل داخل APK نیست و $DIFF فایل با مخزن فرق دارد (APK قدیمی/ناقص است)"
+            exit 1
+          fi
+          echo "::notice title=بازرسی APK::$FILES فایل وب داخل APK · $CACHE · همه با مخزن یکی‌اند"
 
       # ── شاخص همگام‌سازی اماکنِ پنل با اپ ──────────────────────────────────
       # اپ «اماکن شهری» را از دو منبع می‌گیرد:

@@ -45,14 +45,42 @@ jobs:
       - name: دریافت کد
         uses: actions/checkout@v4
 
-      - name: انتخاب جدیدترین Xcode نصب‌شده
+      # «جدیدترین Xcode» به‌تنهایی کافی نیست: باید شبیه‌سار iPhone «در دسترس»
+      # هم داشته باشد. پس جدیدترین Xcode ای انتخاب می‌شود که iPhone دارد.
+      - name: انتخاب Xcode (جدیدترین، با شبیه‌سار iPhone در دسترس)
         run: |
           set -euo pipefail
-          LATEST="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
-          [ -n "$LATEST" ] || { echo "❌ هیچ Xcode پیدا نشد"; exit 1; }
-          sudo xcode-select -s "$LATEST/Contents/Developer"
+          CHOSEN=""
+          for X in $(ls -d /Applications/Xcode*.app 2>/dev/null | sort -Vr); do
+            if DEVELOPER_DIR="$X/Contents/Developer" xcrun simctl list devices available 2>/dev/null | grep -q iPhone; then
+              CHOSEN="$X"; break
+            fi
+            echo "ℹ️  $X شبیه‌سار iPhone در دسترس ندارد"
+          done
+          if [ -z "$CHOSEN" ]; then
+            CHOSEN="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
+            [ -n "$CHOSEN" ] || { echo "::error::هیچ Xcode پیدا نشد"; exit 1; }
+          fi
+          sudo xcode-select -s "$CHOSEN/Contents/Developer"
+          echo "✅ Xcode: $CHOSEN"
           xcodebuild -version
-          xcrun simctl list runtimes | grep -i ios || true
+          xcrun simctl list runtimes 2>&1 | grep -i ios || echo "::warning::رانتایم iOS فهرست نشد"
+
+      # اگر روی این runner هیچ شبیه‌سار iPhone نباشد (محدودیت محیط، نه ایراد کد)،
+      # بقیه‌ی مراحل «بدون خطا» رد می‌شوند و راهنما در خلاصه می‌آید.
+      - name: بررسی وجود شبیه‌سار iPhone
+        id: sim
+        run: |
+          set -uo pipefail
+          if xcrun simctl list devices available 2>/dev/null | grep -q iPhone; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            xcrun simctl list devices available 2>/dev/null | grep -i iphone | head -5
+            echo "✅ شبیه‌سار iPhone در دسترس است"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::روی این runner هیچ شبیه‌سار iPhone در دسترس نیست؛ آزمون Safari رد شد (بدون خطا)."
+            xcrun simctl list runtimes 2>&1 || true
+          fi
 
       # اگر هاست خاموش باشد، اجرا قرمز نمی‌شود (این یک «گزارش» است، نه دروازه).
       - name: بررسی در دسترس بودن سایت زنده
@@ -66,6 +94,7 @@ jobs:
           fi
 
       - name: اجرای آزمون Safari (tools/safari-pwa.sh)
+        if: steps.sim.outputs.available == 'true'
         run: |
           set -euo pipefail
           bash tools/safari-pwa.sh "$PWA_LIVE_URL" "$EVIDENCE_DIR"
@@ -80,6 +109,7 @@ jobs:
             echo "| --- | --- |"
             echo "| آدرس سنجیده‌شده | \`$PWA_LIVE_URL\` |"
             echo "| شبیه‌ساز | \`$(cat $EVIDENCE_DIR/simulator.txt 2>/dev/null || echo '—')\` |"
+            echo "| اجرا شد؟ | ${{ steps.sim.outputs.available == 'true' && 'بله — عکس‌ها گرفته شد' || 'نه — بدون خطا رد شد (شبیه‌سار iPhone روی runner نبود)' }} |"
             echo "| عکس‌ها | \`$EVIDENCE_DIR/safari-30s.png\` · \`safari-60s.png\` · \`safari-90s.png\` |"
             echo "| شاخه / کامیت | \`${GITHUB_REF_NAME}\` / \`${GITHUB_SHA}\` |"
             echo

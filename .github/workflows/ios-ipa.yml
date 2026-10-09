@@ -56,15 +56,28 @@ jobs:
       - name: دریافت کد
         uses: actions/checkout@v4
 
-      - name: انتخاب جدیدترین Xcode نصب‌شده
+      # «جدیدترین Xcode» به‌تنهایی کافی نیست: آزمون دودی به یک شبیه‌سار iPhone
+      # «در دسترس» نیاز دارد. پس از میان Xcode های نصب‌شده، جدیدترینی انتخاب
+      # می‌شود که واقعاً شبیه‌سار iPhone دارد.
+      - name: انتخاب Xcode (جدیدترین، با شبیه‌سار iPhone در دسترس)
         run: |
           set -euo pipefail
-          LATEST="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
-          [ -n "$LATEST" ] || { echo "❌ هیچ Xcode پیدا نشد"; exit 1; }
-          sudo xcode-select -s "$LATEST/Contents/Developer"
-          echo "✅ Xcode: $LATEST"
+          CHOSEN=""
+          for X in $(ls -d /Applications/Xcode*.app 2>/dev/null | sort -Vr); do
+            if DEVELOPER_DIR="$X/Contents/Developer" xcrun simctl list devices available 2>/dev/null | grep -q iPhone; then
+              CHOSEN="$X"; break
+            fi
+            echo "ℹ️  $X شبیه‌سار iPhone در دسترس ندارد"
+          done
+          if [ -z "$CHOSEN" ]; then
+            CHOSEN="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
+            [ -n "$CHOSEN" ] || { echo "::error::هیچ Xcode پیدا نشد"; exit 1; }
+            echo "::warning::هیچ Xcode شبیه‌سار iPhone در دسترس نداشت؛ $CHOSEN انتخاب شد (آزمون دودی رد می‌شود)"
+          fi
+          sudo xcode-select -s "$CHOSEN/Contents/Developer"
+          echo "✅ Xcode: $CHOSEN"
           xcodebuild -version
-          xcrun simctl list runtimes | grep -i ios || true
+          xcrun simctl list runtimes 2>&1 | grep -i ios || echo "::warning::رانتایم iOS فهرست نشد"
 
       - name: همگام‌سازی فایل‌های وب داخل پروژه‌ی iOS (Eplak/Web)
         run: bash ios-app/sync-web.sh
@@ -121,6 +134,9 @@ jobs:
       # ── بازرسی IPA ────────────────────────────────────────────────────────
       # «بازرسی IPA» یعنی مطمئن شویم چیزی که منتشر می‌شود واقعاً اپ است:
       # فایل‌های وبِ داخلش با مخزن یکی است، شناسه‌ی بسته و معماری درست است.
+      # نکته: manifest.json و sw.js عمداً داخل اپ نمی‌روند (مثل اپ اندروید؛
+      # سرویس‌ورکر روی file:// کار نمی‌کند) — پس از فهرست «منابع لازم» بیرون‌اند
+      # و نبودنشان خودش یک بررسی مثبت است.
       - name: بازرسی IPA (فایل‌های وب = مخزن، شناسه، معماری)
         run: |
           set -uo pipefail
@@ -128,34 +144,57 @@ jobs:
           unzip -q eplak-app-unsigned.ipa -d ipa-check
           APP="ipa-check/Payload/Eplak.app"
           FAIL=0
-          say() { if [ "$1" = "0" ]; then echo "✅ $2"; else echo "❌ $2"; FAIL=1; fi; }
+          ok()   { echo "✅ $1"; }
+          bad()  { echo "::error::بازرسی IPA: $1"; echo "❌ $1"; FAIL=1; }
+          info() { echo "::notice title=بازرسی IPA::$1"; echo "ℹ️  $1"; }
 
-          [ -f "$APP/Info.plist" ]; say $? "Info.plist داخل بسته هست"
-          [ -f "$APP/Web/index.html" ]; say $? "Web/index.html داخل بسته هست"
-          [ -d "$APP/Web/modules" ] && [ -d "$APP/Web/core" ]; say $? "پوشه‌های core و modules داخل بسته‌اند"
+          [ -f "$APP/Info.plist" ] && ok "Info.plist داخل بسته هست" || bad "Info.plist داخل بسته نیست"
+          [ -f "$APP/Web/index.html" ] && ok "Web/index.html داخل بسته هست" || bad "Web/index.html داخل بسته نیست"
+          { [ -d "$APP/Web/modules" ] && [ -d "$APP/Web/core" ]; } && ok "پوشه‌های core و modules داخل بسته‌اند" || bad "core یا modules داخل بسته نیست"
+
+          # سرویس‌ورکر/مانیفست روی file:// کار نمی‌کنند ⇒ نباید داخل اپ باشند
+          if [ -e "$APP/Web/manifest.json" ] || [ -e "$APP/Web/sw.js" ]; then
+            bad "manifest.json یا sw.js داخل بسته‌ی وب است (سرویس‌ورکر روی file:// کار نمی‌کند)"
+          else
+            ok "manifest.json و sw.js داخل بسته‌ی وب نیستند (درست، مثل اپ اندروید)"
+          fi
 
           BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" 2>/dev/null || echo '')"
-          [ "$BUNDLE_ID" = "ir.eplak.app" ]; say $? "شناسه‌ی بسته ir.eplak.app است (بود: ${BUNDLE_ID:-—})"
+          if [ "$BUNDLE_ID" = "ir.eplak.app" ]; then ok "شناسه‌ی بسته ir.eplak.app است"; else bad "شناسه‌ی بسته ir.eplak.app نیست (بود: ${BUNDLE_ID:-—})"; fi
           MIN_OS="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist" 2>/dev/null || echo '?')"
-          echo "ℹ️ MinimumOSVersion = $MIN_OS"
+          info "MinimumOSVersion = $MIN_OS"
 
-          ARCH="$(lipo -archs "$APP/Eplak" 2>/dev/null || echo '?')"
-          case "$ARCH" in *arm64*) say 0 "معماری arm64 است ($ARCH)" ;; *) say 1 "معماری arm64 نیست ($ARCH)" ;; esac
+          ARCH="$(lipo -archs "$APP/Eplak" 2>/dev/null || file "$APP/Eplak" 2>/dev/null | sed 's/.*: //' || echo '?')"
+          case "$ARCH" in
+            *arm64*) ok "معماری arm64 است ($ARCH)" ;;
+            *)       bad "معماری arm64 نیست ($ARCH)" ;;
+          esac
 
-          # هر منبع محلیِ index.html باید داخل بسته باشد (وگرنه صفحه سفید می‌شود)
+          # هر منبع محلیِ index.html باید داخل بسته باشد (وگرنه صفحه سفید می‌شود).
+          # manifest.json / sw.js / javascript: بیرون گذاشته می‌شوند (عمداً بسته نمی‌شوند).
           MISSING=0; CHECKED=0
           for ref in $(grep -oE '(src|href)="[^"]+"' "$APP/Web/index.html" | sed 's/.*="//; s/"$//' \
-                       | grep -vE '^(https?:|//|data:|blob:|#|mailto:)' | sort -u); do
+                       | grep -vE '^(https?:|//|data:|blob:|#|mailto:|javascript:)' \
+                       | grep -vE '^(manifest\.json|sw\.js)$' | sort -u); do
             ref="${ref%%\?*}"                      # کش‌باستر (?v=16) را جدا کن
             CHECKED=$((CHECKED + 1))
             [ -e "$APP/Web/$ref" ] || { echo "   ❌ $ref داخل بسته نیست"; MISSING=$((MISSING + 1)); }
           done
-          [ "$MISSING" -eq 0 ]; say $? "همه‌ی $CHECKED منبع محلیِ index.html داخل بسته هستند"
+          if [ "$MISSING" -eq 0 ]; then ok "همه‌ی $CHECKED منبع محلیِ index.html داخل بسته هستند"
+          else bad "$MISSING منبع محلیِ index.html داخل بسته نیست (صفحه سفید/خراب می‌شود)"; fi
+
+          # نگهبانِ تعمیرِ اعلان‌ها: همان چیزی که قبلاً روی هاست/اپ قدیمی مانده بود
+          if grep -q 'notifServerNotice' "$APP/Web/modules/live.js" 2>/dev/null; then
+            ok "کدِ نمایش وضعیت اعلان‌ها (notifServerNotice) داخل بسته هست"
+          else
+            bad "modules/live.js داخل بسته کدِ نمایش اعلان‌ها را ندارد (بسته قدیمی است)"
+          fi
 
           WEB_FILES=$(find "$APP/Web" -type f | wc -l | tr -d ' ')
           echo "IPA_WEB_FILES=$WEB_FILES" >> "$GITHUB_ENV"
-          echo "ℹ️ $WEB_FILES فایل وب داخل IPA است"
-          [ "$FAIL" -eq 0 ] || { echo "❌ بازرسی IPA رد شد"; exit 1; }
+          info "$WEB_FILES فایل وب داخل IPA است · sha256=$IPA_SHA · حجم=$IPA_SIZE"
+
+          [ "$FAIL" -eq 0 ] || { echo "::error::بازرسی IPA رد شد — منتشر نمی‌شود"; exit 1; }
           echo "✅ بازرسی IPA کامل شد"
 
       - name: خلاصه‌ی اجرا
