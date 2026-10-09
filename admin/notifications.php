@@ -21,15 +21,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = '⚠️ دست‌کم یک کاربر را انتخاب کنید.';
     } else {
         try {
+            /* آرگومان هفتم «گزارش ارسال» را برمی‌گرداند: چند ردیف نوشته شد،
+               دیتابیس قدیمی بود (و در چه چیزی)، چند پوش/FCM رفت. با همین، اگر
+               اعلان در «حالت سازگار» رفته باشد به مدیر خبر می‌دهیم تا ساختار
+               دیتابیس را ترمیم کند؛ وگرنه خرابی بی‌صدا می‌ماند. */
+            $report = null;
             $count = sendNotification(
                 $pdo,
                 $title,
                 $body,
                 $target,
                 is_array($phones) ? $phones : [],
-                $_SESSION['admin_username'] ?? null
+                $_SESSION['admin_username'] ?? null,
+                $report
             );
-            eplakRedirect('notifications.php?sent=' . $count);
+            $query = 'notifications.php?sent=' . $count;
+            $degraded = array_values(array_filter((array) ($report['degraded'] ?? [])));
+            if ($degraded) {
+                $query .= '&degraded=' . rawurlencode(implode(',', array_slice($degraded, 0, 5)));
+            }
+            eplakRedirect($query);
         } catch (Throwable $e) {
             $message = '⚠️ خطا در ارسال: ' . $e->getMessage();
         }
@@ -38,6 +49,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $sends = getNotificationSends($pdo, 30);
 $sentCount = isset($_GET['sent']) ? (int)$_GET['sent'] : -1;
+/* پرچم‌های «حالت سازگار» از sendNotification — یعنی اعلان رفت، ولی دیتابیس
+   قدیمی است و باید ترمیم شود. */
+$degradedFlags = array_values(array_filter(array_map(
+    'trim',
+    explode(',', (string) ($_GET['degraded'] ?? ''))
+)));
+$degradedText = [
+    'no_send_id'                    => 'ستون <code>notifications.send_id</code> در دیتابیس نیست؛ اعلان‌ها ذخیره شدند ولی به «ارسال گروهی» گره نخوردند (صفحه‌ی گیرندگان از روی عنوان/متن پیدا می‌کند).',
+    'foreign_key'                   => 'کلید خارجی <code>user_phone → users(phone)</code> هنوز هست؛ اعلان عمومی به‌جای یک ردیف «برای همه»، برای هر کاربر جدا ذخیره شد.',
+    'no_emoji'                      => 'نویسه‌گان جدول اعلان‌ها سه‌بایتی (<code>utf8</code>) است؛ ایموجی‌ها برای اینکه کل اعلان رد نشود، حذف شدند.',
+    'no_read_flag'                  => 'ستون <code>read_flag</code> نیست؛ وضعیت خوانده‌شدن فقط در جدول رسیدها نگه داشته می‌شود.',
+    'no_notification_sends'         => 'جدول <code>notification_sends</code> ساخته نشده؛ «تاریخچه‌ی ارسال‌ها» برای این اعلان ثبت نشد.',
+    'broadcast_row_blocked'         => 'ردیف عمومی (<code>user_phone=&#039;all&#039;</code>) ذخیره نشد؛ به‌جایش برای هر کاربر ردیف شخصی ساخته شد (مهمان‌های واردنشده این اعلان را در فهرست نمی‌بینند).',
+    'fk_bypassed_for_broadcast'     => 'کلید خارجیِ دیتابیس برای همین ارسال موقتاً خاموش شد تا اعلان عمومی ذخیره شود (ترمیم دائم: حذف همان کلید خارجی).',
+];
 $pushSubscribers = eplakPushCount($pdo);
 $pushReady = eplakPushEnabled();
 require_once __DIR__ . '/../shared/fcm.php';
@@ -119,6 +145,23 @@ $fcmDevices = eplakFcmCount($pdo);
         <div class="alert alert-success" style="margin: 0 24px 16px;">
           <i class="fas fa-paper-plane"></i> اعلان با موفقیت برای <strong><?= $sentCount ?></strong> کاربر ارسال شد
           <span style="opacity:.85;">(این پیام داخل اپلیکیشن همه‌ی گیرندگان نمایش داده می‌شود. برای کسانی که اعلان گوشی را فعال کرده‌اند، به‌صورت نوتیفیکیشن سیستمی — حتی در حالت قفل — هم می‌رسد.)</span>
+        </div>
+      <?php endif; ?>
+
+      <?php if ($sentCount >= 0 && $degradedFlags): ?>
+        <div class="alert alert-warning" style="margin: 0 24px 16px;">
+          <i class="fas fa-triangle-exclamation"></i>
+          <strong>اعلان ارسال شد، ولی ساختار دیتابیس قدیمی است</strong>
+          <ul style="margin:8px 18px 0; line-height:1.9;">
+            <?php foreach ($degradedFlags as $flag): ?>
+              <li><?= $degradedText[$flag] ?? htmlspecialchars((string) $flag) ?></li>
+            <?php endforeach; ?>
+          </ul>
+          <p style="margin:10px 0 0;">
+            برای ترمیم قطعی: <a href="settings.php#schema"><strong>تنظیمات ← ساختار دیتابیس ← «بررسی و ترمیم ساختار دیتابیس»</strong></a>
+            یا اجرای یک‌باره‌ی <code>backend/fix-notifications-db.sql</code> در phpMyAdmin.
+            جزئیات کامل: <code>docs/NOTIFICATIONS_FA.md</code>
+          </p>
         </div>
       <?php endif; ?>
 

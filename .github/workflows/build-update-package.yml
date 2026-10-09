@@ -1,0 +1,201 @@
+# ============================================================================
+#  بسته‌ی به‌روزرسانی سایت — eplak-fixed-update.zip
+# ============================================================================
+#  چرا؟ پیش‌تر یک فایل zip «مانده» در مخزن نگه داشته می‌شد و با هر تغییر از کد
+#  عقب می‌افتاد (همان چیزی که باعث شد اعلان‌ها در اپ نشان داده نشوند: بسته‌ی
+#  روی هاست قدیمی‌تر از کد بود). حالا بسته «همیشه» از کدِ روزِ همان شاخه ساخته
+#  می‌شود؛ هیچ zip دستی در گیت نگهداری نمی‌شود.
+#
+#  چه کار می‌کند؟
+#    ۱) job «tests»  → آزمون‌های خودکار پروژه (tools/dev/run-regression.sh)
+#    ۲) job «package» → tools/build-update-package.sh + اثر انگشت sha256
+#                       + آپلود به‌عنوان Artifact (برای هر شاخه/PR)
+#                       + انتشار در ریلیز غلتان «latest-update» (فقط main)
+#
+#  آدرس همیشگی بسته (بدون نیاز به شماره‌ی نسخه):
+#    https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/latest-update/eplak-fixed-update.zip
+#
+#  هیچ secret لازم نیست: از خودِ GITHUB_TOKEN استفاده می‌شود.
+#  داخل بسته فقط «کد» است؛ data/ ، uploads/ ، shared/config.php ، backend/
+#  (dump دیتابیس با داده‌ی شخصی)، android-app/ ، ios-app/ و tools/ نمی‌روند.
+# ============================================================================
+
+name: بسته‌ی به‌روزرسانی سایت (eplak-fixed-update.zip)
+
+on:
+  push:
+    branches: [ main, 'arena/**' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write          # برای ساخت/به‌روزرسانی ریلیز «latest-update»
+
+concurrency:
+  group: update-package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PACKAGE: eplak-fixed-update.zip
+  RELEASE_TAG: latest-update
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # ۱) آزمون‌های خودکار — اگر قرمز شوند، بسته‌ی خراب منتشر نمی‌شود
+  # ──────────────────────────────────────────────────────────────────────────
+  tests:
+    name: آزمون‌های خودکار
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: آماده‌سازی Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # ابزار آزمون (php-parser، php-wasm، jsdom، yaml) را خودِ اسکریپت یک‌بار
+      # در پوشه‌ی کاریش نصب می‌کند؛ نیازی به npm install دستی نیست.
+      - name: اجرای آزمون‌ها
+        run: |
+          set -e
+          # هدف‌هایی که «الان» سبز هستند.
+          # places / ios / pwa عمداً اجرا نمی‌شوند: آن‌ها فایل‌های ورک‌فلوی
+          # .github/workflows/{android-apk,ios-ipa,pwa,pwa-safari}.yml را می‌خواهند
+          # که در این مخزن وجود ندارند (از مخزن قدیمی جا مانده‌اند). هر وقت آن
+          # ورک‌فلوها برگردند، این سه هدف هم به فهرست اضافه شوند.
+          for t in syntax notify notify-schema app backend online push pushcrypto fcm security geo upload tiles placesadmin otp; do
+            echo "::group::آزمون $t"
+            bash tools/dev/run-regression.sh "$t"
+            echo "::endgroup::"
+          done
+
+      - name: خلاصه‌ی آزمون‌ها
+        if: always()
+        run: |
+          {
+            echo "### آزمون‌های خودکار"
+            echo
+            echo "| هدف | نتیجه |"
+            echo "| --- | --- |"
+            echo "| syntax · notify · notify-schema · app · backend · online · push · pushcrypto · fcm · security · geo · upload · tiles · placesadmin · otp | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # ۲) ساخت بسته و انتشار
+  # ──────────────────────────────────────────────────────────────────────────
+  package:
+    name: ساخت و انتشار بسته
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: tests
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: ساخت بسته از کد روز
+        run: bash tools/build-update-package.sh
+
+      # نگهبانِ همین تعمیر: بسته‌ی منتشرشده باید «کدِ تعمیرشده‌ی اعلان‌ها» را
+      # داشته باشد؛ وگرنه همان اتفاق قبلی می‌افتد (بسته قدیمی روی هاست، اعلان
+      # در اپ دیده نمی‌شود).
+      - name: بررسی اینکه تعمیر اعلان‌ها داخل بسته است
+        run: |
+          set -e
+          check() {  # check <فایل داخل بسته> <الگو> <توضیح>
+            if unzip -p "$PACKAGE" "$1" | grep -q "$2"; then
+              echo "   ✅ $3"
+            else
+              echo "   ❌ $3 — بسته قدیمی است!"
+              exit 1
+            fi
+          }
+          check api/notifications.php      'eplakNotificationsSchema'      'api/notifications.php سازگار با دیتابیس قدیمی است'
+          check shared/bootstrap.php       'function eplakNotificationInsert' 'مسیر مشترک درج اعلان در بسته هست'
+          check shared/bootstrap.php       'function eplakFkRelaxBegin'     'دورزدن کلید خارجیِ مزاحم در بسته هست'
+          check shared/bootstrap.php       'function eplakReportCode'       'کد پیگیری یکدست در بسته هست'
+          check admin/includes/functions.php 'broadcast_row_blocked'        'ارسال گروهی با حالت سازگار در بسته هست'
+          check shared/notify_events.php   'eplakNotificationInsert'       'اعلان «ثبت درخواست» از مسیر مشترک می‌آید'
+          check modules/live.js            'setServerNotificationNotice'   'اپ پیام وضعیت سرور را نشان می‌دهد'
+          check shared/config.example.php  "'driver' => 'mysql'"           'الگوی فایل تنظیمات داخل بسته هست'
+
+      - name: اثر انگشت و مشخصات بسته
+        run: |
+          sha256sum "$PACKAGE" | tee "$PACKAGE.sha256"
+          SHA=$(cut -d' ' -f1 "$PACKAGE.sha256")
+          SIZE=$(du -h "$PACKAGE" | cut -f1 | tr -d ' ')
+          COUNT=$(unzip -Z1 "$PACKAGE" | wc -l | tr -d ' ')
+          {
+            echo "PACKAGE_SHA=$SHA"
+            echo "PACKAGE_SIZE=$SIZE"
+            echo "PACKAGE_FILES=$COUNT"
+            echo "PACKAGE_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$PACKAGE"
+          } >> "$GITHUB_ENV"
+          echo "بسته: $PACKAGE ($SIZE، $COUNT فایل)"
+          echo "sha256: $SHA"
+
+      - name: آپلود به‌عنوان Artifact (برای هر شاخه و PR)
+        uses: actions/upload-artifact@v4
+        with:
+          name: eplak-fixed-update
+          path: |
+            eplak-fixed-update.zip
+            eplak-fixed-update.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      # ریلیز «غلتان»: همیشه یک برچسب ثابت با تازه‌ترین بسته. چون برچسب ثابت
+      # است، آدرس دانلود هرگز عوض نمی‌شود و در راهنماها قابل نوشتن است.
+      - name: انتشار در ریلیز latest-update
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          NOTES_FILE=$(mktemp)
+          {
+            echo "تازه‌ترین بسته‌ی آپلود سایت، ساخته‌شده از کدِ روز به‌صورت خودکار."
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| شاخه | \`${GITHUB_REF_NAME}\` |"
+            echo "| کامیت | \`${GITHUB_SHA}\` |"
+            echo "| تاریخ ساخت (UTC) | $(date -u '+%Y-%m-%d %H:%M') |"
+            echo "| تعداد فایل | ${PACKAGE_FILES} |"
+            echo "| حجم | ${PACKAGE_SIZE} |"
+            echo "| sha256 | \`${PACKAGE_SHA}\` |"
+            echo
+            echo "### راه نصب"
+            echo "۱. فایل \`$PACKAGE\` را دانلود کنید."
+            echo "۲. در cPanel → File Manager، همان پوشه‌ای که سایت الان هست (مثلاً \`public_html/eplak-fixed\`)."
+            echo "۳. zip را **Extract** کنید و **Overwrite/جایگزینی** را بزنید."
+            echo "   ⚠️ فایل‌ها را از قبل پاک نکنید و به \`shared/config.php\`، \`data/\` و \`uploads/\` دست نزنید — داخل بسته نیستند و پاکشان کنید داده‌ها می‌روند."
+            echo "۴. اگر اعلان‌ها هنوز نمی‌آیند، یک‌بار \`backend/fix-notifications-db.sql\` را در phpMyAdmin اجرا کنید (کد خودش هم ترمیم می‌کند)."
+            echo
+            echo "راهنمای کامل: \`docs/DEPLOY_UPDATE_FA.md\`"
+          } > "$NOTES_FILE"
+
+          # اولین بار ریلیز را بساز؛ دفعه‌های بعد فقط فایل‌ها را جایگزین کن.
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$PACKAGE" "$PACKAGE.sha256" --clobber
+            gh release edit "$RELEASE_TAG" --notes-file "$NOTES_FILE"
+          else
+            gh release create "$RELEASE_TAG" "$PACKAGE" "$PACKAGE.sha256" \
+              --title "بسته‌ی به‌روزرسانی سایت (خودکار از کد روز)" \
+              --notes-file "$NOTES_FILE" \
+              --target "$GITHUB_SHA"
+          fi
+          rm -f "$NOTES_FILE"
+
+      - name: نوشتن آدرس دانلود در خلاصه‌ی اجرا
+        if: always()
+        run: |
+          {
+            echo "### بسته‌ی آپلود سایت"
+            echo
+            echo "- **Artifact همین اجرا:** \`eplak-fixed-update\` (بالا، بخش Artifacts)"
+            echo "- **آدرس همیشگی:** <${PACKAGE_URL:-https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$PACKAGE}>"
+            echo "- sha256: \`${PACKAGE_SHA:-—}\` · حجم: \`${PACKAGE_SIZE:-—}\` · فایل‌ها: \`${PACKAGE_FILES:-—}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

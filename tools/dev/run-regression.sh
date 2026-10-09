@@ -9,6 +9,10 @@
 #  چه چیزی آزمایش می‌شود؟
 #    syntax     → همه‌ی فایل‌های PHP و JS از نظر نحوی سالم‌اند
 #    notify     → «خوانده شدن» اعلان برای هر کاربر جدا، پنل درست نشان می‌دهد
+#    notify-schema → اعلان روی «دیتابیس قدیمیِ هاست»: بدون ستون send_id، با کلید
+#                 خارجی user_phone → users(phone) و نویسه‌گان utf8 سه‌بایتی.
+#                 ریشه‌ی باگِ «اعلان‌ها در اپ نشان داده نمی‌شود» و
+#                 «Unknown column 'send_id'» در پنل ادمین (۲۷ بررسی)
 #    app        → درخواست‌های اپ (خوانده‌شده، اعلان سیستمی، ثبت توکن فایربیس)
 #    otp        → ارسال OTP آموت، اعتبارسنجی سمت سرور، انقضا و محدودیت تلاش/ارسال
 #    pushcrypto → رمزنگاری اعلان مرورگر و امضای VAPID
@@ -95,7 +99,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "syntax" ]; then
   run_step "بررسی نحوی JS"  node "$WORK/js-syntax.mjs"  "$ROOT"
 fi
 
-for t in notify app pushcrypto fcm backend security online geo upload tiles push places placesadmin otp ios pwa; do
+for t in notify notify-schema app pushcrypto fcm backend security online geo upload tiles push places placesadmin otp ios pwa; do
   if [ "$TARGET" = "all" ] || [ "$TARGET" = "$t" ]; then
     if [ -f "$WORK/$t.test.mjs" ]; then
       run_step "آزمون $t" node "$WORK/$t.test.mjs"

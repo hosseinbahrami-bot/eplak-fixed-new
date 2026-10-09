@@ -6,11 +6,11 @@
 
 | فایل | توضیح | لینک دانلود |
 |---|---|---|
-| 📱 **اپ اندروید** | فایل نصب گوشی (`eplak-app.apk`) — نسخه‌ی آخر همیشه: [صفحه‌ی Releases](https://github.com/hosseinbahrami-bot/eplak-fixed/releases) | **[دانلود APK](https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk)** |
-| 🍎 **اپ iOS (آیفون)** | فایل نصب بدون امضا (`eplak-app-unsigned.ipa`) — با Sideloadly / AltStore / Xcode و Apple ID خودتان نصب می‌شود؛ راهنما: `docs/IOS_PWA_FA.md` | **[دانلود `eplak-app-unsigned.ipa`](https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app-unsigned.ipa)** |
+| 📱 **اپ اندروید** | فایل نصب گوشی (`eplak-app.apk`) — نسخه‌ی آخر همیشه: [صفحه‌ی Releases](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases) | **[دانلود APK](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk)** |
+| 🍎 **اپ iOS (آیفون)** | فایل نصب بدون امضا (`eplak-app-unsigned.ipa`) — با Sideloadly / AltStore / Xcode و Apple ID خودتان نصب می‌شود؛ راهنما: `docs/IOS_PWA_FA.md` | **[دانلود `eplak-app-unsigned.ipa`](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app-unsigned.ipa)** |
 | 🌍 **PWA (آیفون و اندروید) — بدون فایل** | فقط یک لینک: آیفون ← Safari ← «افزودن به صفحه اصلی»؛ اندروید ← Chrome ← «نصب». لینک مستقیم روی GitHub Pages (پس از یک‌بار روشن کردن Pages؛ `docs/IOS_PWA_FA.md` بخش ۳-۱) — و خودِ سایت هاست هم همین الان یک PWA است: `https://eplak.ir/eplak-fixed/` | **[https://hosseinbahrami-bot.github.io/eplak-fixed/](https://hosseinbahrami-bot.github.io/eplak-fixed/)** |
-| 🌐 **بسته‌ی سایت و پنل** | برای آپلود روی `eplak.ir/eplak-fixed` | **[دانلود `eplak-fixed-update.zip`](https://github.com/hosseinbahrami-bot/eplak-fixed/raw/main/eplak-fixed-update.zip)** |
-| 🗂️ **همه‌ی نسخه‌ها** | صفحه‌ی Releases گیت‌هاب | [صفحه‌ی Releases](https://github.com/hosseinbahrami-bot/eplak-fixed/releases/tag/v2.0-eplak-update) |
+| 🌐 **بسته‌ی سایت و پنل** | برای آپلود روی `eplak.ir/eplak-fixed` — **خودکار از کدِ روز ساخته می‌شود** (ورک‌فلوی `.github/workflows/build-update-package.yml`)؛ هیچ zip قدیمی‌ای در مخزن نگه داشته نمی‌شود | **[دانلود `eplak-fixed-update.zip`](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/latest-update/eplak-fixed-update.zip)** |
+| 🗂️ **همه‌ی نسخه‌ها** | صفحه‌ی Releases گیت‌هاب | [صفحه‌ی Releases](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/tag/v2.0-eplak-update) |
 
 **نصب اپ روی گوشی:** فایل APK را دانلود کنید → اجازه‌ی «نصب از منابع نامشخص» را بدهید → نصب.
 اگر پیام «App not installed» دیدید، نسخه‌ی قبلی اپ را پاک کنید و دوباره نصب کنید.
@@ -20,12 +20,21 @@
 | حالت | وضعیت |
 |---|---|
 | داخل اپ (فهرست اعلان‌ها) | ✅ کار می‌کند — با هر ثبت درخواست، پیام «درخواست شما با کد پیگیری … در تاریخ … ثبت شد» همان لحظه ساخته می‌شود |
+| اعلان ارسالی از پنل ادمین | ✅ هم برای یک شماره و هم «برای همه»؛ روی دیتابیس قدیمی هم (بدون ستون `send_id`) کار می‌کند |
 | نوار اعلان گوشی، وقتی اپ باز است | ✅ نمایش داده می‌شود (اجازه‌ی اعلان باید داده شده باشد) |
-| نوار اعلان گوشی، وقتی اپ بسته است | ⏳ در حال اصلاح و ارزیابی روی گوشی کاربر — تا تأیید نهایی، هیچ ادعایی درباره‌ی «فعال بودن کامل» مطرح نمی‌شود |
+| نوار اعلان گوشی، وقتی اپ بسته است | ⏳ با فایربیس (FCM) فرستاده می‌شود؛ برای رسیدن قطعی، کلید سرویس فایربیس باید در پنل → تنظیمات وارد شده باشد (`docs/FIREBASE_SETUP_FA.md`) — تا تأیید روی گوشی کاربر، ادعای «فعال بودن کامل» مطرح نمی‌شود |
 | حذف اعلان | ✅ دکمه‌ی سطل‌زباله روی هر اعلان + «حذف همه» در سرصفحه (فقط از فهرست همان کاربر) |
 
+> 🩺 **اگر اعلان‌ها در اپ نمی‌آیند** (یا پنل ادمین «⚠️ خطا در ارسال» می‌دهد): علتش معمولاً
+> «قدیمی بودن ساختار جدول اعلان‌ها» در دیتابیس هاست است — ستون `send_id` نیست، کلید خارجی
+> `user_phone → users(phone)` هست و نویسه‌گان جدول `utf8` سه‌بایتی است (ایموجی ذخیره نمی‌شود).
+> کدِ فعلی هر سه را **خودکار** ترمیم می‌کند و اگر کاربر دیتابیس اجازه‌ی `ALTER` نداشته باشد هم
+> اعلان‌ها در «حالت سازگار» ذخیره و نمایش داده می‌شوند. برای ترمیم قطعی و یک‌جا، این فایل را
+> یک‌بار در phpMyAdmin اجرا کنید: [`backend/fix-notifications-db.sql`](backend/fix-notifications-db.sql)
+> (و در پنل → تنظیمات → «ترمیم ساختار دیتابیس»). جزئیات: `docs/NOTIFICATIONS_FA.md`
+
 > 📌 برای اعلان روی گوشی: در تنظیمات گوشی → برنامه‌ها → ای‌پلاک → اعلان‌ها، اجازه‌ی اعلان را روشن کنید
-> و آخرین نسخه‌ی اپ را از بخش [Releases](https://github.com/hosseinbahrami-bot/eplak-fixed/releases) نصب کنید.
+> و آخرین نسخه‌ی اپ را از بخش [Releases](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases) نصب کنید.
 
 ## 📚 راهنماها
 

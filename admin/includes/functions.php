@@ -383,9 +383,12 @@ function createReport(PDO $pdo, array $data): int {
     return (int)$pdo->lastInsertId();
 }
 
-/** کد پیگیری نمایشی گزارش (همان که شهروند در اپ می‌بیند) */
+/** کد پیگیری نمایشی گزارش (همان که شهروند در اپ می‌بیند)
+    تعریف اصلی در shared/bootstrap.php است تا اپ، پنل و متن اعلان «یک» کد بدهند. */
 function reportCodeFor(int $id): string {
-    return 'EP-1403-' . str_pad((string) ($id + 1000), 4, '0', STR_PAD_LEFT);
+    return function_exists('eplakReportCode')
+        ? eplakReportCode($id)
+        : 'EP-1403-' . str_pad((string) ($id + 1000), 4, '0', STR_PAD_LEFT);
 }
 
 /**
@@ -795,56 +798,201 @@ function toggleNewsPublished(PDO $pdo, int $id): void {
 /**
  * ارسال اعلان به کاربران.
  * $targetType: 'all' = همه کاربران | 'selected' = شماره‌های مشخص‌شده
+ * $report (اختیاری): گزارش کاملِ «چه شد» برای نمایش در پنل — شمار گیرندگان،
+ *   شناسه‌ی ارسال، موارد «سازگار‌شده» (دیتابیس قدیمی) و خطاها.
  * returns: تعداد گیرندگان
+ *
+ * نکته‌ی مهم (ریشه‌ی باگ «اعلان پنل روی اپ نمی‌آید»):
+ * پیش از این، INSERT اینجا «همیشه» ستون send_id را می‌خواست. روی دیتابیس
+ * قدیمیِ هاست (backend/eplak-db.sql) آن ستون وجود ندارد، پس کل ارسال با خطای
+ *   SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'INSERT INTO'
+ * واگر می‌شد و هیچ اعلانی ساخته نمی‌شد. حالا اول ستون «ترمیم» می‌شود و اگر
+ * ترمیم ممکن نبود (کاربر دیتابیس اجازه‌ی ALTER ندارد) بدون همان ستون ذخیره
+ * می‌شود؛ یعنی اعلان در هر حالتی به اپ کاربر می‌رسد.
  */
-function sendNotification(PDO $pdo, string $title, string $body, string $targetType, array $phones, ?string $createdBy = null): int {
+function sendNotification(PDO $pdo, string $title, string $body, string $targetType, array $phones, ?string $createdBy = null, ?array &$report = null): int {
     /* موتور اعلان پس‌زمینه (مرورگر) و اعلان اپ اندروید (فایربیس) */
     require_once __DIR__ . '/../../shared/webpush.php';
     require_once __DIR__ . '/../../shared/fcm.php';
+    require_once __DIR__ . '/../../shared/bootstrap.php';
 
+    $report = [
+        'recipients' => 0, 'rows' => 0, 'send_id' => 0,
+        'degraded' => [], 'failed' => [], 'errors' => [],
+    ];
+
+    /* ── بررسی/ترمیم ساختار جدول اعلان‌ها «پیش از» تراکنش ─────────────────
+       (در MySQL دستور ALTER تراکنش را می‌شکند؛ پس بیرون از آن انجام می‌شود) */
+    $schema    = eplakNotificationsSchema($pdo);
+    $hasSendId = !empty($schema['send_id']);
+    $hasFk     = !empty($schema['fk']);
+    if (!$hasSendId) {
+        $report['degraded'][] = 'no_send_id';
+    }
+    if ($hasFk) {
+        $report['degraded'][] = 'foreign_key';
+    }
+    if (empty($schema['emoji'])) {
+        $report['degraded'][] = 'no_emoji';
+    }
+    $report['failed'] = array_values($schema['failed'] ?? []);
+
+    /* شماره‌ها یکدست می‌شوند (۰۹۱۲… / +۹۸۹۱۲… / ۹۱۲… / رقم فارسی → یک کلید)؛
+       وگرنه اعلان «انتخابی» زیر شماره‌ای دیگر ذخیره می‌شد و اپ آن را نمی‌دید. */
+    $clean = [];
+    foreach ($phones as $one) {
+        $key = eplakPhoneKey((string) $one);
+        if ($key !== '' && $key !== 'all') {
+            $clean[$key] = true;
+        }
+    }
     if ($targetType === 'all') {
-        $stmt = $pdo->query('SELECT phone FROM users');
-        $phones = array_column($stmt->fetchAll(), 'phone');
-        if (!in_array('all', $phones, true)) {
-            $phones[] = 'all';
+        try {
+            foreach ($pdo->query('SELECT phone FROM users')->fetchAll(PDO::FETCH_COLUMN) ?: [] as $one) {
+                $key = eplakPhoneKey((string) $one);
+                if ($key !== '') {
+                    $clean[$key] = true;
+                }
+            }
+        } catch (Throwable $e) {
+            /* جدول users خوانده نشد؛ همان فهرست داده‌شده کافی است */
+        }
+    }
+    $phones = array_keys($clean);
+
+    /* چه ردیف‌هایی ساخته شود؟
+       • send_id داریم  → برای هر کاربر یک ردیف شخصی + یک ردیف عمومی 'all'
+         (اپ ردیف عمومی را وقتی نسخه‌ی شخصیِ همان ارسال را دارد نشان نمی‌دهد).
+       • send_id نداریم → فقط یک ردیف عمومی 'all'؛ وگرنه کاربر «دو بار» همان
+         اعلان را می‌دید (یکی شخصی و یکی عمومی) و راهی برای تشخیص نبود.
+       ردیف عمومی همیشه «تلاش» می‌شود؛ اگر کلید خارجی قدیمیِ دیتابیس اجازه
+       نداد، پایین‌تر برای هر کاربر ردیف شخصی ساخته می‌شود تا اعلان گم نشود. */
+    $plan = [];
+    if ($targetType === 'all') {
+        if ($hasSendId) {
+            foreach ($phones as $one) {
+                $plan[] = $one;
+            }
+        }
+        $plan[] = 'all';
+    } else {
+        foreach ($phones as $one) {
+            $plan[] = $one;
         }
     }
 
-    $phones = array_values(array_unique(array_filter(array_map('trim', $phones), static fn($p) => $p !== '')));
-    if (!$phones) {
+    if (!$plan) {
         return 0;
+    }
+
+    /* تعداد گیرندگان = تعداد ردیف‌هایی که نوشته می‌شود (شامل ردیف عمومی 'all'
+       برای مهمان‌ها) — همان معنایی که پیش از این هم برگردانده می‌شد. */
+    $recipients = max(count($plan), 1);
+    $report['recipients'] = $recipients;
+
+    /* کلید خارجیِ قدیمیِ دیتابیس، ردیف عمومی 'all' را رد می‌کرد (مهمان‌ها هیچ
+       اعلان پنلی نمی‌دیدند). برای مدت همین تراکنش خاموش می‌شود و در finally
+       برمی‌گردد. اگر ممکن نباشد، پایین‌تر ردیف شخصیِ هر کاربر ساخته می‌شود. */
+    $fkRelaxed = $hasFk && $targetType === 'all' && function_exists('eplakFkRelaxBegin')
+        ? eplakFkRelaxBegin($pdo)
+        : false;
+    if ($fkRelaxed) {
+        $report['degraded'][] = 'fk_bypassed_for_broadcast';
     }
 
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare(
-            'INSERT INTO notification_sends (title, body, target_type, recipients_count, created_by)
-             VALUES (:title, :body, :target, :count, :by)'
-        );
-        $stmt->execute([
-            ':title' => $title,
-            ':body'  => $body,
-            ':target' => $targetType === 'all' ? 'all' : 'selected',
-            ':count' => count($phones),
-            ':by'    => $createdBy,
-        ]);
-        $sendId = (int)$pdo->lastInsertId();
-
-        $ins = $pdo->prepare(
-            'INSERT INTO notifications (user_phone, title, body, send_id) VALUES (:phone, :title, :body, :send)'
-        );
-        foreach ($phones as $phone) {
-            $ins->execute([
-                ':phone' => $phone,
-                ':title' => $title,
-                ':body'  => $body,
-                ':send'  => $sendId,
+        $sendId = 0;
+        try {
+            $stmt = $pdo->prepare(
+                'INSERT INTO notification_sends (title, body, target_type, recipients_count, created_by)
+                 VALUES (:title, :body, :target, :count, :by)'
+            );
+            $stmt->execute([
+                ':title' => eplakNotificationsSupportsEmoji($pdo) ? $title : eplakStripAstralChars($title),
+                ':body'  => eplakNotificationsSupportsEmoji($pdo) ? $body : eplakStripAstralChars($body),
+                ':target' => $targetType === 'all' ? 'all' : 'selected',
+                ':count' => $recipients,
+                ':by'    => $createdBy,
             ]);
+            $sendId = (int) $pdo->lastInsertId();
+        } catch (Throwable $e) {
+            /* جدول notification_sends ساخته نشده (دیتابیس خیلی قدیمی) —
+               اعلان‌ها را بدون «شناسه‌ی ارسال» ثبت می‌کنیم تا پیام گم نشود. */
+            $hasSendId = false;
+            $report['degraded'][] = 'no_notification_sends';
+            $report['errors'][] = $e->getMessage();
         }
+        $report['send_id'] = $sendId;
+
+        $rows = 0;
+        $broadcastBlocked = false;
+        $linkedSendId = $hasSendId && $sendId > 0 ? $sendId : null;
+        foreach ($plan as $target) {
+            $res = eplakNotificationInsert($pdo, (string) $target, $title, $body, $linkedSendId);
+            if (!empty($res['ok'])) {
+                $rows++;
+                if ((string) $target === 'all') {
+                    $report['broadcast_row'] = (int) $res['id'];
+                }
+            } elseif ((string) $target === 'all') {
+                /* ردیف عمومی ذخیره نشد (کلید خارجیِ دیتابیس قدیمی و دسترسی
+                   بسته) — پایین‌تر به‌جایش ردیف شخصیِ هر کاربر ساخته می‌شود. */
+                $broadcastBlocked = true;
+                $report['degraded'][] = 'broadcast_row_blocked';
+            } else {
+                $report['errors'][] = (string) $res['error'];
+            }
+        }
+
+        if ($broadcastBlocked && $targetType === 'all' && $phones) {
+            foreach ($phones as $one) {
+                if (in_array($one, $plan, true)) {
+                    continue;   /* قبلاً تلاش شد */
+                }
+                $res = eplakNotificationInsert($pdo, (string) $one, $title, $body, $linkedSendId);
+                if (!empty($res['ok'])) {
+                    $rows++;
+                } else {
+                    $report['errors'][] = (string) $res['error'];
+                }
+            }
+        }
+        if ($rows === 0) {
+            $pdo->rollBack();
+            $why = implode(' | ', array_slice(array_filter($report['errors']), 0, 2));
+            throw new RuntimeException(
+                'هیچ اعلانی ذخیره نشد. '
+                . ($why !== '' ? 'علت: ' . $why . '. ' : '')
+                . 'اگر علت «Unknown column \'send_id\'» است و خودِ کد نتوانست ستون را اضافه کند، '
+                . 'این دستور را یک‌بار در phpMyAdmin اجرا کنید: '
+                . 'ALTER TABLE `notifications` ADD COLUMN `send_id` INT NULL;'
+            );
+        }
+        /* شمارش واقعیِ گیرندگان (ممکن است با برنامه‌ی اولیه فرق کند: مثلاً ردیف
+           عمومی به‌خاطر کلید خارجی ذخیره نشد و به‌جایش ردیف شخصی ساخته شد) */
+        if ($sendId > 0 && $rows !== $recipients) {
+            try {
+                $fix = $pdo->prepare('UPDATE notification_sends SET recipients_count = :c WHERE id = :id');
+                $fix->execute([':c' => $rows, ':id' => $sendId]);
+            } catch (Throwable $e) {
+                /* ستون/جدول قدیمی؛ شمارش نمایشی مهم‌تر از خود اعلان نیست */
+            }
+        }
+        $recipients = $rows;
+        $report['recipients'] = $rows;
+
         $pdo->commit();
+        $report['rows'] = $rows;
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw $e;
+    } finally {
+        if (function_exists('eplakFkRelaxEnd')) {
+            eplakFkRelaxEnd($pdo, $fkRelaxed);
+        }
     }
 
     /* ── اعلان پس‌زمینه (Web Push) ────────────────────────────────────────
@@ -875,6 +1023,8 @@ function sendNotification(PDO $pdo, string $title, string $body, string $targetT
         } catch (Throwable $e) {
             /* ستون‌های شمارش پوش در نسخه‌های قدیمی دیتابیس ممکن است نباشند */
         }
+        $report['push_sent']   = (int) $pushSummary['sent'];
+        $report['push_failed'] = (int) $pushSummary['failed'];
     } catch (Throwable $e) {
         error_log('[eplak-push] dispatch failed: ' . $e->getMessage());
     }
@@ -906,12 +1056,20 @@ function sendNotification(PDO $pdo, string $title, string $body, string $targetT
             } catch (Throwable $e) {
                 /* ستون‌های شمارش فایربیس در دیتابیس‌های قدیمی ممکن است نباشند */
             }
+            $report['fcm_devices'] = count($devices);
+            $report['fcm_sent']    = (int) $fcmSummary['sent'];
+            $report['fcm_failed']  = (int) $fcmSummary['failed'];
+            $report['fcm_outcome'] = (string) ($fcmSummary['outcome'] ?? '');
+            $report['fcm_hint']    = (string) ($fcmSummary['hint'] ?? '');
+        } else {
+            $report['fcm_devices'] = 0;
+            $report['fcm_outcome'] = 'no_device';
         }
     } catch (Throwable $e) {
         error_log('[eplak-fcm] dispatch failed: ' . $e->getMessage());
     }
 
-    return count($phones);
+    return $recipients;
 }
 
 function getNotificationSends(PDO $pdo, int $limit = 50): array {
@@ -927,10 +1085,34 @@ function getNotificationSendById(PDO $pdo, int $id): ?array {
     return $row ?: null;
 }
 
+/**
+ * گیرندگان یک «ارسال گروهی».
+ *
+ * مسیر اصلی با ستون send_id کار می‌کند. روی دیتابیس قدیمیِ هاست که آن ستون
+ * وجود ندارد (و کد نتوانست اضافه‌اش کند)، ردیف‌های همان ارسال را از روی
+ * عنوان/متن پیدا می‌کنیم تا صفحه‌ی «گیرندگان» خالی نماند.
+ */
 function getNotificationRecipients(PDO $pdo, int $sendId): array {
-    $stmt = $pdo->prepare('SELECT * FROM notifications WHERE send_id = :id ORDER BY id ASC');
-    $stmt->execute([':id' => $sendId]);
-    return $stmt->fetchAll();
+    if (eplakTableHasColumn($pdo, 'notifications', 'send_id')) {
+        try {
+            $stmt = $pdo->prepare('SELECT * FROM notifications WHERE send_id = :id ORDER BY id ASC');
+            $stmt->execute([':id' => $sendId]);
+            return $stmt->fetchAll();
+        } catch (Throwable $e) {
+            /* ستون هست ولی کوئری خطا داد → مسیر جایگزین پایین */
+        }
+    }
+    $send = getNotificationSendById($pdo, $sendId);
+    if (!$send) {
+        return [];
+    }
+    try {
+        $stmt = $pdo->prepare('SELECT * FROM notifications WHERE title = :title AND body = :body ORDER BY id ASC');
+        $stmt->execute([':title' => (string) $send['title'], ':body' => (string) $send['body']]);
+        return $stmt->fetchAll();
+    } catch (Throwable $e) {
+        return [];
+    }
 }
 
 /* ============================================================

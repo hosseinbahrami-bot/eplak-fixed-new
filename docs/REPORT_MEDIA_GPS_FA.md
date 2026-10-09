@@ -146,7 +146,7 @@
 ## ۴) گام‌به‌گام: نصب اپ تازه روی گوشی
 
 1. لینک APK:
-   `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk`
+   `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk`
 2. فایل را دانلود کنید → اگر پیام «نصب از منابع نامشخص» آمد، اجازه بدهید → **Install**.
 3. اولین باری که روی **«استفاده از موقعیت فعلی من»** می‌زنید، اندروید اجازه‌ی موقعیت می‌پرسد → **While using the app / فقط هنگام استفاده از برنامه** را انتخاب کنید.
 

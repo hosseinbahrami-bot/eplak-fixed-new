@@ -136,13 +136,17 @@ ok('اعلان حذف‌شده از فهرست همان کاربر فیلتر م
 /* ---------- ۳) اعلان فوری پس از ثبت درخواست ---------- */
 console.log('\n=== اعلان فوری «درخواست شما ثبت شد» ===');
 const events = read('shared/notify_events.php');
+/* درج اعلان حالا «یک» مسیر مشترک دارد: shared/bootstrap.php → eplakNotificationInsert()
+   (سازگار با دیتابیس قدیمیِ هاست: بدون send_id، با کلید خارجی، با نویسه‌گان سه‌بایتی) */
+const boot = read('shared/bootstrap.php');
 ok('موتور اعلان رویدادی ساخته شده', exists('shared/notify_events.php'));
 ok('تابع eplakNotifyRequestCreated متن «کد پیگیری … در تاریخ … ثبت شد» می‌سازد',
   events.includes('function eplakNotifyRequestCreated') && events.includes('کد پیگیری') && events.includes('ثبت شد'));
 ok('ثبت گزارش، اعلان فوری می‌سازد', read('api/reports.php').includes('eplakNotifyRequestCreated'));
 ok('ثبت تیکت/پیام هم اعلان فوری می‌سازد', read('api/tickets.php').includes('eplakNotifyRequestCreated'));
 ok('اعلان رویدادی هم در فهرست ذخیره و هم با فایربیس فرستاده می‌شود (و نتیجه‌ی ارسال در push_log ثبت می‌شود)',
-  events.includes('INSERT INTO notifications') && events.includes('eplakFcmSend(') && events.includes('eplakPushLogAdd('));
+  events.includes('eplakNotificationInsert(') && boot.includes('INSERT INTO notifications') &&
+  events.includes('eplakFcmSend(') && events.includes('eplakPushLogAdd('));
 ok('تاریخ و ساعت شمسی برای متن اعلان محاسبه می‌شود',
   exists('shared/fa_datetime.php') && read('shared/fa_datetime.php').includes('eplakGregorianToJalali'));
 ok('اپ بعد از ثبت درخواست، فهرست اعلان‌ها را بلافاصله تازه می‌کند',
@@ -184,7 +188,8 @@ ok('همان الگوریتم در shared/fa_datetime.php استفاده شده 
 ok('خروجی متن، ساعت تهران و «ساعت» را دارد',
   faDt.includes('Asia/Tehran') && faDt.includes('ساعت'));
 ok('سرور اعلان را برای همین کاربر ثبت می‌کند (اختصاصی، نه گروهی)',
-  events.includes("VALUES (:phone, :title, :body, 0)"));
+  /eplakNotificationInsert\(\s*\$pdo,\s*\$phone/.test(events) &&
+  boot.includes("'user_phone', 'title', 'body'") && boot.includes("$marks[] = '0'"));
 
 /* ---------- ۴) ورود دوباره پس از خروج از اپ ---------- */
 console.log('\n=== پس از خروج از اپ، کد تایید دوباره ===');

@@ -11,6 +11,7 @@
    خوانده‌شده/حذف‌شده‌اش به بقیه‌ی کاربران ربطی ندارد.
    ============================================================================ */
 
+require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/fa_datetime.php';
 if (file_exists(__DIR__ . '/fcm.php')) {
     require_once __DIR__ . '/fcm.php';
@@ -27,15 +28,8 @@ if (file_exists(__DIR__ . '/fcm.php')) {
  */
 function eplakNotifyNormalizePhone(string $phone): string
 {
-    $fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
-    $ar = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-    $en = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-    $p  = str_replace($ar, $en, str_replace($fa, $en, trim($phone)));
-    $p  = preg_replace('/[^0-9+]/', '', $p) ?? '';
-    if (preg_match('/^\+?98(9\d{9})$/', $p, $m) || preg_match('/^(9\d{9})$/', $p, $m)) {
-        return '0' . $m[1];
-    }
-    return $p;
+    /* یک تعریف برای همه‌جای پروژه (shared/bootstrap.php) */
+    return function_exists('eplakPhoneKey') ? eplakPhoneKey($phone) : trim($phone);
 }
 
 /**
@@ -63,33 +57,25 @@ function eplakNotifyUser(PDO $pdo, string $phone, string $title, string $body, a
     $title = eplakNotifyTrim($title, 250);
     $body  = eplakNotifyTrim($body, 900);
 
-    /* ۱) ذخیره در جدول اعلان‌ها (برای فهرست داخل اپ و سایت) */
-    try {
-        $stmt = $pdo->prepare('INSERT INTO notifications (user_phone, title, body, read_flag) VALUES (:phone, :title, :body, 0)');
-        try {
-            $stmt->execute([':phone' => $phone, ':title' => $title, ':body' => $body]);
-        } catch (Throwable $first) {
-            /* اگر جدول با utf8 سه‌بایتی ساخته شده باشد، ایموجی چهاربایتی (مثل 📣 در
-               عنوان یا 👍 در متن پاسخ مدیر) ذخیره نمی‌شود و کل اعلان بی‌صدا از بین
-               می‌رفت. یک‌بار بدون آن نویسه‌ها دوباره تلاش می‌کنیم. */
-            $safeTitle = eplakStripAstralChars($title);
-            $safeBody  = eplakStripAstralChars($body);
-            if ($safeTitle === $title && $safeBody === $body) {
-                throw $first;
-            }
-            error_log('[eplak-notify-event] ذخیره‌ی اعلان با ایموجی ناموفق بود؛ بدون ایموجی ذخیره شد: ' . $first->getMessage());
-            $title = $safeTitle;
-            $body  = $safeBody;
-            /* دستور تازه (اجرای دوباره‌ی دستورِ خطادار روی بعضی درایورها خطای «API misuse» می‌دهد) */
-            $retry = $pdo->prepare('INSERT INTO notifications (user_phone, title, body, read_flag) VALUES (:phone, :title, :body, 0)');
-            $retry->execute([':phone' => $phone, ':title' => $title, ':body' => $body]);
-        }
-        $out['id'] = (int) $pdo->lastInsertId();
-        $out['ok'] = true;
-    } catch (Throwable $e) {
-        $out['error'] = $e->getMessage();
-        error_log('[eplak-notify-event] ذخیره‌ی اعلان ناموفق: ' . $e->getMessage());
+    /* ۱) ذخیره در جدول اعلان‌ها (برای فهرست داخل اپ و سایت)
+
+       تمام «سازگاری با دیتابیس قدیمی هاست» در eplakNotificationInsert است:
+       نبود ستون send_id/read_flag، کلید خارجی user_phone → users و نویسه‌گان
+       سه‌بایتی (ایموجی). پیش از این، هر کدام از آن‌ها باعث می‌شد اعلان بی‌صدا
+       از بین برود و کاربر هیچ خبری نگیرد. */
+    $inserted = eplakNotificationInsert($pdo, $phone, $title, $body);
+    if (empty($inserted['ok'])) {
+        $out['error'] = (string) ($inserted['error'] ?: 'insert_failed');
+        error_log('[eplak-notify-event] ذخیره‌ی اعلان ناموفق: ' . $out['error']);
         return $out;
+    }
+    $out['id'] = (int) $inserted['id'];
+    $out['ok'] = true;
+    if (!empty($inserted['degraded'])) {
+        /* یعنی اعلان ذخیره شد ولی دیتابیس قدیمی است (بدون send_id، با کلید
+           خارجی، یا سه‌بایتی). مسیر فایربیس پایین با همان عنوان/متنِ کامل
+           (با ایموجی) می‌رود — محدودیت نویسه‌گان فقط مالِ دیتابیس است. */
+        $out['degraded'] = $inserted['degraded'];
     }
 
     /* ۲) ارسال فوری به گوشی از مسیر فایربیس (اگر پروژه تنظیم شده باشد).

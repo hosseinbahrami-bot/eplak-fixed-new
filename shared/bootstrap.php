@@ -831,11 +831,12 @@ function eplakSchemaSyncReport(?array $report = null): array {
 /* آیا جدول ستون خواسته‌شده را دارد؟
    روی هاست‌هایی که کاربر دیتابیس اجازه‌ی ALTER ندارد، همگام‌سازی اسکیما ممکن
    است ناقص بماند؛ با این بررسی، کد به‌جای خطای «Unknown column» مسیر
-   سازگار (بدون آن ستون) را انتخاب می‌کند. */
-function eplakTableHasColumn(PDO $pdo, string $table, string $column): bool {
+   سازگار (بدون آن ستون) را انتخاب می‌کند.
+   $refresh = true → کش نادیده گرفته می‌شود (بلافاصله پس از ALTER لازم است). */
+function eplakTableHasColumn(PDO $pdo, string $table, string $column, bool $refresh = false): bool {
     static $cache = [];
     $key = $table . '.' . $column;
-    if (array_key_exists($key, $cache)) {
+    if (!$refresh && array_key_exists($key, $cache)) {
         return $cache[$key];
     }
     try {
@@ -933,6 +934,652 @@ function eplakMysqlLegacyAlters(PDO $pdo, array &$report): void {
     $add('notification_sends', 'push_failed', 'INT NOT NULL DEFAULT 0');
     $add('notification_sends', 'fcm_sent', 'INT NOT NULL DEFAULT 0');
     $add('notification_sends', 'fcm_failed', 'INT NOT NULL DEFAULT 0');
+}
+
+/* ============================================================================
+   سلامت «جدول اعلان‌ها» — هیچ اعلانی نباید به‌خاطر ساختار دیتابیس گم شود
+   ----------------------------------------------------------------------------
+   چرا این بخش لازم شد؟ (ریشه‌ی باگ «اعلان روی اپ نمی‌آید»)
+   دیتابیس واقعی هاست از روی backend/eplak-db.sql ساخته شده و جدول notifications
+   آن سه مشکل دارد که هر سه، اعلان را بی‌صدا از بین می‌برد:
+
+     ۱) ستون send_id ندارد
+        → INSERT پنل:  SQLSTATE[42S22] Unknown column 'send_id' in 'INSERT INTO'
+        → SELECT اپ:   همان خطا در api/notifications.php ⇒ پاسخ ۵۰۰ ⇒ اپ «هیچ»
+                       اعلانی نمی‌دید (حتی اعلان‌هایی که درست ثبت شده بودند).
+     ۲) کلید خارجی user_phone → users(phone) با ON DELETE RESTRICT دارد
+        → اعلان عمومی ('all') و اعلان کاربری که هنوز ردیف users ندارد، با خطای
+          SQLSTATE[23000] رد می‌شد.
+     ۳) نویسه‌گان جدول utf8 سه‌بایتی است
+        → ایموجیِ عنوان‌ها (✅ ثبت درخواست / 📣 پاسخ / 🔔) ذخیره نمی‌شد.
+
+   همگام‌سازی اسکیما (eplakRunSchemaSync) فقط «ستون» اضافه می‌کند، آن هم وقتی
+   نسخه‌ی اسکیما عوض شده باشد و کاربر دیتابیس اجازه‌ی ALTER داشته باشد. پس اینجا:
+     • ستون حیاتی «همان لحظه و در همان درخواست» اضافه می‌شود،
+     • کلید خارجی مزاحم حذف می‌شود (اگر دیتابیس اجازه دهد)،
+     • جدول به utf8mb4 تبدیل می‌شود (اگر لازم باشد)،
+     • و اگر هیچ‌کدام ممکن نبود (هاست قفل)، کد «بدون آن ستون / بدون ایموجی» کار
+       می‌کند تا اعلان هرگز کامل از بین نرود.
+   ============================================================================ */
+
+/**
+ * خواندن یک کلید از shared/config.php (فقط یک‌بار در هر درخواست).
+ * آن فایل در گیت نیست (رمز دیتابیس دارد)؛ نمونه‌اش shared/config.example.php است.
+ * روی هاست‌های اشتراکی که امکان SetEnv ندارند، تنظیمات از همین فایل خوانده می‌شود.
+ */
+function eplakConfigValue(string $key, $default = null) {
+    static $cfg = null;
+    if ($cfg === null) {
+        $cfg = [];
+        $path = __DIR__ . '/config.php';
+        if (is_file($path)) {
+            $loaded = @include $path;
+            if (is_array($loaded)) {
+                $cfg = $loaded;
+            }
+        }
+    }
+    return array_key_exists($key, $cfg) ? $cfg[$key] : $default;
+}
+
+/** تفسیر یک پرچم روشن/خاموش (bool، 0/1، on/off، yes/no) */
+function eplakFlagEnabled($value, bool $default): bool {
+    if ($value === null || $value === '') {
+        return $default;
+    }
+    if (is_bool($value)) {
+        return $value;
+    }
+    if (is_numeric($value)) {
+        return (int) $value !== 0;
+    }
+    return !in_array(strtolower(trim((string) $value)), ['0', 'false', 'no', 'off', 'disabled'], true);
+}
+
+/**
+ * آیا اجازه‌ی تغییر ساختار دیتابیس را داریم؟
+ * با EPLAK_SCHEMA_READONLY=1 (یا 'schema_alter' => false در shared/config.php)
+ * می‌توان «هاست قفل‌شده» را شبیه‌سازی کرد؛ در آن حالت هیچ ALTER/CONVERT/DROP
+ * اجرا نمی‌شود و کد فقط مسیر سازگار را می‌رود (اعلان همچنان کار می‌کند).
+ */
+function eplakSchemaAlterAllowed(): bool {
+    $env = getenv('EPLAK_SCHEMA_READONLY');
+    if ($env !== false && trim((string) $env) !== '') {
+        return !eplakFlagEnabled($env, true);   /* READONLY=1 ← اجازه نداریم */
+    }
+    return eplakFlagEnabled(eplakConfigValue('schema_alter', null), true);
+}
+
+/**
+ * ستون حیاتی یک جدول: اگر نیست، «همان لحظه» اضافه می‌شود.
+ * خروجی واقعی (true/false) یعنی «آیا این ستون الان قابل استفاده است؟» —
+ * پس اگر ALTER ممکن نبود، false برمی‌گردد و فراخوان باید بدون آن ستون کار کند.
+ */
+function eplakEnsureColumn(PDO $pdo, string $table, string $column, string $definition): bool {
+    if (eplakTableHasColumn($pdo, $table, $column)) {
+        return true;
+    }
+    if (!eplakSchemaAlterAllowed()) {
+        return false;
+    }
+    $sql = eplakIsSqlite($pdo)
+        ? "ALTER TABLE {$table} ADD COLUMN {$column} {$definition}"
+        : "ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}";
+    try {
+        $pdo->exec($sql);
+    } catch (\Throwable $e) {
+        error_log("[eplak-schema] افزودن ستون {$table}.{$column} ناموفق بود: " . $e->getMessage());
+    }
+    return eplakTableHasColumn($pdo, $table, $column, true);
+}
+
+/** کلیدهای خارجیِ مزاحم روی یک ستون (فقط MySQL/MariaDB) */
+function eplakMysqlForeignKeysOnColumn(PDO $pdo, string $table, string $column): array {
+    if (eplakIsSqlite($pdo)) {
+        /* در SQLite حذف کلید خارجی بدون بازسازی جدول ممکن نیست؛ مسیر سازگار
+           (ثبت ردیف users پیش از اعلان) همان کار را می‌کند. */
+        return [];
+    }
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c
+                AND REFERENCED_TABLE_NAME IS NOT NULL'
+        );
+        $stmt->execute([':t' => $table, ':c' => $column]);
+        $out = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: [] as $name) {
+            $name = trim((string) $name);
+            /* فقط نام‌های معتبر (بدون کاراکتر عجیب) تا SQL ساخته‌شده امن بماند */
+            if ($name !== '' && preg_match('/^[A-Za-z0-9_$]+$/', $name)) {
+                $out[] = $name;
+            }
+        }
+        return $out;
+    } catch (\Throwable $e) {
+        return [];
+    }
+}
+
+/** آیا ستونِ این جدول هنوز کلید خارجی دارد؟ (برای تصمیم «مسیر سازگار») */
+function eplakColumnHasForeignKey(PDO $pdo, string $table, string $column): bool {
+    if (eplakIsSqlite($pdo)) {
+        try {
+            foreach ($pdo->query("PRAGMA foreign_key_list($table)")->fetchAll() ?: [] as $row) {
+                if (strcasecmp((string) ($row['from'] ?? ''), $column) === 0) {
+                    return true;
+                }
+            }
+        } catch (\Throwable $e) {
+            /* بی‌صدا */
+        }
+        return false;
+    }
+    return eplakMysqlForeignKeysOnColumn($pdo, $table, $column) !== [];
+}
+
+/** حذف یک کلید خارجی (MySQL) */
+function eplakMysqlDropForeignKey(PDO $pdo, string $table, string $constraint): bool {
+    if (eplakIsSqlite($pdo) || $constraint === '' || !eplakSchemaAlterAllowed()) {
+        return false;
+    }
+    try {
+        $pdo->exec("ALTER TABLE `{$table}` DROP FOREIGN KEY `{$constraint}`");
+        return true;
+    } catch (\Throwable $e) {
+        error_log("[eplak-schema] حذف کلید خارجی {$table}.{$constraint} ناموفق بود: " . $e->getMessage());
+        return false;
+    }
+}
+
+/** نویسه‌گان یک جدول (MySQL)؛ رشته‌ی خالی یعنی «نتوانستیم بفهمیم» */
+function eplakMysqlTableCharset(PDO $pdo, string $table): string {
+    if (eplakIsSqlite($pdo)) {
+        return 'utf8mb4';   /* SQLite همیشه UTF-8 کامل است */
+    }
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT CCSA.CHARACTER_SET_NAME
+               FROM information_schema.TABLES AS T
+               JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY AS CCSA
+                 ON T.TABLE_COLLATION = CCSA.COLLATION_NAME
+              WHERE T.TABLE_SCHEMA = DATABASE() AND T.TABLE_NAME = :t
+              LIMIT 1'
+        );
+        $stmt->execute([':t' => $table]);
+        return strtolower((string) $stmt->fetchColumn());
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+
+/** تبدیل جدول به utf8mb4 تا ایموجیِ عنوان/متن اعلان ذخیره شود */
+function eplakMysqlConvertUtf8mb4(PDO $pdo, string $table): bool {
+    if (eplakIsSqlite($pdo)) {
+        return true;
+    }
+    if (!eplakSchemaAlterAllowed()) {
+        return false;
+    }
+    try {
+        $pdo->exec("ALTER TABLE `{$table}` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        return true;
+    } catch (\Throwable $e) {
+        error_log("[eplak-schema] تبدیل {$table} به utf8mb4 ناموفق بود: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * وضعیت (و در صورت لزوم ترمیم) جدول اعلان‌ها.
+ *
+ * خروجی:
+ *   send_id   → آیا ستون send_id قابل استفاده است؟ (SQLها بر همین اساس ساخته می‌شوند)
+ *   read_flag → آیا ستون read_flag قابل استفاده است؟
+ *   emoji     → آیا ایموجی چهاربایتی در این جدول ذخیره می‌شود؟
+ *   fk        → آیا کلید خارجی user_phone → users هنوز برقرار است؟
+ *   repaired  → چه چیزی همین حالا ترمیم شد (برای نمایش در پنل)
+ *   failed    → چه چیزی ترمیم نشد (برای نمایش راهنما در پنل)
+ *
+ * هزینه: وقتی یک‌بار ترمیم شده باشد، تنها یک کوئری سبک در هر درخواست اجرا
+ * می‌شود (بررسی بودن send_id)؛ بقیه‌ی بررسی‌ها پشت نشانه‌ی app_settings می‌مانند.
+ */
+function eplakNotificationsSchema(PDO $pdo, bool $force = false): array {
+    static $state = null;
+    if ($state !== null && !$force) {
+        return $state;
+    }
+
+    $sqlite   = eplakIsSqlite($pdo);
+    $sendIdDdl = $sqlite ? 'INT NULL' : 'INT NULL';
+
+    /* مسیر سریع: قبلاً ترمیم شده و ستون حیاتی هم سر جایش است */
+    if (!$force && (string) eplakAppSetting($pdo, 'notif_schema_ok', '') === EPLAK_SCHEMA_VERSION
+        && eplakEnsureColumn($pdo, 'notifications', 'send_id', $sendIdDdl)) {
+        $state = [
+            'send_id' => true, 'read_flag' => true, 'emoji' => true, 'fk' => false,
+            'repaired' => [], 'failed' => [], 'cached' => true,
+        ];
+        return $state;
+    }
+
+    /* پشت‌سرهم تلاش نکنیم: اگر ترمیم ممکن نبود، تا ۱۰ دقیقه بررسی سنگین تکرار
+       نمی‌شود. اما اگر «اجازه‌ی تغییر ساختار» عوض شده باشد (مثلاً مدیر دسترسی
+       ALTER را باز کرده یا دکمه‌ی ترمیم را زده)، معطلِ آن مهلت نمی‌مانیم. */
+    $backoff    = (int) eplakAppSetting($pdo, 'notif_schema_retry_at', '0');
+    $backoffWas = (string) eplakAppSetting($pdo, 'notif_schema_retry_ro', '') === '1';
+    $alterIsOff = !eplakSchemaAlterAllowed();
+    if (!$force && $backoff > time() && $backoffWas === $alterIsOff) {
+        $state = [
+            'send_id'   => eplakTableHasColumn($pdo, 'notifications', 'send_id', true),
+            'read_flag' => eplakTableHasColumn($pdo, 'notifications', 'read_flag', true),
+            'emoji'     => $sqlite ? true : !in_array(eplakMysqlTableCharset($pdo, 'notifications'), ['utf8', 'utf8mb3'], true),
+            'fk'        => eplakColumnHasForeignKey($pdo, 'notifications', 'user_phone'),
+            'repaired'  => [], 'failed' => [], 'cached' => false,
+        ];
+        return $state;
+    }
+
+    $state = ['send_id' => false, 'read_flag' => false, 'emoji' => false, 'fk' => false,
+              'repaired' => [], 'failed' => [], 'cached' => false];
+
+    /* ۱) ستون‌های حیاتی (چه چیزی «واقعاً» اضافه شد، برای گزارش در پنل) */
+    $hadSendId = eplakTableHasColumn($pdo, 'notifications', 'send_id', true);
+    $hadRead   = eplakTableHasColumn($pdo, 'notifications', 'read_flag', true);
+    if (eplakEnsureColumn($pdo, 'notifications', 'send_id', $sendIdDdl)) {
+        $state['send_id'] = true;
+        if (!$hadSendId) {
+            $state['repaired'][] = 'افزودن ستون notifications.send_id';
+        }
+    } else {
+        $state['failed'][] = 'افزودن ستون notifications.send_id ممکن نشد (کاربر دیتابیس اجازه‌ی ALTER ندارد؟)';
+    }
+    if (eplakEnsureColumn($pdo, 'notifications', 'read_flag', $sqlite ? 'TINYINT(1) DEFAULT 0' : 'TINYINT(1) DEFAULT 0')) {
+        $state['read_flag'] = true;
+        if (!$hadRead) {
+            $state['repaired'][] = 'افزودن ستون notifications.read_flag';
+        }
+    } else {
+        $state['failed'][] = 'افزودن ستون notifications.read_flag ممکن نشد';
+    }
+
+    /* ۲) کلید خارجی مزاحم: اعلان عمومی ('all') و کاربرِ بدون ردیف users را رد می‌کرد */
+    if (!$sqlite) {
+        foreach (eplakMysqlForeignKeysOnColumn($pdo, 'notifications', 'user_phone') as $constraint) {
+            if (eplakMysqlDropForeignKey($pdo, 'notifications', $constraint)) {
+                $state['repaired'][] = 'حذف کلید خارجی ' . $constraint;
+            } else {
+                $state['failed'][] = 'حذف کلید خارجی ' . $constraint . ' ممکن نشد';
+            }
+        }
+    }
+    $state['fk'] = eplakColumnHasForeignKey($pdo, 'notifications', 'user_phone');
+
+    /* ۳) نویسه‌گان: ایموجیِ عنوان‌ها روی utf8 سه‌بایتی ذخیره نمی‌شد */
+    $charset = eplakMysqlTableCharset($pdo, 'notifications');
+    if ($sqlite) {
+        $state['emoji'] = true;
+    } elseif ($charset === '' ) {
+        $state['emoji'] = true;   /* نشد بفهمیم؛ خوش‌بینانه و با «تلاش دوباره بدون ایموجی» */
+    } elseif (in_array($charset, ['utf8', 'utf8mb3'], true)) {
+        if (eplakMysqlConvertUtf8mb4($pdo, 'notifications')) {
+            $state['repaired'][] = 'تبدیل جدول اعلان‌ها به utf8mb4';
+            $state['emoji'] = true;
+        } else {
+            $state['emoji'] = false;
+            $state['failed'][] = 'تبدیل notifications به utf8mb4 ممکن نشد (ایموجی‌ها بدون ذخیره‌سازی حذف می‌شوند)';
+        }
+    } else {
+        $state['emoji'] = true;
+    }
+
+    /* ثبت نتیجه تا درخواست‌های بعدی سراغ information_schema نروند */
+    if (!$state['failed']) {
+        eplakSetAppSetting($pdo, 'notif_schema_ok', EPLAK_SCHEMA_VERSION);
+        eplakSetAppSetting($pdo, 'notif_schema_retry_at', '0');
+        eplakSetAppSetting($pdo, 'notif_schema_retry_ro', '0');
+    } else {
+        eplakSetAppSetting($pdo, 'notif_schema_ok', '');
+        eplakSetAppSetting($pdo, 'notif_schema_retry_at', (string) (time() + 600));
+        eplakSetAppSetting($pdo, 'notif_schema_retry_ro', $alterIsOff ? '1' : '0');
+    }
+    return $state;
+}
+
+/** آیا ستون send_id قابل استفاده است؟ (همه‌ی SQLهای اعلان بر این اساس ساخته می‌شوند) */
+function eplakNotificationsHasSendId(PDO $pdo): bool {
+    $s = eplakNotificationsSchema($pdo);
+    return !empty($s['send_id']);
+}
+
+/** آیا ایموجی در جدول اعلان‌ها ذخیره می‌شود؟ */
+function eplakNotificationsSupportsEmoji(PDO $pdo): bool {
+    $s = eplakNotificationsSchema($pdo);
+    return !empty($s['emoji']);
+}
+
+/** گزارش ترمیم (برای نمایش در پنل ادمین) */
+function eplakNotificationsSchemaReport(PDO $pdo): array {
+    return eplakNotificationsSchema($pdo);
+}
+
+/** شماره‌ی موبایل به قالب یکتای 09xxxxxxxxx (یک تابع برای همه‌جای کد) */
+function eplakPhoneKey(string $phone): string {
+    $fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    $ar = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    $en = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    $p  = str_replace($ar, $en, str_replace($fa, $en, trim($phone)));
+    $p  = preg_replace('/[^0-9+]/', '', $p) ?? '';
+    if (preg_match('/^\+?98(9\d{9})$/', $p, $m) || preg_match('/^(9\d{9})$/', $p, $m)) {
+        return '0' . $m[1];
+    }
+    return $p;
+}
+
+/**
+ * اطمینان از وجود ردیف users برای یک شماره.
+ * چرا؟ دیتابیس قدیمیِ هاست روی notifications (و reports/tickets) کلید خارجی
+ * user_phone → users(phone) دارد؛ بدون ردیف کاربر، اعلان با خطای ۲۳۰۰۰ رد
+ * می‌شد. اگر کلید خارجی حذف شده باشد، این تابع فقط یک «چک» ارزان است.
+ */
+function eplakEnsureUserRow(PDO $pdo, string $phone, string $name = ''): bool {
+    $phone = eplakPhoneKey($phone);
+    if ($phone === '' || $phone === 'all') {
+        return false;
+    }
+    try {
+        $find = $pdo->prepare('SELECT 1 FROM users WHERE phone = :p LIMIT 1');
+        $find->execute([':p' => $phone]);
+        if ($find->fetchColumn()) {
+            return true;
+        }
+    } catch (\Throwable $e) {
+        return false;
+    }
+    try {
+        $stmt = $pdo->prepare(eplakUsersUpsertSql($pdo, true));
+        $stmt->execute([
+            ':phone'   => $phone,
+            ':name'    => $name !== '' ? $name : 'شهروند',
+            ':address' => '',
+            ':nid'     => '',
+        ]);
+        return true;
+    } catch (\Throwable $e) {
+        error_log('[eplak-schema] ساخت ردیف کاربر برای اعلان ناموفق: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * متنِ «امن» برای ستون‌های سه‌بایتی: ایموجی چهاربایتی را حذف می‌کند.
+ * تعریف آن در shared/fcm.php هم هست (با نگهبان function_exists)؛ اینجا
+ * تعریف می‌شود تا حتی اگر fcm.php بارگذاری نشده باشد، اعلان بی‌صدا نپرد.
+ */
+if (!function_exists('eplakStripAstralChars')) {
+    function eplakStripAstralChars(string $text): string {
+        $clean = preg_replace('/[\x{10000}-\x{10FFFF}]/u', '', $text);
+        return $clean === null ? $text : trim((string) preg_replace('/\s{2,}/u', ' ', $clean));
+    }
+}
+
+/**
+ * کد پیگیری گزارش — «یک» تعریف برای اپ، پنل و اعلان.
+ * پیش‌تر api/reports.php از id خالی و پنل از id+1000 استفاده می‌کرد؛ پس کدی که
+ * در اعلان «ثبت درخواست» به شهروند داده می‌شد با کدی که بعداً در فهرست
+ * گزارش‌ها و پنل دیده می‌شد فرق داشت (و «ارسال دوباره‌ی اعلان» هم پیدایش نمی‌کرد).
+ */
+function eplakReportCode(int $id): string {
+    return 'EP-1403-' . str_pad((string) ($id + 1000), 4, '0', STR_PAD_LEFT);
+}
+
+/** کد پیگیری تیکت */
+function eplakTicketCode(int $id): string {
+    return 'TK-1403-' . str_pad((string) ($id + 1000), 4, '0', STR_PAD_LEFT);
+}
+
+/**
+ * آیا می‌توان «موقتاً» کلید خارجی را نادیده گرفت؟
+ * دیتابیس قدیمیِ هاست روی notifications.user_phone کلید خارجی به users(phone)
+ * دارد؛ با آن، اعلان عمومی ('all') هرگز ذخیره نمی‌شد و مهمان‌ها (کاربری که
+ * وارد نشده) هیچ اعلان پنلی نمی‌دیدند. حذفِ خودِ کلید خارجی به دسترسی ALTER
+ * نیاز دارد که بعضی هاست‌ها نمی‌دهند؛ این راهِ میان‌بر نیازی به ALTER ندارد.
+ * با EPLAK_FK_BYPASS=0 می‌توان خاموشش کرد.
+ */
+function eplakFkBypassAllowed(): bool {
+    $env = getenv('EPLAK_FK_BYPASS');
+    if ($env !== false && trim((string) $env) !== '') {
+        return eplakFlagEnabled($env, true);
+    }
+    return eplakFlagEnabled(eplakConfigValue('fk_bypass', null), true);
+}
+
+/**
+ * وضعیت «کلید خارجی خاموش» در همین درخواست.
+ * وقتی فراخوان (مثل sendNotification) کلید خارجی را برای مدت یک تراکنش خاموش
+ * کرده باشد، لایه‌ی درج نباید دوباره آن را روشن/خاموش کند.
+ */
+function eplakFkRelaxState(?bool $set = null): bool {
+    static $active = false;
+    if ($set !== null) {
+        $active = $set;
+    }
+    return $active;
+}
+
+/**
+ * خاموش‌کردن کلید خارجی برای «مدت یک تراکنش».
+ * حتماً باید «پیش از» beginTransaction صدا زده شود: در SQLite این پراگما داخل
+ * تراکنش بی‌اثر است. برگرداندنش با eplakFkRelaxEnd() در بلوک finally است.
+ *
+ * چرا؟ دیتابیس قدیمیِ هاست روی notifications.user_phone کلید خارجی به
+ * users(phone) دارد و اعلان عمومیِ پنل (user_phone='all') را رد می‌کرد؛ در
+ * نتیجه مهمان‌ها (و هر کاربری که ردیف users نداشت) هیچ اعلان پنلی نمی‌دیدند.
+ * حذف خودِ کلید خارجی به دسترسی ALTER نیاز دارد که بعضی هاست‌ها نمی‌دهند.
+ */
+function eplakFkRelaxBegin(PDO $pdo): bool {
+    if (!eplakFkBypassAllowed() || $pdo->inTransaction()) {
+        return false;
+    }
+    try {
+        $pdo->exec(eplakIsSqlite($pdo) ? 'PRAGMA foreign_keys=OFF' : 'SET FOREIGN_KEY_CHECKS=0');
+        eplakFkRelaxState(true);
+        return true;
+    } catch (\Throwable $e) {
+        error_log('[eplak-notify-insert] خاموش‌کردن کلید خارجی ناموفق: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/** برگرداندن کلید خارجی به حالت اول (همیشه در finally صدا زده شود) */
+function eplakFkRelaxEnd(PDO $pdo, bool $relaxed): void {
+    if (!$relaxed) {
+        return;
+    }
+    eplakFkRelaxState(false);
+    try {
+        $pdo->exec(eplakIsSqlite($pdo) ? 'PRAGMA foreign_keys=ON' : 'SET FOREIGN_KEY_CHECKS=1');
+    } catch (\Throwable $e) {
+        error_log('[eplak-notify-insert] بازگرداندن کلید خارجی ناموفق: ' . $e->getMessage());
+    }
+}
+
+/**
+ * درج یک ردیف با «کلید خارجی خاموش» — فقط برای اعلان عمومی.
+ * در MySQL با SET FOREIGN_KEY_CHECKS=0 (متغیر نشست؛ داخل تراکنش هم کار می‌کند
+ * و تراکنش را هم نمی‌شکند) و در SQLite با PRAGMA foreign_keys=OFF (که داخل
+ * تراکنش بی‌اثر است، پس در آن حالت false برمی‌گرداند).
+ * در هر حال، پرچم بلافاصله به حالت اول برمی‌گردد.
+ *
+ * @param int $insertId شناسه‌ی ردیف درج‌شده (خروجی)
+ */
+function eplakFkRelaxedInsert(PDO $pdo, string $sql, array $params, int &$insertId): bool {
+    $insertId = 0;
+    if (!eplakFkBypassAllowed() || eplakFkRelaxState()) {
+        return false;   /* کلید خارجی همین حالا هم خاموش است؛ درج عادی کافی است */
+    }
+    $sqlite = eplakIsSqlite($pdo);
+    if ($sqlite && $pdo->inTransaction()) {
+        return false;   /* پراگما داخل تراکنش اثری ندارد */
+    }
+    $relaxed = false;
+    try {
+        $pdo->exec($sqlite ? 'PRAGMA foreign_keys=OFF' : 'SET FOREIGN_KEY_CHECKS=0');
+        $relaxed = true;
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $insertId = (int) $pdo->lastInsertId();
+        return true;
+    } catch (\Throwable $e) {
+        error_log('[eplak-notify-insert] درج با کلید خارجی خاموش ناموفق: ' . $e->getMessage());
+        return false;
+    } finally {
+        if ($relaxed) {
+            try {
+                $pdo->exec($sqlite ? 'PRAGMA foreign_keys=ON' : 'SET FOREIGN_KEY_CHECKS=1');
+            } catch (\Throwable $e) {
+                error_log('[eplak-notify-insert] بازگرداندن پرچم کلید خارجی ناموفق: ' . $e->getMessage());
+            }
+        }
+    }
+}
+
+/**
+ * درج یک اعلان در جدول notifications — سازگار با «هر» ساختار دیتابیس.
+ *
+ * تنها راه نوشتن اعلان در کل پروژه همین تابع است (هم اعلان رویدادیِ
+ * shared/notify_events.php و هم ارسال گروهی پنل ادمین). کاری که می‌کند:
+ *   ۱) ستون‌های موجود را می‌سنجد: send_id / read_flag نباشند، بدون آن‌ها درج
+ *      می‌کند (به‌جای خطای «Unknown column 'send_id'»).
+ *   ۲) اگر کلید خارجی user_phone → users برقرار باشد، پیش از درج ردیف کاربر را
+ *      می‌سازد (وگرنه اعلان با خطای ۲۳۰۰۰ رد می‌شد).
+ *   ۳) اگر جدول سه‌بایتی باشد، ایموجی را «پیش از درج» حذف می‌کند؛ و در هر
+ *      حالت، یک‌بار بدون ایموجی هم تلاش می‌کند.
+ *   ۴) اگر خطا خورد، یک‌بار ساختار را «اجباری» ترمیم و دوباره تلاش می‌کند.
+ *
+ * @param int|null $sendId شناسه‌ی «ارسال گروهی» (فقط وقتی ستونش وجود دارد)
+ * @return array{ok:bool,id:int,error:string,degraded:array<int,string>}
+ */
+function eplakNotificationInsert(PDO $pdo, string $phone, string $title, string $body, ?int $sendId = null): array {
+    $out = ['ok' => false, 'id' => 0, 'error' => '', 'degraded' => []];
+    $phone = trim($phone);
+
+    /* طول ستون‌ها: title تا ۲۵۰ و body تا ۹۰۰ نویسه (تا حالت سخت‌گیرانه‌ی MySQL
+       عنوان بلند را رد نکند و کل اعلان نپرد) */
+    $clip = static function (string $text, int $max): string {
+        $text = trim(preg_replace('/[ \t]{2,}/u', ' ', $text) ?? $text);
+        if (function_exists('mb_substr')) {
+            return mb_substr($text, 0, $max, 'UTF-8');
+        }
+        return substr($text, 0, $max);
+    };
+    $title = $clip($title, 250);
+    $body  = $clip($body, 900);
+
+    $attempt = static function (array $schema) use ($pdo, $phone, $title, $body, $sendId, &$out): bool {
+        /* ۱) ایموجی چهاربایتی روی جدول سه‌بایتی */
+        $safeTitle = $title;
+        $safeBody  = $body;
+        if (empty($schema['emoji'])) {
+            $safeTitle = eplakStripAstralChars($title);
+            $safeBody  = eplakStripAstralChars($body);
+            if ($safeTitle !== $title || $safeBody !== $body) {
+                $out['degraded'][] = 'emoji_stripped';
+            }
+        }
+
+        /* ۲) ستون‌هایی که واقعاً وجود دارند */
+        $cols   = ['user_phone', 'title', 'body'];
+        $marks  = [':phone', ':title', ':body'];
+        $params = [':phone' => $phone, ':title' => $safeTitle, ':body' => $safeBody];
+
+        if (!empty($schema['read_flag'])) {
+            $cols[]  = 'read_flag';
+            $marks[] = '0';
+        } else {
+            $out['degraded'][] = 'no_read_flag';
+        }
+        if ($sendId !== null && !empty($schema['send_id'])) {
+            $cols[]            = 'send_id';
+            $marks[]           = ':send';
+            $params[':send']   = $sendId;
+        } elseif ($sendId !== null) {
+            $out['degraded'][] = 'no_send_id';
+        }
+
+        $sql = 'INSERT INTO notifications (' . implode(', ', $cols) . ') VALUES (' . implode(', ', $marks) . ')';
+
+        /* ۳) کلید خارجی قدیمی (user_phone → users.phone)
+           • اعلان شخصی: ردیف کاربر ساخته می‌شود تا کلید خارجی ردش نکند.
+           • اعلان عمومی ('all'): ردیف users با شماره‌ی 'all' نداریم و ساختنش
+             هم درست نیست؛ پس یک‌بار با «کلید خارجی خاموش» درج می‌شود (بدون
+             نیاز به دسترسی ALTER). اگر آن هم نشد، فراخوان باید به‌جایش برای
+             هر کاربر یک ردیف شخصی بسازد. */
+        if (!empty($schema['fk']) && !eplakFkRelaxState()) {
+            if ($phone === 'all' || $phone === '') {
+                $relaxedId = 0;
+                if (eplakFkRelaxedInsert($pdo, $sql, $params, $relaxedId)) {
+                    $out['ok']       = true;
+                    $out['id']       = $relaxedId;
+                    $out['error']    = '';
+                    $out['degraded'][] = 'fk_bypassed';
+                    return true;
+                }
+                /* نه کلید خارجی حذف شد، نه خاموش‌کردنش ممکن بود: فراخوان باید
+                   به‌جای ردیف عمومی، برای هر کاربر یک ردیف شخصی بسازد. */
+                $out['error'] = 'broadcast_blocked_by_foreign_key';
+                return false;
+            }
+            eplakEnsureUserRow($pdo, $phone);
+        }
+
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            $out['ok'] = true;
+            $out['id'] = (int) $pdo->lastInsertId();
+            $out['error'] = '';
+            return true;
+        } catch (\Throwable $e) {
+            /* اگر علت، ایموجی بود (و ما خبر نداشتیم) یک‌بار بدون آن تلاش می‌کنند */
+            $strippedTitle = eplakStripAstralChars($safeTitle);
+            $strippedBody  = eplakStripAstralChars($safeBody);
+            if ($strippedTitle !== $safeTitle || $strippedBody !== $safeBody) {
+                try {
+                    $retry = $pdo->prepare($sql);
+                    $retry->execute(array_merge($params, [':title' => $strippedTitle, ':body' => $strippedBody]));
+                    $out['ok'] = true;
+                    $out['id'] = (int) $pdo->lastInsertId();
+                    $out['error'] = '';
+                    $out['degraded'][] = 'emoji_stripped';
+                    return true;
+                } catch (\Throwable $e2) {
+                    $out['error'] = $e2->getMessage();
+                    return false;
+                }
+            }
+            $out['error'] = $e->getMessage();
+            return false;
+        }
+    };
+
+    $schema = eplakNotificationsSchema($pdo);
+    if ($attempt($schema)) {
+        return $out;
+    }
+
+    /* تلاش دوم: ساختار را اجباری ترمیم کن (شاید ستون تازگی حذف/بازیابی شده).
+       داخل تراکنش این کار را نمی‌کنیم: در MySQL دستور ALTER تراکنش را
+       می‌شکند و بقیه‌ی کارِ فراخوان (مثل ثبت «ارسال گروهی») ناقص می‌شد. */
+    if ($out['error'] !== 'broadcast_blocked_by_foreign_key' && !$pdo->inTransaction()) {
+        $schema = eplakNotificationsSchema($pdo, true);
+        if ($attempt($schema)) {
+            return $out;
+        }
+    }
+
+    error_log('[eplak-notify-insert] ' . $out['error'] . ' | phone=' . $phone . ' | title=' . $title);
+    return $out;
 }
 
 function eplakGetPdo(): PDO {

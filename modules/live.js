@@ -652,10 +652,33 @@
 
       // If user hasn't logged in, query broadcast notifications ('all')
       var queryPhone = phone || 'all';
-      const res = await fetch(apiBase() + '/notifications.php?phone=' + encodeURIComponent(queryPhone) + '&t=' + Date.now(), { cache: 'no-store' });
-      if (!res.ok) return false;
-      const data = await res.json();
-      if (!data || data.success !== true) return false;
+      /* شناسه‌ی همین دستگاه هم فرستاده می‌شود: «خوانده/حذف‌شده» بودن اعلان‌ها
+         روی سرور با کلید (شماره + دستگاه) ثبت می‌شود. بدون device، کاربر
+         مهمان هر بار اعلان‌های خوانده‌شده را دوباره خوانده‌نشده می‌دید و
+         «خوانده شد»ها بین چند گوشی یک نفر هم قاطی می‌شد. */
+      var query = 'phone=' + encodeURIComponent(queryPhone)
+                + '&device=' + encodeURIComponent(deviceId())
+                + '&t=' + Date.now();
+      const res = await fetch(apiBase() + '/notifications.php?' + query, { cache: 'no-store' });
+      const data = await res.json().catch(function () { return null; });
+
+      if (!res.ok || !data || data.success !== true) {
+        /* پیش‌تر این‌جا فقط «false» برگردانده می‌شد و کاربر هیچ سرنخی نداشت که
+           چرا فهرست اعلان‌ها خالی مانده (مثلاً ستون send_id در دیتابیس قدیمیِ
+           هوست وجود نداشت و سرور ۵۰۰ می‌داد). حالا علت/راهنمای سرور در صفحه‌ی
+           اعلان‌ها نشان داده می‌شود و فهرست محلیِ قبلی هم پاک نمی‌شود. */
+        setServerNotificationNotice(
+          (data && (data.hint || data.error))
+            || (!res.ok ? 'سرور اعلان‌ها پاسخ خطا داد (کد ' + res.status + '). کمی بعد دوباره تلاش می‌شود.' : '')
+            || 'خواندن اعلان‌ها از سرور ممکن نشد.'
+        );
+        return false;
+      }
+
+      /* degraded = دیتابیس سرور قدیمی است و اعلان‌ها در «حالت سازگار» می‌آیند */
+      setServerNotificationNotice(
+        (Array.isArray(data.degraded) && data.degraded.length && data.hint) ? data.hint : ''
+      );
       applyNotifications(data.notifications || []);
       return true;
     } catch (e) {
@@ -724,6 +747,9 @@
   var FCM_RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000];
   var FCM_RETRY_MAX = 14;
   var fcmState = { token: false, registered: false, attached: false, phone: '', reason: '', attempts: 0, at: 0 };
+  /* پیام سرور درباره‌ی وضعیت جدول اعلان‌ها (دیتابیس قدیمی/خطای خواندن).
+     در renderDeviceNotice زیر وضعیت اعلان گوشی نمایش داده می‌شود. */
+  var serverNoticeLine = '';
   var fcmRetryTimer = null;
   var fcmRetryCount = 0;
   var fcmInFlight = null;
@@ -1260,10 +1286,24 @@
            + '<button type="button" onclick="requestPushPermission()" style="border:0;background:#ea580c;color:#fff;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">فعال‌سازی اعلان</button>';
     }
 
+    if (serverNoticeLine) {
+      text += '<div id=\"notifServerNotice\" data-state=\"server\" style=\"margin-top:8px;font-weight:600;color:#b91c1c;\">⚠️ '
+            + escapeText(serverNoticeLine) + '</div>';
+    }
+
     box.innerHTML = text;
     box.style.display = 'block';
   }
   window.renderDeviceNotice = renderDeviceNotice;
+
+  /* پیام وضعیتِ سمت سرور را در صفحه‌ی اعلان‌ها نشان می‌دهد (خالی = پاک می‌شود) */
+  function setServerNotificationNotice(message) {
+    var next = String(message || '').trim();
+    if (next === serverNoticeLine) return;
+    serverNoticeLine = next;
+    try { renderDeviceNotice(); } catch (e) {}
+  }
+  window.setServerNotificationNotice = setServerNotificationNotice;
 
   /* نتیجه‌ی درخواست اجازه‌ی اعلان — هم از لایه‌ی وب و هم از خود اندروید صدا زده می‌شود */
   window.eplakNativePermissionResult = function (granted) {

@@ -833,7 +833,7 @@ section('اندروید، صفحه‌ی اصلی، مستندات و ساخت ب
   ok('ترتیب بارگذاری: داده ← منطق، و city-map پس از ep-map و reports (تا پاسخ اجازه‌ی موقعیت درست زنجیر شود)',
     tag('core/places-data.js') > 0 && tag('core/places-data.js') < tag('core/places.js') && tag('assets/js/ep-map.js') < tag('modules/city-map.js')
     && tag('modules/reports.js') < tag('modules/city-map.js') && tag('core/places.js') < tag('modules/city-map.js'));
-  ok('ep-map.js با نسخه‌ی ۴ و استایل با نسخه‌ی ۹۱ بار می‌شود (کش تازه می‌شود)', /ep-map\.js\?v=4/.test(INDEX) && /style\.css\?v=91/.test(INDEX));
+  ok('ep-map.js با نسخه‌ی ۴ و استایل با نسخه‌ی ۹۳ بار می‌شود (کش تازه می‌شود)', /ep-map\.js\?v=4/.test(INDEX) && /style\.css\?v=93/.test(INDEX));
   const css = read('assets/css/style.css');
   ok('استایل‌های صفحه (.cm-card/.cm-chip/.cm-row/.cm-sheet) و حالت روز', ['.cm-card', '.cm-chip', '.cm-row', '.cm-sheet', 'html.day .cm-sheet'].every((k) => css.includes(k)));
   const router = read('core/router.js');

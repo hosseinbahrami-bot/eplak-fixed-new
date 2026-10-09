@@ -133,7 +133,9 @@ try {
     $ticketId = (int) $pdo->lastInsertId();
 
     $pdo->commit();
-    $code = 'TK-1403-' . str_pad((string) ($ticketId + 1000), 4, '0', STR_PAD_LEFT);
+    $code = function_exists('eplakTicketCode')
+        ? eplakTicketCode((int) $ticketId)
+        : 'TK-1403-' . str_pad((string) ($ticketId + 1000), 4, '0', STR_PAD_LEFT);
 
     /* اعلان فوری برای خودِ کاربر (فهرست اعلان‌های اپ/سایت + فایربیس در حالت بسته) */
     try {

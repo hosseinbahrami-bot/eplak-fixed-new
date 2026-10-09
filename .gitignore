@@ -14,3 +14,11 @@ pwa-dist/
 pwa-evidence/
 eplak-pwa.zip
 tools/node_modules/
+
+# بسته‌ی آپلود هاست — هر بار با tools/build-update-package.sh (و در CI با
+# ورک‌فلوی build-update-package.yml) از کدِ روز ساخته می‌شود؛ در گیت نمی‌ماند.
+eplak-fixed-update.zip
+eplak-fixed-update.zip.sha256
+
+# محیط آزمون‌های خودکار (اگر داخل مخزن ساخته شود)
+.harness/
