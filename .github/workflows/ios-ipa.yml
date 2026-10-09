@@ -76,7 +76,9 @@ jobs:
           fi
           sudo xcode-select -s "$CHOSEN/Contents/Developer"
           echo "✅ Xcode: $CHOSEN"
-          xcodebuild -version
+          XCODE_VER="$(xcodebuild -version | head -1)"
+          echo "$XCODE_VER"
+          echo "XCODE_VER=$XCODE_VER ($CHOSEN)" >> "$GITHUB_ENV"
           xcrun simctl list runtimes 2>&1 | grep -i ios || echo "::warning::رانتایم iOS فهرست نشد"
 
       - name: همگام‌سازی فایل‌های وب داخل پروژه‌ی iOS (Eplak/Web)
@@ -209,6 +211,7 @@ jobs:
             echo "| فایل‌های وبِ داخل IPA | \`${IPA_WEB_FILES:-?}\` |"
             echo "| sha256 | \`${IPA_SHA:-?}\` |"
             echo "| پروژه‌ی Xcode | \`eplak-ios-project.zip\` (\`${PROJECT_ZIP_SIZE:-?}\`) |"
+            echo "| Xcode | \`${XCODE_VER:-?}\` |"
             echo "| شاخه / کامیت | \`${GITHUB_REF_NAME}\` / \`${GITHUB_SHA}\` |"
             echo
             echo "**نصب:** با Sideloadly یا AltStore و Apple ID خودتان (بدون امضا هر ۷ روز تمدید می‌شود)."
@@ -237,3 +240,6 @@ jobs:
             eplak-ios-project.zip.sha256 \
             --clobber
           echo "✅ به ریلیز $RELEASE_TAG اضافه/جایگزین شد"
+          # لاگ کامل اجرا همیشه قابل دانلود نیست؛ نتیجه در annotation هم می‌آید.
+          echo "::notice title=IPA::منتشر شد · حجم $IPA_SIZE · sha256=$IPA_SHA · $IPA_WEB_FILES فایل وب · ${XCODE_VER:-?} · شاخه‌ی $GITHUB_REF_NAME · کامیت ${GITHUB_SHA:0:7}"
+          echo "::notice title=دانلود IPA::https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/eplak-app-unsigned.ipa"
