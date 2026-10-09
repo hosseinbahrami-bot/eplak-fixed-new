@@ -1,0 +1,291 @@
+# ============================================================================
+#  Build PWA package — ساخت، سنجش و انتشار نسخه‌ی PWA ای‌پلاک
+# ============================================================================
+#  PWA «فایل دانلودی» ندارد؛ فقط یک آدرس است. پس این ورک‌فلو هیچ zipی نمی‌سازد
+#  و هیچ چیزی به Releases پیوست نمی‌کند — فقط:
+#
+#    job «pwa»   → بسته‌ی ایستا با tools/build-pwa.sh ساخته می‌شود و در Chrome
+#                  واقعی روی یک origin جدا (مثل Pages) با سرور واقعی ای‌پلاک
+#                  سنجیده می‌شود: CORS، سرویس‌ورکر، قابلیت نصب، manifest، نقشه.
+#    job «host»  → خودِ سایت روی هاست (https://eplak.ir/eplak-fixed/) با همان
+#                  آزمون دودی سنجیده می‌شود. این job «گزارشی» است: اگر هاست
+#                  خاموش باشد، اجرا قرمز نمی‌شود (continue-on-error).
+#    job «pages» → همان بسته روی GitHub Pages منتشر می‌شود و «پس از انتشار»،
+#                  همان آزمون دودی روی آدرس واقعیِ منتشرشده اجرا می‌شود.
+#                  اگر Pages روشن نباشد، این job بدون خطا رد می‌شود و مراحل
+#                  روشن‌کردنش را در خلاصه‌ی اجرا می‌نویسد.
+#
+#  هیچ secret لازم نیست (از GITHUB_TOKEN خود اجرا استفاده می‌شود).
+#  عکس‌های آزمون فقط وقتی به‌صورت Artifact نگه داشته می‌شوند که پیام کامیت
+#  «[evidence]» داشته باشد؛ وگرنه برچسب‌های آزمایشی روی هر اجرا جمع می‌شوند.
+#
+#  آدرس نهایی:  https://hosseinbahrami-bot.github.io/eplak-fixed/
+#  راهنما:      docs/IOS_PWA_FA.md (بخش ۳-۱: روشن کردن Pages)
+# ============================================================================
+
+name: Build PWA package
+
+on:
+  push:
+    branches: [ main, 'arena/**' ]
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'core/**'
+      - 'modules/**'
+      - 'views/**'
+      - 'assets/**'
+      - 'tools/build-pwa.sh'
+      - 'tools/pwa-smoke.mjs'
+      - '.github/workflows/pwa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pwa-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PAGES_URL: 'https://hosseinbahrami-bot.github.io/eplak-fixed/'
+  HOST_URL: 'https://eplak.ir/eplak-fixed/'
+  API_BASE: 'https://eplak.ir/eplak-fixed/api'
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # ۱) بسته‌ی ایستا + آزمون دودی در Chrome واقعی (origin جدا از سرور = CORS)
+  # ──────────────────────────────────────────────────────────────────────────
+  pwa:
+    name: ساخت و آزمون دودی (Chrome)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: آماده‌سازی Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: نصب puppeteer-core (Chrome خودِ runner استفاده می‌شود)
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm install --no-audit --no-fund puppeteer-core
+
+      - name: ساخت بسته‌ی ایستای PWA (پوشه‌ی pwa-dist)
+        run: bash tools/build-pwa.sh pwa-dist
+
+      # آزمون دودی با سرور واقعیِ ای‌پلاک حرف می‌زند؛ اگر هاست خاموش باشد،
+      # «خرابی کد» را به‌جای «خاموشی هاست» نبینیم: این‌جا اول در دسترس بودنش
+      # سنجیده می‌شود و در صورت خاموشی، آزمون فقط گزارش می‌دهد (قرمز نمی‌کند).
+      - name: در دسترس بودن سرور ای‌پلاک
+        id: reach
+        run: |
+          if curl -fsS --max-time 20 "$API_BASE/ping.php" >/dev/null 2>&1; then
+            echo "up=true" >> "$GITHUB_OUTPUT"
+            echo "✅ سرور ای‌پلاک در دسترس است ($API_BASE)"
+          else
+            echo "up=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::سرور ای‌پلاک در دسترس نیست؛ آزمون دودی «گزارشی» اجرا می‌شود"
+          fi
+
+      - name: آزمون دودی PWA در Chrome
+        continue-on-error: ${{ steps.reach.outputs.up != 'true' }}
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node tools/pwa-smoke.mjs pwa-dist pwa-evidence
+
+      - name: خلاصه‌ی اجرا
+        if: always()
+        run: |
+          {
+            echo "### PWA — آزمون دودی در Chrome"
+            echo
+            echo "- بسته‌ی ایستا: \`pwa-dist\` ($(find pwa-dist -type f 2>/dev/null | wc -l | tr -d ' ') فایل)"
+            echo "- آدرس API داخل بسته: \`$API_BASE\`"
+            echo "- سرور ای‌پلاک: $([ "${{ steps.reach.outputs.up }}" = "true" ] && echo 'در دسترس' || echo 'در دسترس نبود')"
+            echo
+            echo "عکس‌ها و گزارش‌ها:"
+            ls -1 pwa-evidence 2>/dev/null | sed 's/^/- /' || echo '- (چیزی ساخته نشد)'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: پیوست عکس‌ها و گزارش (فقط با «[evidence]» در پیام کامیت)
+        if: always() && contains(github.event.head_commit.message, '[evidence]')
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-evidence-chrome
+          path: pwa-evidence
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # ۲) خودِ سایت روی هاست (همان دامنه‌ی سرور → API نسبی است)
+  #    گزارشی است: هاست خاموش یا کند ← اجرا قرمز نمی‌شود.
+  # ──────────────────────────────────────────────────────────────────────────
+  host:
+    name: سنجش سایت روی هاست
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    env:
+      HOST_PWA_URL: 'https://eplak.ir/eplak-fixed/'
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: آماده‌سازی Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: نصب puppeteer-core
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm install --no-audit --no-fund puppeteer-core
+
+      - name: آزمون دودیِ سایت روی هاست (حالت host)
+        env:
+          PWA_KIND: 'host'
+          PWA_URL: ${{ env.HOST_PWA_URL }}
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node tools/pwa-smoke.mjs pwa-dist host-evidence
+
+      - name: خلاصه‌ی اجرا
+        if: always()
+        run: |
+          {
+            echo "### PWA روی هاست — $HOST_PWA_URL"
+            echo
+            echo "این بخش «گزارشی» است: خاموش یا کند بودن هاست اجرا را قرمز نمی‌کند."
+            echo
+            ls -1 host-evidence 2>/dev/null | sed 's/^/- /' || echo '- (چیزی ساخته نشد)'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: پیوست عکس‌ها و گزارش (فقط با «[evidence]» در پیام کامیت)
+        if: always() && contains(github.event.head_commit.message, '[evidence]')
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-evidence-host
+          path: host-evidence
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # ۳) انتشار روی GitHub Pages و سنجش آدرس واقعیِ منتشرشده
+  #    اگر Pages روشن نباشد (یا منبعش «GitHub Actions» نباشد)، مرحله‌ی «check»
+  #    راهنما را در خلاصه می‌نویسد و بقیه‌ی مراحل «بدون خطا» رد می‌شوند.
+  # ──────────────────────────────────────────────────────────────────────────
+  pages:
+    name: انتشار روی GitHub Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: pwa
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: بررسی اینکه Pages روشن و منبعش «GitHub Actions» است
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          PAGES_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pages" 2>/dev/null)"
+          set -e
+          BUILD_TYPE="$(printf '%s' "$PAGES_JSON" | jq -r '.build_type // ""' 2>/dev/null || true)"
+          if [ "$BUILD_TYPE" = "workflow" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "✅ GitHub Pages روشن است و منبعش «GitHub Actions» است."
+            exit 0
+          fi
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "### انتشار روی GitHub Pages انجام نشد (Pages روشن نیست)"
+            echo
+            echo "یک‌بار این سه قدم را انجام دهید (فقط مالک مخزن می‌تواند؛ حدود یک دقیقه):"
+            echo
+            echo "1. در GitHub: **Settings ← Pages**"
+            echo "2. زیر **Build and deployment** گزینه‌ی **Source** را روی **GitHub Actions** بگذارید"
+            echo "3. همین ورک‌فلو را دوباره اجرا کنید: **Actions ← Build PWA package ← آخرین اجرا ← Re-run all jobs**"
+            echo
+            echo "اگر انتشار با پیام «not allowed to deploy to github-pages due to environment protection rules» رد شد:"
+            echo "**Settings ← Environments ← github-pages ← Deployment branches** و شاخه‌ی \`arena/**\` را اضافه کنید"
+            echo "(یا تغییرات را در \`main\` ادغام کنید)."
+            echo
+            echo "وضعیت فعلی: build_type=\"${BUILD_TYPE:-none}\""
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "⏭ Pages روشن نیست؛ بقیه‌ی مراحل بدون خطا رد می‌شوند."
+          exit 0
+
+      - name: دریافت کد
+        if: steps.check.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+
+      - name: آماده‌سازی Node
+        if: steps.check.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: نصب puppeteer-core
+        if: steps.check.outputs.enabled == 'true'
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm install --no-audit --no-fund puppeteer-core
+
+      - name: ساخت بسته‌ی ایستا برای انتشار
+        if: steps.check.outputs.enabled == 'true'
+        run: bash tools/build-pwa.sh pwa-dist
+
+      - name: آماده‌سازی Pages
+        if: steps.check.outputs.enabled == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: آپلود بسته‌ی انتشار (پوشه‌ی pwa-dist)
+        if: steps.check.outputs.enabled == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pwa-dist
+
+      - name: انتشار روی GitHub Pages
+        if: steps.check.outputs.enabled == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      # «پس از انتشار» همان آزمون دودی روی آدرس واقعیِ منتشرشده اجرا می‌شود؛
+      # یعنی چیزی که کاربر می‌بیند سنجیده می‌شود، نه فقط پوشه‌ی ساخته‌شده.
+      - name: آزمون دودی روی آدرس منتشرشده
+        if: steps.check.outputs.enabled == 'true'
+        env:
+          PWA_URL: ${{ steps.deployment.outputs.page_url }}
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node tools/pwa-smoke.mjs pwa-dist pages-evidence
+
+      - name: خلاصه‌ی انتشار
+        if: steps.check.outputs.enabled == 'true'
+        run: |
+          {
+            echo "### انتشار روی GitHub Pages"
+            echo
+            echo "- آدرس منتشرشده: <${{ steps.deployment.outputs.page_url }}>"
+            echo "- آدرس مورد انتظار: <$PAGES_URL>"
+            echo
+            ls -1 pages-evidence 2>/dev/null | sed 's/^/- /' || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: پیوست عکس‌ها و گزارش (فقط با «[evidence]» در پیام کامیت)
+        if: steps.check.outputs.enabled == 'true' && always() && contains(github.event.head_commit.message, '[evidence]')
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-evidence-pages
+          path: pages-evidence
+          if-no-files-found: ignore
+          retention-days: 30

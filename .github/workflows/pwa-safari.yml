@@ -1,0 +1,103 @@
+# ============================================================================
+#  PWA ای‌پلاک داخل Safari واقعیِ iPhone (شبیه‌ساز، روی macOS)
+# ============================================================================
+#  چرا؟ چون «PWA روی iOS» یعنی WebKit — و WebKit با Chrome/Chromium فرق دارد.
+#  این ورک‌فلو نسخه‌ی زنده‌ی سایت را داخل Safariِ یک شبیه‌سار iPhone باز می‌کند
+#  و در سه لحظه (۳۰/۶۰/۹۰ ثانیه) عکس می‌گیرد؛ Safari در شبیه‌ساز بارِ اول کند
+#  بالا می‌آید، پس یک عکس کافی نیست.
+#
+#  صادقانه: این سنجش فقط نشان می‌دهد «صفحه داخل WebKit درست کشیده می‌شود».
+#  «افزودن به صفحه اصلی» و اعلانِ Web Push را نمی‌شود روی شبیه‌ساز خودکار
+#  امتحان کرد (نیاز به iOS 16.4+ و تعامل دستی دارد) — راهنما: docs/IOS_PWA_FA.md
+#
+#  عمداً فقط با تغییرِ فایل‌های خودش راه می‌افتد (نه با هر تغییر وبی):
+#  اجرای macOS گران و کند است و نباید جلوی ساخت APK/IPA/PWA را بگیرد.
+#  هیچ secret لازم ندارد.
+# ============================================================================
+
+name: آزمون PWA در Safari شبیه‌ساز iPhone
+
+on:
+  push:
+    branches: [ main, 'arena/**' ]
+    paths:
+      - '.github/workflows/pwa-safari.yml'
+      - 'tools/safari-pwa.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pwa-safari-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PWA_LIVE_URL: 'https://eplak.ir/eplak-fixed/'
+  EVIDENCE_DIR: safari-evidence
+
+jobs:
+  safari:
+    name: Safari روی شبیه‌ساز iPhone
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: انتخاب جدیدترین Xcode نصب‌شده
+        run: |
+          set -euo pipefail
+          LATEST="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
+          [ -n "$LATEST" ] || { echo "❌ هیچ Xcode پیدا نشد"; exit 1; }
+          sudo xcode-select -s "$LATEST/Contents/Developer"
+          xcodebuild -version
+          xcrun simctl list runtimes | grep -i ios || true
+
+      # اگر هاست خاموش باشد، اجرا قرمز نمی‌شود (این یک «گزارش» است، نه دروازه).
+      - name: بررسی در دسترس بودن سایت زنده
+        run: |
+          set -uo pipefail
+          echo "→ $PWA_LIVE_URL"
+          CODE="$(curl -o /dev/null -s -w '%{http_code}' --max-time 25 "$PWA_LIVE_URL" || echo 000)"
+          echo "HTTP $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "::warning::سایت زنده با کد $CODE پاسخ داد؛ عکس‌ها احتمالاً صفحه‌ی خطا را نشان می‌دهند."
+          fi
+
+      - name: اجرای آزمون Safari (tools/safari-pwa.sh)
+        run: |
+          set -euo pipefail
+          bash tools/safari-pwa.sh "$PWA_LIVE_URL" "$EVIDENCE_DIR"
+
+      - name: خلاصه‌ی اجرا
+        if: always()
+        run: |
+          {
+            echo "### PWA در Safari شبیه‌ساز iPhone"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| آدرس سنجیده‌شده | \`$PWA_LIVE_URL\` |"
+            echo "| شبیه‌ساز | \`$(cat $EVIDENCE_DIR/simulator.txt 2>/dev/null || echo '—')\` |"
+            echo "| عکس‌ها | \`$EVIDENCE_DIR/safari-30s.png\` · \`safari-60s.png\` · \`safari-90s.png\` |"
+            echo "| شاخه / کامیت | \`${GITHUB_REF_NAME}\` / \`${GITHUB_SHA}\` |"
+            echo
+            echo "**چه چیزی سنجیده می‌شود؟** کشیده‌شدن درست صفحه داخل WebKit."
+            echo
+            echo "**چه چیزی سنجیده نمی‌شود؟** «افزودن به صفحه اصلی» و اعلانِ Web Push"
+            echo "(روی شبیه‌سار خودکارشدنی نیست؛ iOS 16.4+ و تعامل دستی لازم است)."
+            echo
+            echo "عکس‌ها وقتی پیام کامیت \`[evidence]\` داشته باشد، به‌صورت Artifact"
+            echo "به اجرا پیوست می‌شوند (تا برچسب‌های آزمایشی روی هر اجرا جمع نشوند)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # عکس‌ها فقط با پیام کامیت «[evidence]» پیوست می‌شوند.
+      - name: پیوست عکس‌های Safari
+        if: contains(github.event.head_commit.message, '[evidence]')
+        uses: actions/upload-artifact@v4
+        with:
+          name: safari-evidence
+          path: safari-evidence
+          if-no-files-found: ignore
+          retention-days: 30

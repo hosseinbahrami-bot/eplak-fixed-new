@@ -1,0 +1,214 @@
+# ============================================================================
+#  ساخت اپ اندروید — eplak-app.apk
+# ============================================================================
+#  اپ اندروید، خودِ وب‌اپ را «داخل» خودش دارد و از روی file:// باز می‌کند
+#  (android-app/app/build.gradle ← syncWebAssets). پس با هر تغییر در فایل‌های وب،
+#  APK باید دوباره ساخته شود؛ وگرنه کاربر آخرین اصلاحات را نمی‌بیند.
+#
+#  چه کار می‌کند؟
+#    ۱) APK می‌سازد (Gradle؛ فایل‌های وبِ روز خودکار داخلش کپی می‌شوند)
+#    ۲) «بازرسی APK»: فایل‌های وبِ داخل بسته با مخزن مقایسه می‌شوند (همان چیزی
+#       که ریشه‌ی باگ «اعلان‌ها در اپ نمی‌آید» بود: بسته‌ی قدیمی روی گوشی)
+#    ۳) شاخص همگام‌سازی اماکنِ پنل با اپ را حساب می‌کند (PLACES_SYNC_CODE)
+#    ۴) به همان ریلیزی پیوست می‌کند که IPA و بقیه‌ی فایل‌ها هستند
+#
+#  درباره‌ی امضا: این پروژه کلید امضای release در گیت ندارد (و نباید هم داشته
+#  باشد)، پس APK از build «debug» ساخته می‌شود که با کلید debug خودِ Gradle
+#  امضا شده و «قابل نصب» است. اگر روزی کلید امضای رسمی خواستید، همان را در
+#  android-app/app/build.gradle اضافه کنید؛ این ورک‌فلو به secret نیازی ندارد.
+# ============================================================================
+
+name: ساخت اپ اندروید (APK)
+
+on:
+  push:
+    branches: [ main, 'arena/**' ]
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'core/**'
+      - 'modules/**'
+      - 'views/**'
+      - 'assets/**'
+      - 'android-app/**'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write          # برای پیوست کردن APK به ریلیز
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RELEASE_TAG: v2.0-eplak-update
+  APK_NAME: eplak-app.apk
+  PLACES_API: 'https://eplak.ir/eplak-fixed/api/places.php'
+  # شاخص «همگام‌سازی اماکنِ پنل با اپ» — در مرحله‌ی places محاسبه می‌شود.
+  PLACES_SYNC_CODE: ''
+
+jobs:
+  build:
+    name: ساخت، بازرسی و انتشار APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: آماده‌سازی JDK 17 (و کش Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: آماده‌سازی Android SDK (compileSdk 36)
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || { echo "❌ sdkmanager پیدا نشد ($SDKMANAGER)"; ls -R "$SDK" | head -40; exit 1; }
+          yes 2>/dev/null | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0" >/dev/null
+          echo "✅ Android SDK آماده است: $SDK"
+
+      - name: ساخت APK (فایل‌های وبِ روز خودکار داخلش می‌روند)
+        run: |
+          set -euo pipefail
+          cd android-app
+          chmod +x gradlew
+          # syncWebAssets (وابسته‌ی preBuild) index.html، core/، modules/، views/ و
+          # assets/ را از ریشه‌ی مخزن داخل APK می‌گذارد.
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          ls -l app/build/outputs/apk/debug/
+
+      - name: نام‌گذاری و اثر انگشت
+        run: |
+          set -euo pipefail
+          cp android-app/app/build/outputs/apk/debug/app-debug.apk "$APK_NAME"
+          sha256sum "$APK_NAME" | tee "$APK_NAME.sha256"
+          {
+            echo "APK_SIZE=$(du -h "$APK_NAME" | cut -f1 | tr -d ' ')"
+            echo "APK_SHA=$(cut -d' ' -f1 "$APK_NAME.sha256")"
+            echo "APK_VERSION=$(grep -m1 "versionName" android-app/app/build.gradle | sed "s/.*'\(.*\)'.*/\1/")"
+          } >> "$GITHUB_ENV"
+
+      # ── بازرسی APK ────────────────────────────────────────────────────────
+      # «فایل وبِ داخل APK» باید دقیقاً همان فایلِ مخزن باشد. اگر این بررسی رد
+      # شود، یعنی APK قدیمی/ناقص است — همان چیزی که باعث می‌شود کاربر آخرین
+      # تعمیر (مثلاً اعلان‌ها) را نبیند.
+      - name: بازرسی APK (فایل‌های وبِ داخل بسته = مخزن)
+        run: |
+          set -euo pipefail
+          rm -rf apk-check && mkdir -p apk-check
+          unzip -q "$APK_NAME" 'assets/*' -d apk-check
+          test -f apk-check/assets/index.html || { echo "❌ assets/index.html داخل APK نیست"; exit 1; }
+          MISSING=0; DIFF=0; COUNT=0
+          for f in index.html modules/live.js modules/dashboard.js core/storage.js core/places-data.js; do
+            COUNT=$((COUNT + 1))
+            if [ ! -f "apk-check/assets/$f" ]; then
+              echo "❌ $f داخل APK نیست"; MISSING=$((MISSING + 1)); continue
+            fi
+            A=$(sha256sum "apk-check/assets/$f" | cut -d' ' -f1)
+            B=$(sha256sum "$f" | cut -d' ' -f1)
+            if [ "$A" != "$B" ]; then echo "❌ $f داخل APK با مخزن فرق دارد"; DIFF=$((DIFF + 1)); else echo "✅ $f یکی است"; fi
+          done
+          FILES=$(find apk-check/assets -type f | wc -l | tr -d ' ')
+          echo "APK_WEB_FILES=$FILES" >> "$GITHUB_ENV"
+          echo "✅ $FILES فایل وب داخل APK است"
+          # کش‌باسترِ live.js هم باید بالا رفته باشد (وگرنه اپ همان فایل قدیمی را می‌خواند)
+          grep -o 'modules/live.js?v=[0-9]*' apk-check/assets/index.html | head -1
+          [ "$MISSING" -eq 0 ] && [ "$DIFF" -eq 0 ] || exit 1
+
+      # ── شاخص همگام‌سازی اماکنِ پنل با اپ ──────────────────────────────────
+      # اپ «اماکن شهری» را از دو منبع می‌گیرد:
+      #   ۱) فهرست پیش‌فرضِ بسته‌بندی‌شده داخل APK (core/places-data.js)
+      #   ۲) پاسخ api/places.php که در localStorage با کلید eplak_places_remote_v1
+      #      نگه داشته می‌شود و با Places.applyRemote(payload) روی فهرست پیش‌فرض
+      #      اعمال می‌شود (custom/overrides/hidden).
+      # یعنی APK هرگز «خراب» نمی‌شود، ولی تغییرات پنل فقط از سرور می‌آیند و در
+      # حالت آفلاین دیده نمی‌شوند. PLACES_SYNC_CODE همین وضعیت را یک‌خطی گزارش
+      # می‌کند تا در خلاصه‌ی اجرا، env و یادداشت انتشار دیده شود.
+      - name: شاخص همگام‌سازی اماکنِ پنل با اپ
+        id: places
+        run: |
+          set -uo pipefail
+          BUNDLED=$(grep -c '"id":' core/places-data.js || true)
+          PAYLOAD="$(curl -fsS --max-time 25 "$PLACES_API" 2>/dev/null || true)"
+          if [ -z "$PAYLOAD" ]; then
+            CODE="state=host-unreachable|bundled=${BUNDLED}|remote=?"
+          else
+            CODE="$(printf '%s' "$PAYLOAD" | jq -r --argjson bundled "${BUNDLED:-0}" '
+              ((.custom // []) | length) as $c
+              | ((.overrides // {}) | length) as $o
+              | ((.hidden // []) | length) as $h
+              | "v=\(.v // "-")|custom=\($c)|overrides=\($o)|hidden=\($h)|bundled=\($bundled)"
+              | . + (if ($c + $o + $h) == 0 then "|state=in-sync"
+                       else "|state=remote-ahead" end)')"
+            if [ -z "$CODE" ] || [ "$CODE" = "null" ]; then
+              CODE="state=bad-response|bundled=${BUNDLED}"
+            fi
+          fi
+          echo "PLACES_SYNC_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "PLACES_SYNC_CODE=$CODE" >> "$GITHUB_OUTPUT"
+          echo "::notice title=اماکن شهری::PLACES_SYNC_CODE=$CODE"
+          case "$CODE" in
+            *state=in-sync*)        echo "✅ فهرست اماکنِ داخل APK با پنل یکی است" ;;
+            *state=remote-ahead*)   echo "ℹ️ پنل تغییراتی دارد که اپ «از سرور» می‌گیرد (آفلاین: فهرست پیش‌فرضِ داخل APK)" ;;
+            *state=host-unreachable*) echo "::warning::سرور ای‌پلاک در دسترس نبود؛ شاخص همگام‌سازی اماکن محاسبه نشد" ;;
+            *)                      echo "::warning::پاسخ api/places.php خوانده نشد" ;;
+          esac
+
+      - name: خلاصه‌ی اجرا
+        if: always()
+        run: |
+          {
+            echo "### اپ اندروید — \`$APK_NAME\`"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| نسخه‌ی اپ | \`${APK_VERSION:-?}\` |"
+            echo "| حجم | \`${APK_SIZE:-?}\` |"
+            echo "| فایل‌های وبِ داخل APK | \`${APK_WEB_FILES:-?}\` |"
+            echo "| sha256 | \`${APK_SHA:-?}\` |"
+            echo "| شاخص همگام‌سازی اماکن (PLACES_SYNC_CODE) | \`${PLACES_SYNC_CODE:-?}\` |"
+            echo "| شاخه / کامیت | \`${GITHUB_REF_NAME}\` / \`${GITHUB_SHA}\` |"
+            echo
+            echo "دانلود پس از انتشار: <https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$APK_NAME>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # پیوست به «همان» صفحه‌ی Releases که IPA و بقیه‌ی فایل‌ها هستند.
+      - name: انتشار APK در ریلیز
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.0-eplak-update
+          name: 'ای‌پلاک — نسخه‌ی ۲.۰ (APK · IPA · PWA)'
+          files: |
+            eplak-app.apk
+            eplak-app.apk.sha256
+          fail_on_unmatched_files: true
+          body: |
+            فایل‌های نصب و بسته‌های ای‌پلاک (خودکار از کدِ روز ساخته می‌شوند).
+
+            | فایل | چیست |
+            | --- | --- |
+            | `eplak-app.apk` | اپ اندروید (وب‌اپِ روز داخلش بسته‌بندی شده) |
+            | `eplak-app-unsigned.ipa` | اپ iOS بدون امضا (با Sideloadly/AltStore/Xcode نصب می‌شود) |
+            | `eplak-ios-project.zip` | پروژه‌ی Xcode همراه فایل‌های وبِ روز |
+
+            **APK همین اجرا:** نسخه‌ی `${{ env.APK_VERSION }}` · \`${{ env.APK_SHA }}\` ·
+            شاخه‌ی `${{ github.ref_name }}` · کامیت `${{ github.sha }}`
+
+            **شاخص همگام‌سازی اماکنِ پنل با اپ (PLACES_SYNC_CODE):** `${{ env.PLACES_SYNC_CODE }}`
+            یعنی تغییرات «اماکن شهری» در پنل، از سرور به اپ می‌رسند
+            (`api/places.php` ← کلید `eplak_places_remote_v1` ← `applyRemote`)؛
+            در حالت آفلاین، فهرست پیش‌فرضِ داخل APK نمایش داده می‌شود.
+
+            **بسته‌ی سایت و پنل** (برای آپلود روی هاست) در ریلیز جداگانه‌ی
+            [`latest-update`](https://github.com/${{ github.repository }}/releases/tag/latest-update) ساخته می‌شود.
+
+            راهنما: `docs/IOS_PWA_FA.md` · نصب APK: اجازه‌ی «نصب از منابع نامشخص».
