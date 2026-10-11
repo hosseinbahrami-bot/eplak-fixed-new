@@ -163,14 +163,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            نسخه‌ی اسکیما است، پس حتی وقتی درِ همگام‌سازی بسته است انجام می‌شود. */
         $notif = function_exists('eplakNotificationsSchema') ? eplakNotificationsSchema($pdo, true) : [];
 
+        /* ساختار «جدول اخبار و دانستنی‌ها» هم ترمیم می‌شود: اگر جدول news در
+           دیتابیس نباشد ساخته می‌شود، ستون‌های نبوده (badge/image_url/…) اضافه
+           می‌شوند و جدول به utf8mb4 می‌رود تا ایموجیِ آیکون‌ها ذخیره شود.
+           ریشه‌ی «اخبار و اطلاعیه‌ها در اپ و پنل خالی است» همین است. */
+        $news = function_exists('eplakNewsSchema') ? eplakNewsSchema($pdo, true) : [];
+        $newsSeeded = 0;
+        if (function_exists('eplakSeedDefaultNews')) {
+            eplakSetAppSetting($pdo, 'news_seeded', '');
+            $newsSeedReport = null;
+            $newsSeeded = eplakSeedDefaultNews($pdo, $newsSeedReport);
+        }
+
         $problems = array_merge(
             array_slice((array) ($report['failed'] ?? []), 0, 3),
-            array_slice((array) ($notif['failed'] ?? []), 0, 3)
+            array_slice((array) ($notif['failed'] ?? []), 0, 3),
+            array_slice((array) ($news['failed'] ?? []), 0, 3)
         );
         $done = array_merge(
             (array) ($report['added'] ?? []),
-            (array) ($notif['repaired'] ?? [])
+            (array) ($notif['repaired'] ?? []),
+            (array) ($news['repaired'] ?? [])
         );
+        if ($newsSeeded > 0) {
+            $done[] = 'درج ' . $newsSeeded . ' مطلب پیش‌فرض در جدول اخبار';
+        }
 
         if ($problems) {
             $message = '⚠️ برخی ترمیم‌ها انجام نشد: ' . implode(' | ', $problems)
@@ -201,6 +218,7 @@ $schemaReport  = eplakSchemaSyncReport();
 $schemaVersion = (string) eplakAppSetting($pdo, 'schema_version', '');
 /* وضعیت «جدول اعلان‌ها» برای نمایش در همین صفحه (ارزان: یک نشانگر + یک کاوش ستون) */
 $notifSchema = function_exists('eplakNotificationsSchema') ? eplakNotificationsSchema($pdo) : null;
+$newsSchema  = function_exists('eplakNewsSchema') ? eplakNewsSchema($pdo) : null;
 
 $vapid        = eplakVapidKeys($pdo, false);
 $vapidReady   = $vapid['ready'];
@@ -668,6 +686,9 @@ $httpsOn = eplakIsHttpsRequest();
           در صورت دیدن خطای «Unknown column» یا «اعلان در اپ نمی‌آید»، دکمه‌ی ترمیم را بزنید:
           ستون <code>notifications.send_id</code> را اضافه می‌کند، کلید خارجیِ مزاحم را برمی‌دارد و
           نویسه‌گان جدول اعلان‌ها را به <code>utf8mb4</code> (برای ایموجی) تبدیل می‌کند.
+          همین دکمه جدول <code>news</code> را هم تعمیر می‌کند (ساخت جدول اگر در دامپ قدیمی نبود،
+          افزودن ستون <code>badge</code>/<code>image_url</code> و تبدیل به <code>utf8mb4</code>)؛
+          اگر جدول اخبار خالی باشد، مطالب پیش‌فرض یک‌بار درج می‌شوند.
           اگر کاربر دیتابیس اجازه‌ی <code>ALTER</code> ندارد، <code>backend/fix-notifications-db.sql</code>
           را یک‌بار در phpMyAdmin اجرا کنید (جزئیات: <code>docs/NOTIFICATIONS_FA.md</code>).
         </p>
@@ -705,6 +726,34 @@ $httpsOn = eplakIsHttpsRequest();
               <div class="kv-row">
                 <span class="kv-key">راه جایگزین</span>
                 <span class="kv-val" style="direction:ltr; text-align:left;"><code>backend/fix-notifications-db.sql</code></span>
+              </div>
+            <?php endif; ?>
+          <?php endif; ?>
+          <?php if ($newsSchema): ?>
+            <div class="kv-row">
+              <span class="kv-key">جدول اخبار و دانستنی‌ها</span>
+              <span class="kv-val">
+                <?php if (!empty($newsSchema['table'])): ?>
+                  <span class="pill pill-ok">جدول news هست</span>
+                <?php else: ?>
+                  <span class="pill pill-bad">جدول news نیست (فهرست اخبار خالی)</span>
+                <?php endif; ?>
+                <?php if (!empty($newsSchema['columns']['badge']) && !empty($newsSchema['columns']['image_url'])): ?>
+                  <span class="pill pill-ok">badge و image_url دارد</span>
+                <?php else: ?>
+                  <span class="pill pill-bad">ستون badge یا image_url ندارد (مطالب «سازگار» ذخیره می‌شوند)</span>
+                <?php endif; ?>
+                <?php if (empty($newsSchema['emoji'])): ?>
+                  <span class="pill pill-bad">نویسه‌گان سه‌بایتی (ایموجی حذف می‌شود)</span>
+                <?php else: ?>
+                  <span class="pill pill-ok">utf8mb4 (ایموجی ذخیره می‌شود)</span>
+                <?php endif; ?>
+              </span>
+            </div>
+            <?php if (!empty($newsSchema['failed'])): ?>
+              <div class="kv-row">
+                <span class="kv-key">ترمیمِ ناموفق (اخبار)</span>
+                <span class="kv-val"><?= htmlspecialchars(implode(' | ', (array) $newsSchema['failed'])) ?></span>
               </div>
             <?php endif; ?>
           <?php endif; ?>

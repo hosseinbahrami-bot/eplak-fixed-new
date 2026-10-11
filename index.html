@@ -2482,6 +2482,13 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
         </button>
       </div>
 
+      <!-- وضعیت خوانده شدن اخبار از سرور: اگر سرور در دسترس نباشد یا ساختار
+           دیتابیس مشکل داشته باشد، دلیلِ خالی بودن فهرست اینجا نوشته می‌شود
+           (modules/live.js ← setNewsNotice). در حالت عادی پنهان است. -->
+      <div id="newsSyncNotice" style="display:none; font-size:11.5px; line-height:1.9; color:#b45309;
+           background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.35);
+           border-radius:12px; padding:10px 12px;"></div>
+
       <!-- ===== Tab Panel: دانستنی‌های ورامین (Heritage Knowledge) ===== -->
       <div class="news-tab-panel active" id="newsPanelKnowledge">
 
@@ -2559,7 +2566,7 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
       </div>
       <h2 id="newsDetailTitle" style="font-size:17px; font-weight:800; text-align:start;">—</h2>
       <p id="newsDetailDate" style="font-size:12px; color:var(--text-muted); text-align:start;">—</p>
-      <p id="newsDetailBody" style="font-size:13px; line-height:2; text-align:start; color:var(--text-light);">—</p>
+      <p id="newsDetailBody" style="font-size:13px; line-height:2; text-align:start; color:var(--text-light); white-space:pre-line;">—</p>
       <button class="btn-teal" onclick="goBack()" data-i18n="back_to_news">بازگشت به اخبار</button>
       <div class="bottom-pad"></div>
     </div>
@@ -3105,11 +3112,11 @@ title="شماره موبایل هویت حساب شماست و قابل تغیی
 <script src="assets/js/ep-map.js?v=4"></script>
 <script src="assets/js/ep-camera.js?v=2"></script>
 <script src="modules/reports.js?v=27"></script>
-<script src="modules/dashboard.js?v=14"></script>
+<script src="modules/dashboard.js?v=15"></script>
 <script src="modules/city-map.js?v=2"></script>
 <script src="modules/profile.js?v=12"></script>
 <script src="modules/services.js?v=13"></script>
-<script src="modules/live.js?v=16"></script>
+<script src="modules/live.js?v=17"></script>
 <script src="modules/weather-3d.js?v=47"></script>
 <script src="modules/city-live.js?v=13"></script>
 <script src="modules/clock-lux.js?v=5"></script>

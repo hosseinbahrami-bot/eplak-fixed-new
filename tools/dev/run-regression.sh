@@ -13,6 +13,10 @@
 #                 خارجی user_phone → users(phone) و نویسه‌گان utf8 سه‌بایتی.
 #                 ریشه‌ی باگِ «اعلان‌ها در اپ نشان داده نمی‌شود» و
 #                 «Unknown column 'send_id'» در پنل ادمین (۲۷ بررسی)
+#    news       → «اخبار و دانستنی‌ها»: ساخت/ترمیم خودکار جدول news، افزودن و
+#                 ویرایش مطلب با «عکس و متن» از پنل، api/news.php بدون ۵۰۰ روی
+#                 دیتابیس قدیمی (بدون ستون badge) و بدون جدول news، و رسیدن همان
+#                 مطلب‌ها با عکس به فهرست «اخبار و اطلاعیه‌ها» و پیشخوان در اپ
 #    app        → درخواست‌های اپ (خوانده‌شده، اعلان سیستمی، ثبت توکن فایربیس)
 #    otp        → ارسال OTP آموت، اعتبارسنجی سمت سرور، انقضا و محدودیت تلاش/ارسال
 #    pushcrypto → رمزنگاری اعلان مرورگر و امضای VAPID
@@ -99,7 +103,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "syntax" ]; then
   run_step "بررسی نحوی JS"  node "$WORK/js-syntax.mjs"  "$ROOT"
 fi
 
-for t in notify notify-schema app pushcrypto fcm backend security online geo upload tiles push places placesadmin otp ios pwa; do
+for t in notify notify-schema news app pushcrypto fcm backend security online geo upload tiles push places placesadmin otp ios pwa; do
   if [ "$TARGET" = "all" ] || [ "$TARGET" = "$t" ]; then
     if [ -f "$WORK/$t.test.mjs" ]; then
       run_step "آزمون $t" node "$WORK/$t.test.mjs"

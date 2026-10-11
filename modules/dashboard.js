@@ -109,9 +109,11 @@
         <div class="mini-news-card" onclick="openNewsDetail('${n.id}')">
           <div class="mini-news-text" style="text-align:${isEn ? 'left' : 'right'};">
             <h4>${escapeHtml(n.title)}</h4>
-            <p>${n.date}</p>
+            <p>${escapeHtml(n.date || '')}</p>
           </div>
-          <div class="mini-news-icon">${window.EplakIcons ? window.EplakIcons.get(n.icon) : n.icon}</div>
+          ${n.image
+            ? `<div class="mini-news-icon" style="padding:0; overflow:hidden;"><img src="${escapeHtml(n.image)}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:inherit;"></div>`
+            : `<div class="mini-news-icon">${window.EplakIcons ? window.EplakIcons.get(n.icon) : escapeHtml(n.icon)}</div>`}
         </div>
       `).join('');
     }
@@ -135,15 +137,31 @@
       : (window.i18n && window.i18n.currentLang === 'en');
     const list = isEn ? (window.newsData_EN || newsData) : newsData;
 
+    /* فهرست خالی = مدیر هنوز مطلبی ثبت نکرده (یا سرور در دسترس نیست و نمونه‌ی
+       پیش‌فرض هم پاک شده). به‌جای صفحه‌ی سفید، کارتِ راهنما نشان می‌دهیم. */
+    if (!Array.isArray(list) || !list.length) {
+      wrap.innerHTML = (typeof window.eplakEmptyContentCard === 'function')
+        ? window.eplakEmptyContentCard('خبر یا اطلاعیه‌ای ثبت نشده است')
+        : '<div class="glass-card" style="padding:22px 16px; text-align:center;">📭</div>';
+      return;
+    }
+
     wrap.innerHTML = list.map(n => `
       <div class="glass-card" style="padding:14px; display:flex; gap:12px; align-items:center; cursor:pointer;" onclick="openNewsDetail('${n.id}')">
-        <div class="promo-img" style="width:60px; height:60px; flex-shrink:0;">
-          <div class="promo-img-bg">${window.EplakIcons ? window.EplakIcons.get(n.icon) : n.icon}</div>
-        </div>
+        ${n.image
+          ? `<div class="promo-img" style="width:60px; height:60px; flex-shrink:0; overflow:hidden;">
+               <img src="${escapeHtml(n.image)}" alt="" loading="lazy"
+                    style="width:100%; height:100%; object-fit:cover; border-radius:inherit;"
+                    onerror="this.style.display='none'">
+             </div>`
+          : `<div class="promo-img" style="width:60px; height:60px; flex-shrink:0;">
+               <div class="promo-img-bg">${window.EplakIcons ? window.EplakIcons.get(n.icon) : escapeHtml(n.icon)}</div>
+             </div>`}
         <div style="flex:1; text-align:${isEn ? 'left' : 'right'};">
           <h4 style="font-size:13px; font-weight:700; line-height:1.5;">${escapeHtml(n.title)}</h4>
-          <p style="font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.5;">${escapeHtml(n.summary)}</p>
-          <p style="font-size:10px; color:var(--text-muted); margin-top:6px;">${n.date}</p>
+          ${n.badge ? `<span style="font-size:10px; color:var(--teal);">${escapeHtml(n.badge)}</span>` : ''}
+          <p style="font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.5;">${escapeHtml(n.summary || '')}</p>
+          <p style="font-size:10px; color:var(--text-muted); margin-top:6px;">${escapeHtml(n.date || '')}</p>
         </div>
       </div>
     `).join('');
@@ -156,10 +174,27 @@
     const list = isEn ? (window.newsData_EN || newsData) : newsData;
     const n = list.find(x => x.id === id) || newsData.find(x => x.id === id);
     if (!n) return;
-    document.getElementById('newsDetailImg').innerHTML = window.EplakIcons ? window.EplakIcons.get(n.icon) : n.icon;
-    document.getElementById('newsDetailTitle').textContent = n.title;
-    document.getElementById('newsDetailDate').textContent = n.date;
-    document.getElementById('newsDetailBody').textContent = n.body;
+    const imgBox = document.getElementById('newsDetailImg');
+    if (imgBox) {
+      /* اگر مطلب تصویر دارد (از پنل آپلود شده)، تصویر بزرگ نشان داده می‌شود؛
+         وگرنه همان آیکون/ایموجی. تصویرِ آپلودشده در اپ با نشانی مطلق سرور
+         خوانده می‌شود (modules/live.js ← resolveNewsImage). */
+      const src = n.image || (typeof window.eplakResolveNewsImage === 'function' ? window.eplakResolveNewsImage(n) : '');
+      if (src) {
+        imgBox.innerHTML = '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(n.title) + '"'
+          + ' style="width:100%; height:100%; object-fit:cover; border-radius:inherit;"'
+          + ' onerror="this.parentNode.innerHTML=window.EplakIcons ? window.EplakIcons.get(\'' + escapeHtml(n.icon || '📰') + '\') : \'' + escapeHtml(n.icon || '📰') + '\'">';
+      } else {
+        imgBox.innerHTML = window.EplakIcons ? window.EplakIcons.get(n.icon) : escapeHtml(n.icon || '📰');
+      }
+    }
+    const dTitle = document.getElementById('newsDetailTitle');
+    if (dTitle) dTitle.textContent = n.title;
+    const dDate = document.getElementById('newsDetailDate');
+    if (dDate) dDate.textContent = [n.badge, n.date].filter(Boolean).join(' · ');
+    const dBody = document.getElementById('newsDetailBody');
+    /* متن با \n\n پاراگراف می‌شود؛ white-space:pre-line آن را حفظ می‌کند */
+    if (dBody) dBody.textContent = n.body;
     showScreen('screen-news-detail');
   }
 

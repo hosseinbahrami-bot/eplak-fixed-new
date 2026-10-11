@@ -15,6 +15,56 @@
       : 'api';
   }
 
+  /* ───────────────────────────────────────────────────────────
+     تصویرِ مطلبِ خبری/دانستنی
+     در اپ (صفحه از file:// باز می‌شود) آدرس نسبی به فایل‌های «داخل گوشی» اشاره
+     می‌کند؛ پس تصویرِ آپلودشده در پنل (uploads/news/…) باید به دامنه‌ی سرور وصل
+     شود. سرور نشانی مطلق را در image_abs هم می‌فرستد و core/storage.js تابع
+     eplakResolveMediaUrl را دارد؛ اینجا هر دو مسیر پوشش داده می‌شود.
+     تصاویر assets/… داخل بسته‌ی اپ هم هستند و نسبی می‌مانند (آفلاین کار کنند).
+  ─────────────────────────────────────────────────────────── */
+  function resolveNewsImage(item) {
+    const raw = String((item && (item.image_abs || item.image_url)) || '').trim();
+    if (!raw) return '';
+    if (/^(https?:)?\/\//i.test(raw) || raw.indexOf('data:') === 0) return raw;
+    if (typeof window.eplakResolveMediaUrl === 'function') {
+      try {
+        const resolved = window.eplakResolveMediaUrl(raw);
+        if (resolved) return String(resolved);
+      } catch (e) { /* همان نسبی برمی‌گردد */ }
+    }
+    return raw;
+  }
+  window.eplakResolveNewsImage = resolveNewsImage;
+
+  /* کارت «چیزی برای نمایش نیست» — تا صفحه خالی نماند و کاربر بداند چرا */
+  function emptyContentCard(title, sub) {
+    const isEn = (window.i18n && typeof window.i18n.getLanguage === 'function')
+      ? window.i18n.getLanguage() === 'en' : false;
+    const t = isEn
+      ? (title === 'خبر یا اطلاعیه‌ای ثبت نشده است' ? 'No news yet' : 'No knowledge item yet')
+      : title;
+    const s = isEn
+      ? 'Items added in the admin panel appear here instantly.'
+      : (sub || 'هر مطلبی که در پنل مدیریت اضافه شود، بلافاصله اینجا نمایش داده می‌شود.');
+    return ''
+      + '<div class="glass-card" style="padding:22px 16px; text-align:center;">'
+      +   '<div style="font-size:30px; line-height:1;">📭</div>'
+      +   '<h4 style="font-size:13px; font-weight:800; margin-top:10px;">' + escapeText(t) + '</h4>'
+      +   '<p style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.8;">' + escapeText(s) + '</p>'
+      + '</div>';
+  }
+  window.eplakEmptyContentCard = emptyContentCard;
+
+  /* نوار وضعیت «اخبار از سرور خوانده شد یا نه» (برای تشخیص خالی بودن فهرست) */
+  function setNewsNotice(text) {
+    const el = document.getElementById('newsSyncNotice');
+    if (!el) return;
+    if (!text) { el.style.display = 'none'; el.textContent = ''; return; }
+    el.textContent = text;
+    el.style.display = 'block';
+  }
+
   function faDate(value) {
     try {
       const d = value ? new Date(String(value).replace(' ', 'T')) : new Date();
@@ -397,27 +447,30 @@
     const news = items.filter(function (i) { return i.type === 'news'; });
     const tips = items.filter(function (i) { return i.type === 'tip'; });
 
-    /* تب «اخبار و اطلاعات» */
-    if (news.length) {
-      newsData.length = 0;
-      news.forEach(function (n) {
-        newsData.push({
-          id: 'srv-' + n.id,
-          title: n.title,
-          date: faDate(n.updated_at),
-          icon: n.icon || '📰',
-          summary: n.summary || '',
-          body: n.body
-        });
+    /* تب «اخبار و اطلاعات» — فهرست «همیشه» با پاسخ سرور به‌روز می‌شود.
+       پیش‌تر فقط وقتی سرور مطلب داشت به‌روز می‌شد؛ یعنی اگر مدیر همه را حذف
+       کرده بود (یا جدول news خالی بود) نمونه‌های پیش‌فرضِ داخل کد به‌جای
+       واقعیت دیده می‌شدند و کاربر فکر می‌کرد پنل کار نمی‌کند. */
+    newsData.length = 0;
+    news.forEach(function (n) {
+      newsData.push({
+        id: 'srv-' + n.id,
+        title: n.title,
+        date: faDate(n.updated_at),
+        icon: n.icon || '📰',
+        badge: n.badge || '',
+        image: resolveNewsImage(n),
+        summary: n.summary || '',
+        body: n.body
       });
-      if (typeof renderNewsList === 'function') renderNewsList();
-    }
+    });
+    if (typeof renderNewsList === 'function') renderNewsList();
 
     /* تب «دانستنی‌های ورامین» */
     renderTips(tips);
 
     /* نوار «آخرین اخبار» در پیشخوان */
-    renderDashStrip(news.length ? newsData.slice(0, 2) : []);
+    renderDashStrip(newsData.slice(0, 2));
   }
 
   /* کارت‌های «دانستنی‌های ورامین» — همان ظاهر کارت‌های قدیمی سایت، ولی
@@ -431,18 +484,21 @@
     if (!tips.length) {
       /* اگر سرور در دسترس نبود، محتوای پیش‌فرض (همان دو بنای تاریخی) نمایش داده
          می‌شود تا صفحه خالی نماند. اگر سرور پاسخ داده و ادمین همه را حذف کرده،
-         دیگر چیزی نمایش داده نمی‌شود. */
-      wrap.innerHTML = window.__EPLAK_NEWS_SYNC_OK__ ? '' : builtinHeritageCards();
+         به‌جای صفحه‌ی خالی، کارتِ راهنما نمایش داده می‌شود. */
+      wrap.innerHTML = window.__EPLAK_NEWS_SYNC_OK__
+        ? emptyContentCard('دانستنی‌ای ثبت نشده است')
+        : builtinHeritageCards();
       return;
     }
 
     wrap.innerHTML = tips.map(function (t) {
       /* کارت تصویری (سبک کارت‌های میراث فرهنگی) */
-      if (t.image_url) {
+      const tipImage = resolveNewsImage(t);
+      if (tipImage) {
         return ''
           + '<div class="heritage-card" onclick="openTipDetail(\'srv-' + t.id + '\')">'
           +   '<div class="heritage-photo-layer">'
-          +     '<img src="' + escapeText(t.image_url) + '" alt="' + escapeText(t.title) + '" class="heritage-photo" loading="lazy">'
+          +     '<img src="' + escapeText(tipImage) + '" alt="' + escapeText(t.title) + '" class="heritage-photo" loading="lazy">'
           +   '</div>'
           +   '<div class="heritage-shade"></div>'
           +   (t.badge ? '<span class="heritage-pin">' + escapeText(t.badge) + '</span>' : '')
@@ -499,7 +555,12 @@
 
   function renderDashStrip(items) {
     const wrap = document.getElementById('dashNewsWrap');
-    if (!wrap || !items.length) return;
+    if (!wrap) return;
+    if (!items.length) {
+      /* پیش‌تر فهرست قدیمی سر جایش می‌ماند؛ حالا صادقانه «خالی» می‌شود */
+      wrap.innerHTML = emptyContentCard('خبر یا اطلاعیه‌ای ثبت نشده است');
+      return;
+    }
     const isEn = (window.i18n && typeof window.i18n.getLanguage === 'function')
       ? window.i18n.getLanguage() === 'en'
       : (window.i18n && window.i18n.currentLang === 'en');
@@ -524,9 +585,10 @@
 
     /* دانستنی‌های تصویری (مثل بناهای تاریخی) در همان صفحه‌ی جزئیات میراث نمایش
        داده می‌شوند تا تصویر بزرگ و نشان بالای آن حفظ شود. */
-    if (t.image_url && document.getElementById('heritageDetailImg')) {
+    const tipImage = resolveNewsImage(t);
+    if (tipImage && document.getElementById('heritageDetailImg')) {
       const bigImg = document.getElementById('heritageDetailImg');
-      bigImg.src = t.image_url;
+      bigImg.src = tipImage;
       bigImg.alt = t.title;
       bigImg.className = 'heritage-photo';
       const pin = document.getElementById('heritageDetailPin');
@@ -626,16 +688,28 @@
   async function syncNews() {
     try {
       const res = await fetch(apiBase() + '/news.php?limit=50', { cache: 'no-store' });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        window.__EPLAK_NEWS_SYNC_OK__ = false;
+        setNewsNotice('⚠️ اخبار از سرور خوانده نشد (کد ' + res.status + ')؛ فهرست پیش‌فرض نمایش داده می‌شود.');
+        return false;
+      }
       const data = await res.json();
-      if (!data || data.success !== true) return false;
+      if (!data || data.success !== true) {
+        /* پاسخ ۲۰۰ ولی ناموفق: یعنی ساختار دیتابیس مشکل دارد (api/news.php
+           دیگر هرگز ۵۰۰ نمی‌دهد). پیامِ راهنمای سرور نشان داده می‌شود. */
+        window.__EPLAK_NEWS_SYNC_OK__ = false;
+        setNewsNotice('⚠️ ' + String((data && data.hint) || 'اخبار از سرور خوانده نشد؛ فهرست پیش‌فرض نمایش داده می‌شود.'));
+        return false;
+      }
       /* پرچم موفقیت: برای تشخیص «سرور پاسخ داده ولی فهرست خالی است» از
          «سرور در دسترس نیست» — در حالت دوم محتوای پیش‌فرض نمایش داده می‌شود */
       window.__EPLAK_NEWS_SYNC_OK__ = true;
+      setNewsNotice('');
       applyNews(data.items || []);
       return true;
     } catch (e) {
       window.__EPLAK_NEWS_SYNC_OK__ = false;
+      setNewsNotice('⚠️ ارتباط با سرور برقرار نشد؛ فهرست پیش‌فرض نمایش داده می‌شود.');
       return false;
     }
   }

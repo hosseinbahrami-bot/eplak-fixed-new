@@ -285,40 +285,371 @@ function eplakDefaultSeedNews(): array {
     ];
 }
 
-/* درج محتوای پیش‌فرض اخبار/دانستنی‌ها فقط زمانی که جدول news کاملاً خالی است
-   (تا هرگز روی محتوای واقعی ادمین نوشته نشود). خروجی: تعداد ردیف درج‌شده. */
-function eplakSeedDefaultNews(PDO $pdo): int {
+/* ============================================================================
+   سلامت «جدول اخبار و دانستنی‌ها» — همان الگوی جدول اعلان‌ها
+   ----------------------------------------------------------------------------
+   چرا لازم شد؟ (ریشه‌ی باگ «اخبار و اطلاعیه‌ها در اپ و پنل خالی است»)
+   روی دیتابیس واقعی هاست سه حالت دیده می‌شود و هر سه محتوا را بی‌صدا از بین
+   می‌برد:
+
+     ۱) جدول news اصلاً وجود ندارد — در دامپ اصلی backend/DBasli/eplak_db.sql
+        این جدول نیست (در دامپ قدیمی‌تر eplak-db.sql هست، آن هم ناقص).
+        → api/news.php: خطای ۵۰۰ ⇒ اپ «هیچ» خبری نمی‌بیند
+        → admin/news.php: SELECT COUNT(*) از جدولِ نبوده ⇒ صفحه سفید/خالی
+
+     ۲) جدول هست ولی ستون‌های تازه را ندارد (دامپ قدیمی ستون badge ندارد)
+        → api/news.php ستون badge را صریح SELECT می‌کرد ⇒ «Unknown column» ⇒ ۵۰۰
+        → createNews()/updateNews() هم «همیشه» badge را می‌خواستند ⇒ افزودن و
+          ویرایش مطلب در پنل هرگز موفق نمی‌شد ⇒ فهرست پنل خالی می‌ماند
+
+     ۳) نویسه‌گان جدول utf8 سه‌بایتی است
+        → آیکون‌های ایموجیِ مطالب (🌳 📋 🎉 🏗️ 🏛️ 🗼) ذخیره نمی‌شوند
+        ⇒ «Incorrect string value» ⇒ حتی درج محتوای اولیه شکست می‌خورد
+
+   همگام‌سازی اسکیما (eplakRunSchemaSync) ستون badge را اضافه می‌کند، ولی فقط
+   وقتی نسخه‌ی اسکیما عوض شده باشد «و» کاربر دیتابیس اجازه‌ی ALTER داشته باشد؛
+   اگر یک‌بار رد شود، دیگر تکرار نمی‌شود. پس اینجا مثل جدول اعلان‌ها:
+     • جدول/ستون‌های حیاتی «همان لحظه و در همان درخواست» ترمیم می‌شوند،
+     • جدول به utf8mb4 تبدیل می‌شود (اگر دیتابیس اجازه دهد)،
+     • و همه‌ی کوئری‌ها با «ستون‌های موجود» ساخته می‌شوند تا هرگز ۵۰۰ ندهیم.
+   ============================================================================ */
+
+/** تعریف ستون‌های جدول news برای هر درایور (برای ALTER و CREATE) */
+function eplakNewsColumnDdl(PDO $pdo): array {
+    $sqlite = eplakIsSqlite($pdo);
+    return [
+        'type'       => "VARCHAR(20) NOT NULL DEFAULT 'news'",
+        /* برای ALTER روی جدولِ دارای ردیف، NOT NULL بدون پیش‌فرض خطرناک است */
+        'title'      => $sqlite ? 'VARCHAR(255)' : 'VARCHAR(255) NULL',
+        'summary'    => 'TEXT NULL',
+        'body'       => 'TEXT NULL',
+        'icon'       => 'VARCHAR(50) NULL',
+        'badge'      => 'VARCHAR(120) NULL',
+        'image_url'  => 'VARCHAR(500) NULL',
+        'published'  => 'TINYINT(1) NOT NULL DEFAULT 1',
+        'sort_order' => 'INT NOT NULL DEFAULT 0',
+        'created_at' => $sqlite ? 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+                                : 'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
+        'updated_at' => $sqlite ? 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+                                : 'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+    ];
+}
+
+/** ساخت جدول news وقتی وجود ندارد (با نویسه‌گان utf8mb4 تا ایموجی ذخیره شود) */
+function eplakNewsCreateTable(PDO $pdo): bool {
+    $sqlite = eplakIsSqlite($pdo);
+    $ddl = $sqlite
+        ? "CREATE TABLE IF NOT EXISTS news (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type VARCHAR(20) NOT NULL DEFAULT 'news',
+            title VARCHAR(255) NOT NULL,
+            summary TEXT,
+            body TEXT NOT NULL,
+            icon VARCHAR(50),
+            badge VARCHAR(120),
+            image_url VARCHAR(500),
+            published TINYINT(1) NOT NULL DEFAULT 1,
+            sort_order INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"
+        : "CREATE TABLE IF NOT EXISTS news (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            type VARCHAR(20) NOT NULL DEFAULT 'news',
+            title VARCHAR(255) NOT NULL DEFAULT '',
+            summary TEXT NULL,
+            body TEXT NULL,
+            icon VARCHAR(50) NULL,
+            badge VARCHAR(120) NULL,
+            image_url VARCHAR(500) NULL,
+            published TINYINT(1) NOT NULL DEFAULT 1,
+            sort_order INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
     try {
-        $count = (int) $pdo->query('SELECT COUNT(*) FROM news')->fetchColumn();
+        $pdo->exec($ddl);
+        return true;
     } catch (\Throwable $e) {
-        return 0;
+        error_log('[eplak-news] ساخت جدول news ناموفق بود: ' . $e->getMessage());
+        return false;
     }
-    if ($count > 0) {
+}
+
+/**
+ * وضعیت (و در صورت لزوم ترمیم) جدول اخبار و دانستنی‌ها.
+ *
+ * خروجی:
+ *   table    → آیا جدول news وجود دارد؟
+ *   columns  → برای هر ستون، آیا قابل استفاده است؟ (SQLها بر همین اساس ساخته می‌شوند)
+ *   emoji    → آیا ایموجی چهاربایتی در این جدول ذخیره می‌شود؟
+ *   repaired → چه چیزی همین حالا ترمیم شد (برای نمایش در پنل)
+ *   failed   → چه چیزی ترمیم نشد (برای نمایش راهنما در پنل)
+ *
+ * هزینه: بعد از یک‌بار ترمیم، فقط یک کوئری سبک (بودن ستون badge) اجرا می‌شود.
+ */
+function eplakNewsSchema(PDO $pdo, bool $force = false): array {
+    static $state = null;
+    if ($state !== null && !$force) {
+        return $state;
+    }
+
+    $sqlite = eplakIsSqlite($pdo);
+    $wanted = eplakNewsColumnDdl($pdo);
+    $names  = array_keys($wanted);
+
+    $columnsOf = static function (PDO $pdo) use ($names): array {
+        $have = eplakTableColumns($pdo, 'news');      /* null یعنی جدول خوانده نشد */
+        $out  = [];
+        foreach ($names as $n) {
+            $out[$n] = is_array($have) && in_array(strtolower($n), $have, true);
+        }
+        return $out;
+    };
+    $emojiOk = static function (PDO $pdo) use ($sqlite): bool {
+        if ($sqlite) {
+            return true;
+        }
+        $charset = eplakMysqlTableCharset($pdo, 'news');
+        return $charset === '' || !in_array($charset, ['utf8', 'utf8mb3'], true);
+    };
+
+    /* مسیر سریع: قبلاً ترمیم شده و ستون نشانه (badge) هم سر جایش است */
+    if (!$force && (string) eplakAppSetting($pdo, 'news_schema_ok', '') === EPLAK_SCHEMA_VERSION
+        && eplakTableHasColumn($pdo, 'news', 'badge')) {
+        return $state = [
+            'table' => true, 'columns' => array_fill_keys($names, true), 'emoji' => true,
+            'repaired' => [], 'failed' => [], 'cached' => true,
+        ];
+    }
+
+    /* پشت‌سرهم تلاش نکنیم: اگر ترمیم ممکن نبود، تا ۱۰ دقیقه بررسی سنگین تکرار
+       نمی‌شود (مگر اینکه اجازه‌ی تغییر ساختار عوض شده یا دکمه‌ی ترمیم زده شود). */
+    $backoff    = (int) eplakAppSetting($pdo, 'news_schema_retry_at', '0');
+    $backoffWas = (string) eplakAppSetting($pdo, 'news_schema_retry_ro', '') === '1';
+    $alterIsOff = !eplakSchemaAlterAllowed();
+    if (!$force && $backoff > time() && $backoffWas === $alterIsOff) {
+        return $state = [
+            'table' => is_array(eplakTableColumns($pdo, 'news')),
+            'columns' => $columnsOf($pdo), 'emoji' => $emojiOk($pdo),
+            'repaired' => [], 'failed' => [], 'cached' => false,
+        ];
+    }
+
+    $state = ['table' => false, 'columns' => array_fill_keys($names, false), 'emoji' => false,
+              'repaired' => [], 'failed' => [], 'cached' => false];
+
+    /* ۱) خودِ جدول (در دامپ اصلیِ هاست وجود ندارد) */
+    if (!is_array(eplakTableColumns($pdo, 'news'))) {
+        if (eplakNewsCreateTable($pdo)) {
+            $state['table']    = true;
+            $state['repaired'][] = 'ساخت جدول news (در دیتابیس وجود نداشت)';
+        } else {
+            $state['failed'][] = 'ساخت جدول news ممکن نشد';
+        }
+    } else {
+        $state['table'] = true;
+    }
+    if (!$state['table']) {
+        eplakSetAppSetting($pdo, 'news_schema_ok', '');
+        eplakSetAppSetting($pdo, 'news_schema_retry_at', (string) (time() + 600));
+        eplakSetAppSetting($pdo, 'news_schema_retry_ro', $alterIsOff ? '1' : '0');
+        return $state;
+    }
+
+    /* ۲) ستون‌ها (badge در دامپ قدیمی نیست؛ بقیه هم ممکن است نباشند) */
+    foreach ($wanted as $column => $ddl) {
+        $had = eplakTableHasColumn($pdo, 'news', $column, true);
+        if (eplakEnsureColumn($pdo, 'news', $column, $ddl)) {
+            $state['columns'][$column] = true;
+            if (!$had) {
+                $state['repaired'][] = 'افزودن ستون news.' . $column;
+            }
+        } else {
+            $state['columns'][$column] = false;
+            $state['failed'][] = 'افزودن ستون news.' . $column . ' ممکن نشد (کاربر دیتابیس اجازه‌ی ALTER ندارد؟)';
+        }
+    }
+
+    /* ۳) نویسه‌گان: ایموجیِ آیکون/عنوان روی utf8 سه‌بایتی ذخیره نمی‌شد */
+    if ($sqlite) {
+        $state['emoji'] = true;
+    } else {
+        $charset = eplakMysqlTableCharset($pdo, 'news');
+        if ($charset === '') {
+            $state['emoji'] = true;    /* نشد بفهمیم؛ خوش‌بینانه + حذف ایموجی هنگام خطا */
+        } elseif (in_array($charset, ['utf8', 'utf8mb3'], true)) {
+            if (eplakMysqlConvertUtf8mb4($pdo, 'news')) {
+                $state['repaired'][] = 'تبدیل جدول اخبار به utf8mb4 (برای ذخیره‌ی ایموجی)';
+                $state['emoji'] = true;
+            } else {
+                $state['emoji'] = false;
+                $state['failed'][] = 'تبدیل news به utf8mb4 ممکن نشد (ایموجی‌ها بدون ذخیره‌سازی حذف می‌شوند)';
+            }
+        } else {
+            $state['emoji'] = true;
+        }
+    }
+
+    /* ثبت نتیجه تا درخواست‌های بعدی سراغ information_schema نروند */
+    if (!$state['failed']) {
+        eplakSetAppSetting($pdo, 'news_schema_ok', EPLAK_SCHEMA_VERSION);
+        eplakSetAppSetting($pdo, 'news_schema_retry_at', '0');
+        eplakSetAppSetting($pdo, 'news_schema_retry_ro', '0');
+    } else {
+        eplakSetAppSetting($pdo, 'news_schema_ok', '');
+        eplakSetAppSetting($pdo, 'news_schema_retry_at', (string) (time() + 600));
+        eplakSetAppSetting($pdo, 'news_schema_retry_ro', $alterIsOff ? '1' : '0');
+    }
+    return $state;
+}
+
+/** آیا ستونی از جدول news قابل استفاده است؟ (همه‌ی SQLهای اخبار بر این اساس‌اند) */
+function eplakNewsHasColumn(PDO $pdo, string $column): bool {
+    $s = eplakNewsSchema($pdo);
+    return !empty($s['columns'][strtolower($column)]);
+}
+
+/** ستون‌های قابل استفاده از میان فهرست خواسته‌شده (به همان ترتیب) */
+function eplakNewsAvailableColumns(PDO $pdo, array $wanted): array {
+    $s = eplakNewsSchema($pdo);
+    $out = [];
+    foreach ($wanted as $c) {
+        if (!empty($s['columns'][strtolower($c)])) {
+            $out[] = $c;
+        }
+    }
+    return $out;
+}
+
+/** آیا ایموجی در جدول اخبار ذخیره می‌شود؟ */
+function eplakNewsSupportsEmoji(PDO $pdo): bool {
+    $s = eplakNewsSchema($pdo);
+    return !empty($s['emoji']);
+}
+
+/** گزارش ترمیم (برای نمایش در پنل ادمین) */
+function eplakNewsSchemaReport(PDO $pdo): array {
+    return eplakNewsSchema($pdo);
+}
+
+/**
+ * متن آماده‌ی ذخیره در جدول اخبار: اگر جدول utf8mb4 نباشد، ایموجی‌های
+ * چهاربایتی «پیش از» درج حذف می‌شوند تا کل ردیف از بین نرود.
+ */
+function eplakNewsText(PDO $pdo, $text) {
+    if ($text === null || !is_string($text) || $text === '') {
+        return $text === '' ? null : $text;
+    }
+    if (eplakNewsSupportsEmoji($pdo)) {
+        return $text;
+    }
+    return eplakStripAstralChars($text);
+}
+
+/**
+ * درج محتوای پیش‌فرض اخبار/دانستنی‌ها فقط زمانی که جدول news کاملاً خالی است
+ * (تا هرگز روی محتوای واقعی ادمین نوشته نشود).
+ *
+ * دو تفاوت مهم با نسخه‌ی قبلی:
+ *   • پیش از درج، جدول/ستون‌ها ترمیم می‌شوند (وگرنه درج بی‌صدا شکست می‌خورد و
+ *     پنل و اپ برای همیشه خالی می‌ماندند).
+ *   • فقط با «ستون‌های موجود» درج می‌کند و اگر جدول utf8mb4 نباشد، ایموجی را
+ *     پیش از درج حذف می‌کند.
+ *   • یک‌بار که درج شد، نشانه‌ی news_seeded ثبت می‌شود؛ پس اگر مدیر بعداً همه‌ی
+ *     مطالب را پاک کند، محتوای پیش‌فرض برنمی‌گردد.
+ *
+ * خروجی: تعداد ردیف درج‌شده (و در $report جزئیات کامل برای پنل).
+ */
+function eplakSeedDefaultNews(PDO $pdo, ?array &$report = null): int {
+    $schema = eplakNewsSchema($pdo);
+    $rep = ['inserted' => 0, 'failed' => [], 'schema' => $schema, 'skipped' => ''];
+
+    if ((string) eplakAppSetting($pdo, 'news_seeded', '') === '1') {
+        $rep['skipped'] = 'پیش از این محتوای پیش‌فرض درج شده است';
+        $report = $rep;
         return 0;
     }
 
+    try {
+        $count = (int) $pdo->query('SELECT COUNT(*) FROM news')->fetchColumn();
+    } catch (\Throwable $e) {
+        $rep['failed'][] = 'خواندن جدول news ممکن نشد: ' . $e->getMessage();
+        $report = $rep;
+        return 0;
+    }
+    if ($count > 0) {
+        eplakSetAppSetting($pdo, 'news_seeded', '1');
+        $rep['skipped'] = 'جدول news خالی نیست';
+        $report = $rep;
+        return 0;
+    }
+
+    $columns = eplakNewsAvailableColumns(
+        $pdo,
+        ['type', 'title', 'summary', 'body', 'icon', 'image_url', 'badge', 'published', 'sort_order']
+    );
+    if (!in_array('title', $columns, true) || !in_array('body', $columns, true)) {
+        $rep['failed'][] = 'ستون‌های title/body در جدول news در دسترس نیستند؛ درج محتوای پیش‌فرض ممکن نشد';
+        $report = $rep;
+        return 0;
+    }
+
+    $placeholders = [];
+    foreach ($columns as $c) {
+        $placeholders[] = ':' . $c;
+    }
     $inserted = 0;
     try {
         $stmt = $pdo->prepare(
-            'INSERT INTO news (type, title, summary, body, icon, image_url, published, sort_order, badge)
-             VALUES (:type, :title, :summary, :body, :icon, :image_url, 1, :sort_order, :badge)'
+            'INSERT INTO news (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')'
         );
         foreach (eplakDefaultSeedNews() as $item) {
-            $stmt->execute([
-                ':type'       => $item['type'],
-                ':title'      => $item['title'],
-                ':summary'    => $item['summary'],
-                ':body'       => $item['body'],
-                ':icon'       => $item['icon'],
-                ':image_url'  => $item['image_url'],
-                ':sort_order' => $item['sort_order'],
-                ':badge'      => $item['badge'],
-            ]);
+            $params = [];
+            foreach ($columns as $c) {
+                $value = $item[$c] ?? null;
+                if ($c === 'published') {
+                    $value = 1;
+                } elseif (is_string($value)) {
+                    $value = eplakNewsText($pdo, $value);
+                }
+                $params[':' . $c] = $value;
+            }
+            $stmt->execute($params);
             $inserted++;
         }
     } catch (\Throwable $e) {
-        return 0;
+        /* تلاش دوم: اگر ستون تازه‌اضافه‌شده مشکل داشت، فقط با ستون‌های پایه */
+        try {
+            $base = array_values(array_intersect($columns, ['type', 'title', 'summary', 'body']));
+            $ph = [];
+            foreach ($base as $c) {
+                $ph[] = ':' . $c;
+            }
+            $stmt = $pdo->prepare(
+                'INSERT INTO news (' . implode(', ', $base) . ') VALUES (' . implode(', ', $ph) . ')'
+            );
+            foreach (eplakDefaultSeedNews() as $item) {
+                $params = [];
+                foreach ($base as $c) {
+                    $value = $item[$c] ?? null;
+                    $params[':' . $c] = is_string($value) ? eplakNewsText($pdo, $value) : $value;
+                }
+                $stmt->execute($params);
+                $inserted++;
+            }
+        } catch (\Throwable $e2) {
+            $rep['failed'][] = 'درج محتوای پیش‌فرض ناموفق: ' . $e2->getMessage();
+        }
     }
+
+    if ($inserted > 0) {
+        eplakSetAppSetting($pdo, 'news_seeded', '1');
+    }
+    $rep['inserted'] = $inserted;
+    /* گزارش همیشه به فراخوان برمی‌گردد؛ فراخوان‌ها پیش از صدا زدن $report = null می‌گذارند
+       و شرط «!== null» باعث می‌شد گزارش هرگز نرسد (ذخیره‌ی موفق، ناموفق دیده می‌شد). */
+    $report = $rep;
     return $inserted;
 }
 
@@ -754,6 +1085,16 @@ function eplakTableColumns(PDO $pdo, string $table): ?array {
     }
     try {
         if (eplakIsSqlite($pdo)) {
+            /* PRAGMA table_info برای جدولی که «وجود ندارد» هم آرایه‌ی خالی
+               برمی‌گرداند (خطا نمی‌دهد)؛ پس جدولِ نبوده با جدولِ بدون ستون
+               اشتباه گرفته می‌شد و ساخت خودکار جدول هرگز انجام نمی‌شد.
+               null یعنی «جدول خوانده نشد/وجود ندارد» — در هر دو درایور یکسان. */
+            $exists = $pdo->query(
+                'SELECT COUNT(*) FROM sqlite_master WHERE type = \'table\' AND name = ' . $pdo->quote($table)
+            )->fetchColumn();
+            if ((int) $exists === 0) {
+                return null;
+            }
             $rows = $pdo->query('PRAGMA table_info(' . $table . ')')->fetchAll();
             $names = [];
             foreach ($rows ?: [] as $row) {
