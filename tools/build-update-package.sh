@@ -5,6 +5,8 @@
 #  این اسکریپت از کد فعلی یک فایل zip می‌سازد که می‌توانید در هاست Extract کنید.
 #  داخل بسته فقط «کد» است؛ این‌ها عمداً قرار نمی‌گیرند تا داده‌ی سایت پاک نشود:
 #     data/  ·  uploads/  ·  shared/config.php  ·  .git/  ·  .github/ (فایل‌های CI)
+#     backend/ (دامپ‌های بزرگ دیتابیس با داده‌ی کاربران) — به‌جز دو اسکریپت کوچک
+#     «ترمیم دستی دیتابیس» که برای هاست‌های بدون اجازه‌ی CREATE/ALTER لازم‌اند.
 #
 #  اجرا:   bash tools/build-update-package.sh
 #  خروجی:  eplak-fixed-update.zip  در ریشه‌ی پروژه
@@ -23,6 +25,13 @@ zip -q -r "$OUT" . \
      "data/*" "uploads/*" "test-fixtures/*" \
      "*.zip" ".gitignore" ".gitattributes" ".vscode/*" \
      "INSTALL_GUIDE_FA.md" "*/README.md" "docs/README.md" "docs/technical-architecture.md"
+
+# اسکریپت‌های تعمیر دستی دیتابیس (کوچک و بدون داده‌ی کاربران): وقتی کاربر دیتابیس
+# اجازه‌ی CREATE/ALTER ندارد، مدیر باید همان‌ها را یک‌بار در phpMyAdmin اجرا کند.
+# پنل هم دقیقاً به همین مسیرها اشاره می‌کند، پس باید داخل بسته باشند.
+for sql in backend/fix-notifications-db.sql backend/fix-news-db.sql; do
+  if [ -f "$sql" ]; then zip -q "$OUT" "$sql"; fi
+done
 
 SIZE=$(du -h "$OUT" | cut -f1)
 COUNT=$(unzip -l "$OUT" | tail -1 | awk '{print $2}')
@@ -46,7 +55,8 @@ for f in .htaccess index.html index.php sw.js manifest.json shared/bootstrap.php
          api/places.php admin/places.php shared/places_store.php \
          docs/DEPLOY_UPDATE_FA.md docs/DEPLOY_UPDATE_EN.md docs/CITY_MAP_FA.md docs/CITY_MAP_EN.md \
          docs/REPORT_MEDIA_GPS_FA.md docs/REPORT_MEDIA_GPS_EN.md \
-         docs/FIREBASE_SETUP_FA.md docs/FIREBASE_SETUP_EN.md; do
+         docs/FIREBASE_SETUP_FA.md docs/FIREBASE_SETUP_EN.md docs/NOTIFICATIONS_FA.md docs/NEWS_FA.md \
+         backend/fix-notifications-db.sql backend/fix-news-db.sql; do
   if has "$f"; then echo "   ✅ $f"; else echo "   ❌ $f گم شده!"; exit 1; fi
 done
 for f in shared/config.php data/eplak.sqlite uploads/.htaccess; do
