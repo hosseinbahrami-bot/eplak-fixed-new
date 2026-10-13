@@ -83,25 +83,53 @@ jobs:
       # می‌شود که واقعاً شبیه‌سار iPhone دارد.
       - name: انتخاب Xcode (جدیدترین، با شبیه‌سار iPhone در دسترس)
         run: |
-          set -euo pipefail
-          CHOSEN=""
-          for X in $(ls -d /Applications/Xcode*.app 2>/dev/null | sort -Vr); do
-            if DEVELOPER_DIR="$X/Contents/Developer" xcrun simctl list devices available 2>/dev/null | grep -q iPhone; then
-              CHOSEN="$X"; break
+          # عمداً بدون «set -e»: روی بعضی رانرهای macOS سرویس CoreSimulator با
+          # SIGABRT می‌میرد و «xcrun simctl» کد ۱۳۴ برمی‌گرداند. با set -e همان یک
+          # خطا کل ساخت IPA را می‌انداخت (سه بار این‌طور شد)؛ پس هر فراخوانی
+          # جداگانه بررسی می‌شود و فقط شکستِ واقعی (هیچ Xcode / xcode-select ناموفق)
+          # باعث exit 1 می‌شود. (رنر اسکریپت را با «bash -e» صدا می‌کند، پس errexit
+          # باید صریحاً خاموش شود؛ «set -uo pipefail» به‌تنهایی آن را خاموش نمی‌کند.)
+          set +e
+          set -uo pipefail
+
+          simctl_has_iphone() {   # $1 = DEVELOPER_DIR
+            local out rc
+            out="$(DEVELOPER_DIR="$1" xcrun simctl list devices available 2>/dev/null)"
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "::warning::simctl list devices با کد $rc شکست خورد ($1)"
+              return "$rc"
             fi
-            echo "ℹ️  $X شبیه‌سار iPhone در دسترس ندارد"
+            printf '%s' "$out" | grep -q iPhone
+          }
+
+          CHOSEN=""
+          for ATTEMPT in 1 2 3; do
+            for X in $(ls -d /Applications/Xcode*.app 2>/dev/null | sort -Vr); do
+              if simctl_has_iphone "$X/Contents/Developer"; then CHOSEN="$X"; break; fi
+              echo "ℹ️  $X شبیه‌سار iPhone در دسترس ندارد (یا simctl خطا داد)"
+            done
+            if [ -n "$CHOSEN" ]; then break; fi
+            echo "::warning::تلاش $ATTEMPT: هیچ Xcode شبیه‌سار iPhone در دسترس نداشت؛ سرویس CoreSimulator تازه می‌شود"
+            sudo pkill -9 -f com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
+            sleep 10
           done
+
           if [ -z "$CHOSEN" ]; then
             CHOSEN="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
-            [ -n "$CHOSEN" ] || { echo "::error::هیچ Xcode پیدا نشد"; exit 1; }
+            if [ -z "$CHOSEN" ]; then echo "::error::هیچ Xcode پیدا نشد"; exit 1; fi
             echo "::warning::هیچ Xcode شبیه‌سار iPhone در دسترس نداشت؛ $CHOSEN انتخاب شد (آزمون دودی رد می‌شود)"
           fi
-          sudo xcode-select -s "$CHOSEN/Contents/Developer"
+
+          if ! sudo xcode-select -s "$CHOSEN/Contents/Developer"; then
+            echo "::error::xcode-select روی $CHOSEN شکست خورد"; exit 1
+          fi
           echo "✅ Xcode: $CHOSEN"
-          XCODE_VER="$(xcodebuild -version | head -1)"
+          XCODE_VER="$(xcodebuild -version 2>/dev/null | head -1 || true)"
+          if [ -z "$XCODE_VER" ]; then XCODE_VER="نامشخص (xcodebuild -version خطا داد)"; fi
           echo "$XCODE_VER"
           echo "XCODE_VER=$XCODE_VER ($CHOSEN)" >> "$GITHUB_ENV"
-          xcrun simctl list runtimes 2>&1 | grep -i ios || echo "::warning::رانتایم iOS فهرست نشد"
+          (xcrun simctl list runtimes 2>&1 | grep -i ios) || echo "::warning::رانتایم iOS فهرست نشد"
 
       - name: همگام‌سازی فایل‌های وب داخل پروژه‌ی iOS (Eplak/Web)
         run: bash ios-app/sync-web.sh
