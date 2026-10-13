@@ -53,6 +53,28 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 90
     steps:
+      # دو اجرای پیاپیِ IPA با «Process completed with exit code 134» (SIGABRT) و بدون
+      # هیچ step گزارش‌شده افتاد؛ یعنی خودِ رانر پیش از رسیدن به ساخت مرده بود و هیچ
+      # لاگی از ماشین به جا نماند. این step پیش از همه چیز اجرا می‌شود تا مشخص باشد کار
+      # روی کدام رانر/ایمیج/Xcode بوده و خلاصه‌اش هم به‌صورت annotation بماند.
+      - name: اطلاعات رانر (برای تشخیص شکست‌های زیرساختی)
+        run: |
+          set +e
+          INFO="${RUNNER_TEMP:-/tmp}/eplak-runner-info.txt"
+          {
+            echo "runner=${RUNNER_NAME:-?} os=${RUNNER_OS:-?} arch=${RUNNER_ARCH:-?}"
+            sw_vers 2>&1 | tr '\n' ' '
+            echo
+            echo "kernel=$(uname -mrs 2>&1)"
+            echo "xcodes=$(ls -d /Applications/Xcode*.app 2>/dev/null | tr '\n' ' ')"
+            xcodebuild -version 2>&1 | tr '\n' ' '
+            echo
+            df -h / 2>&1 | tail -1
+          } > "$INFO" 2>&1
+          cat "$INFO"
+          echo "::notice::$(tr '\n' ' ' < "$INFO" | cut -c1-500)"
+          exit 0
+
       - name: دریافت کد
         uses: actions/checkout@v4
 
