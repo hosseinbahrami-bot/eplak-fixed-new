@@ -193,7 +193,7 @@ if ($report && !empty($report['user_phone'])) {
             <?php if (!empty($userInfo['address'])): ?>
               <span><i class="fas fa-map-pin"></i> <?= htmlspecialchars($userInfo['address']) ?></span>
             <?php endif; ?>
-            <span><i class="fas fa-calendar-alt"></i> عضو از: <?= htmlspecialchars($userInfo['created_at'] ?? 'نامشخص') ?></span>
+            <span><i class="fas fa-calendar-alt"></i> عضو از: <?= htmlspecialchars(eplakFaDate($userInfo['created_at'] ?? null, 'نامشخص')) ?></span>
           </div>
         </div>
       </div>
@@ -216,7 +216,7 @@ if ($report && !empty($report['user_phone'])) {
           </div>
           <div class="meta-info">
             <span class="meta-label">تاریخ ثبت</span>
-            <span class="meta-value"><?= htmlspecialchars($report['created_at']) ?></span>
+            <span class="meta-value"><?= htmlspecialchars(eplakFaDateTimeOf($report['created_at'] ?? null, '—')) ?></span>
           </div>
         </div>
         <div class="meta-card">
@@ -411,7 +411,7 @@ if ($report && !empty($report['user_phone'])) {
           <div class="text-block reply-text">
             <div class="reply-meta">
               <span><i class="fas fa-user-check" style="color: var(--primary-500);"></i> پاسخ ادمین</span>
-              <span><i class="fas fa-clock" style="color: var(--dark-400);"></i> <?= htmlspecialchars($report['updated_at'] ?? date('Y-m-d H:i')) ?></span>
+              <span><i class="fas fa-clock" style="color: var(--dark-400);"></i> <?= htmlspecialchars(eplakFaDateTimeOf($report['updated_at'] ?? null, eplakFaNow())) ?></span>
             </div>
             <?= nl2br(htmlspecialchars($report['reply'])) ?>
           </div>
@@ -460,7 +460,7 @@ if ($report && !empty($report['user_phone'])) {
                   <strong><?= htmlspecialchars($stage['label']) ?></strong>
                   <span class="flow-badge <?= htmlspecialchars($stage['state']) ?>"><?= htmlspecialchars($stage['key'] === 'done' && $stage['state'] === 'done' ? 'انجام شد' : ($flowStateLabel[$stage['state']] ?? '')) ?></span>
                   <?php if (!empty($stage['date'])): ?>
-                    <span class="flow-date"><i class="far fa-clock"></i> <?= htmlspecialchars(eplakFaDateTime(null, strtotime((string) $stage['date']) ?: null)) ?></span>
+                    <span class="flow-date"><i class="far fa-clock"></i> <?= htmlspecialchars(eplakFaDateTimeOf($stage['date'] ?? null)) ?></span>
                   <?php endif; ?>
                 </div>
                 <?php foreach (($stage['notes'] ?? []) as $note): ?>
@@ -508,7 +508,7 @@ if ($report && !empty($report['user_phone'])) {
                 <?php if (trim((string) ($ev['body'] ?? '')) !== ''): ?>
                   <p><?= nl2br(htmlspecialchars((string) $ev['body'])) ?></p>
                 <?php endif; ?>
-                <span class="event-date"><i class="far fa-clock"></i> <?= htmlspecialchars(eplakFaDateTime(null, strtotime((string) ($ev['created_at'] ?? '')) ?: null)) ?></span>
+                <span class="event-date"><i class="far fa-clock"></i> <?= htmlspecialchars(eplakFaDateTimeOf($ev['created_at'] ?? null)) ?></span>
               </div>
             </div>
           <?php endforeach; ?>
@@ -543,7 +543,7 @@ if ($report && !empty($report['user_phone'])) {
                   <tr style="border-top:1px dashed var(--dark-200);">
                     <td style="padding:5px 4px;"><?= htmlspecialchars((string) ($dev['platform'] ?? 'android')) ?></td>
                     <td><?= (int) $dev['is_active'] === 1 ? 'فعال' : 'غیرفعال' ?></td>
-                    <td dir="ltr" style="text-align:right;"><?= htmlspecialchars((string) ($dev['last_seen_at'] ?? '')) ?></td>
+                    <td dir="rtl" style="text-align:right;"><?= htmlspecialchars(eplakFaDateTimeOf($dev['last_seen_at'] ?? null, '—')) ?></td>
                     <td style="color:var(--dark-500); word-break:break-word;"><?= htmlspecialchars((string) ($dev['last_error'] ?? '')) ?: '—' ?></td>
                   </tr>
                 <?php endforeach; ?>
@@ -557,7 +557,7 @@ if ($report && !empty($report['user_phone'])) {
                 <?php foreach ($pushLogRows as $r): ?>
                   <?php $lab = $pushOutcomeLabels[(string) $r['outcome']] ?? [(string) $r['outcome'], 'warn']; ?>
                   <tr style="border-top:1px dashed var(--dark-200);">
-                    <td dir="ltr" style="text-align:right; padding:5px 4px;"><?= htmlspecialchars((string) ($r['created_at'] ?? '')) ?></td>
+                    <td dir="rtl" style="text-align:right; padding:5px 4px;"><?= htmlspecialchars(eplakFaDateTimeOf($r['created_at'] ?? null, '—')) ?></td>
                     <td><?= htmlspecialchars(['reply' => 'پاسخ/وضعیت', 'resend' => 'ارسال دوباره', 'admin_test' => 'آزمایشی', 'test' => 'آزمایشی'][(string) $r['kind']] ?? (string) $r['kind']) ?></td>
                     <td><?= htmlspecialchars($lab[0]) ?><?php if ((int) $r['devices'] > 0): ?> (<?= (int) $r['sent'] ?>/<?= (int) $r['devices'] ?>)<?php endif; ?></td>
                     <td style="color:var(--dark-500); word-break:break-word;"><?= htmlspecialchars(mb_substr((string) ($r['error'] ?? ''), 0, 140, 'UTF-8')) ?: '—' ?></td>

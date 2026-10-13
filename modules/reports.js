@@ -188,8 +188,15 @@
   window.DEFAULT_DEPARTMENTS = DEFAULT_DEPARTMENTS;
   window.renderDepartments = renderDepartments;
 
+  /* تاریخ درخواست‌ها «شمسی» است — از core/state.js (eplakFaDate/eplakFaDateTime).
+     چرا نه toLocaleDateString('fa-IR')؟ چون روی iOS و بعضی WebViewهای اندروید
+     همان «میلادی» را با رقم فارسی برمی‌گرداند، و مقدارِ دارای ساعت
+     (2026-10-11 13:24:05) هم خام و میلادی نشان داده می‌شد. */
   function formatReportDate(dateValue) {
     if (!dateValue) return '—';
+    if (typeof window.eplakFaDate === 'function') {
+      return window.eplakFaDate(dateValue, String(dateValue)) || '—';
+    }
     let date = new Date(dateValue);
     if (Number.isNaN(date.getTime()) && typeof dateValue === 'string') {
       date = new Date(dateValue.replace(' ', 'T'));
@@ -203,16 +210,20 @@
   }
 
   function formatReportDateTime(dateValue) {
+    /* «شمسی» بودن تقویم دیگر به Intl مرورگر وابسته نیست؛ در حالت انگلیسی همان
+       میلادی برگردانده می‌شود. مقدارِ ازقبل‌فارسی (دارای «ساعت» یا رقم فارسی)
+       دست‌نخورده می‌ماند تا متن‌های آماده‌ی سرور خراب نشوند. */
+    if (typeof window.eplakFaDateTime === 'function') {
+      return window.eplakFaDateTime(dateValue || new Date(), dateValue ? String(dateValue) : '');
+    }
     if (!dateValue) {
       const now = new Date();
       const d = now.toLocaleDateString('fa-IR', { year: 'numeric', month: '2-digit', day: '2-digit' });
       const t = now.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', hour12: false });
       return `${d} - ساعت ${t}`;
     }
-    if (typeof dateValue === 'string') {
-      if (dateValue.includes('ساعت') || / \d{1,2}:\d{2}/.test(dateValue)) {
-        return dateValue;
-      }
+    if (typeof dateValue === 'string' && dateValue.includes('ساعت')) {
+      return dateValue;
     }
     let date = new Date(dateValue);
     if (Number.isNaN(date.getTime()) && typeof dateValue === 'string') {
@@ -1030,7 +1041,7 @@
 
     if (unreadable > 0) {
       saveUploadLog({
-        time: (new Date()).toLocaleString('fa-IR'),
+        time: (typeof window.eplakFaNow === 'function' ? window.eplakFaNow() : (new Date()).toLocaleString('fa-IR')),
         text: 'دریافت فایل — ' + toPersianDigits(unreadable) + ' فایل با حجم صفر (ناخوانا)؛ '
           + 'دسترسی خواندن فایل به اپ داده نشده است.'
       });
@@ -1114,7 +1125,7 @@
     }
     const kind = (mode === 'video') ? 'video' : 'photo';
     saveUploadLog({
-      time: (new Date()).toLocaleString('fa-IR'),
+      time: (typeof window.eplakFaNow === 'function' ? window.eplakFaNow() : (new Date()).toLocaleString('fa-IR')),
       text: 'دوربین — درخواست گرفتن ' + (kind === 'video' ? 'فیلم' : 'عکس') + ' از داخل اپ'
     });
     if (window.EplakCamera && typeof window.EplakCamera.open === 'function') {
@@ -1167,7 +1178,7 @@
     renderReportPhotosPreview();
     if (prepared.length) {
       saveUploadLog({
-        time: (new Date()).toLocaleString('fa-IR'),
+        time: (typeof window.eplakFaNow === 'function' ? window.eplakFaNow() : (new Date()).toLocaleString('fa-IR')),
         text: 'دوربین — ' + toPersianDigits(prepared.length) + ' فایل آماده‌ی ارسال اضافه شد'
       });
       showToast('✅ به پیوست‌ها اضافه شد — هنگام ثبت، با گزارش ارسال می‌شود');
@@ -1478,7 +1489,7 @@
     if (res.deduped) {
       /* سرور همین درخواست را از قبل داشت؛ کد تازه‌ای ساخته نشد و همان کد برگشت */
       saveUploadLog({
-        time: (new Date()).toLocaleString('fa-IR'),
+        time: (typeof window.eplakFaNow === 'function' ? window.eplakFaNow() : (new Date()).toLocaleString('fa-IR')),
         text: 'سرور همین درخواست را قبلاً ثبت کرده بود؛ کد پیگیری تکراری ساخته نشد.'
       });
     }
@@ -1639,7 +1650,7 @@
     const saved = (res && Array.isArray(res.media)) ? res.media : [];
     const failed = (res && Array.isArray(res.failed)) ? res.failed : [];
     saveUploadLog({
-      time: (new Date()).toLocaleString('fa-IR'),
+      time: (typeof window.eplakFaNow === 'function' ? window.eplakFaNow() : (new Date()).toLocaleString('fa-IR')),
       text: 'بارگذاری پیوست‌ها (پیش از ثبت گزارش) — ' + toPersianDigits(total) + ' فایل • ذخیره‌شده: '
         + toPersianDigits(saved.length) + ' • ناموفق: ' + toPersianDigits(failed.length)
         + (res && res.status ? (' • کد سرور: ' + toPersianDigits(res.status)) : '')
@@ -1863,7 +1874,7 @@
       };
       const result = await window.eplakFlushPendingMedia(function (reportId, clientRef, count) {
         saveUploadLog({
-          time: (new Date()).toLocaleString('fa-IR'),
+          time: (typeof window.eplakFaNow === 'function' ? window.eplakFaNow() : (new Date()).toLocaleString('fa-IR')),
           text: 'ارسال خودکار پیوست‌های جامانده — ' + toPersianDigits(count) + ' فایل'
             + (reportId ? (' برای گزارش شماره ' + toPersianDigits(reportId))
                         : (' برای درخواست ' + String(clientRef || '—')))
@@ -1890,7 +1901,7 @@
      باشد) — برای عیب‌یابی سریع روشن می‌کند که فایل به‌دست صفحه رسیده یا نه. */
   window.eplakNativeFilesPicked = function (copied, total) {
     saveUploadLog({
-      time: (new Date()).toLocaleString('fa-IR'),
+      time: (typeof window.eplakFaNow === 'function' ? window.eplakFaNow() : (new Date()).toLocaleString('fa-IR')),
       text: 'انتخاب فایل از گالری — ' + toPersianDigits(total) + ' فایل • آماده‌سازی موفق: ' + toPersianDigits(copied)
     });
   };
@@ -3296,6 +3307,6 @@
   window.offerMediaReattach = offerMediaReattach;
   window.eplakCameraLog = function (text) {
     try {
-      saveUploadLog({ time: (new Date()).toLocaleString('fa-IR'), text: 'دوربین — ' + String(text || '') });
+      saveUploadLog({ time: (typeof window.eplakFaNow === 'function' ? window.eplakFaNow() : (new Date()).toLocaleString('fa-IR')), text: 'دوربین — ' + String(text || '') });
     } catch (e) { /* بی‌اهمیت */ }
   };

@@ -131,7 +131,7 @@ $newUsers = count(array_filter($users, fn($u) => strtotime($u['created_at']) > s
                       <i class="fas fa-flag"></i> <?= (int)$user['report_count'] ?>
                     </a>
                   </td>
-                  <td><?= htmlspecialchars($user['created_at']) ?></td>
+                  <td><?= htmlspecialchars(eplakFaDateTimeOf($user['created_at'] ?? null, '—')) ?></td>
                   <td>
                     <div class="action-buttons">
                       <a href="user_view.php?id=<?= (int)$user['id'] ?>" class="btn-action view" title="مشاهده">

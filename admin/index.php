@@ -281,7 +281,7 @@ foreach ($chartSegments as $i => $seg) {
                 <td><?= htmlspecialchars($ticket['title']) ?></td>
                 <td><?= htmlspecialchars($ticket['user_phone']) ?></td>
                 <td><?= htmlspecialchars($ticket['status']) ?></td>
-                <td><?= htmlspecialchars($ticket['created_at']) ?></td>
+                <td><?= htmlspecialchars(eplakFaDateTimeOf($ticket['created_at'] ?? null, '—')) ?></td>
                 <td><a href="ticket_detail.php?id=<?= (int)$ticket['id'] ?>">مشاهده</a></td>
               </tr>
             <?php endforeach; ?>
@@ -301,7 +301,7 @@ foreach ($chartSegments as $i => $seg) {
                 <td><?= htmlspecialchars($report['code']) ?></td>
                 <td><?= htmlspecialchars($report['title']) ?></td>
                 <td><?= htmlspecialchars($report['status']) ?></td>
-                <td><?= htmlspecialchars($report['created_at']) ?></td>
+                <td><?= htmlspecialchars(eplakFaDateTimeOf($report['created_at'] ?? null, '—')) ?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
@@ -319,7 +319,7 @@ foreach ($chartSegments as $i => $seg) {
               <tr>
                 <td><?= htmlspecialchars($user['name']) ?></td>
                 <td><?= htmlspecialchars($user['phone']) ?></td>
-                <td><?= htmlspecialchars($user['created_at']) ?></td>
+                <td><?= htmlspecialchars(eplakFaDateTimeOf($user['created_at'] ?? null, '—')) ?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>

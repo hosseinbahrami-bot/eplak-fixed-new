@@ -65,8 +65,11 @@
     el.style.display = 'block';
   }
 
+  /* تاریخِ خبر/دانستنی/اعلان «شمسی» است — از core/state.js.
+     (toLocaleDateString('fa-IR') روی iOS و بعضی WebViewها میلادی می‌داد.) */
   function faDate(value) {
     try {
+      if (typeof window.eplakFaDate === 'function') return window.eplakFaDate(value || new Date(), '');
       const d = value ? new Date(String(value).replace(' ', 'T')) : new Date();
       if (isNaN(d.getTime())) return '';
       return d.toLocaleDateString('fa-IR', { year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -77,6 +80,7 @@
 
   function faTime(value) {
     try {
+      if (typeof window.eplakFaTime === 'function') return window.eplakFaTime(value || new Date(), '');
       const d = value ? new Date(String(value).replace(' ', 'T')) : new Date();
       if (isNaN(d.getTime())) return '';
       return d.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });

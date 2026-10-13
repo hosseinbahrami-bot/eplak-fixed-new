@@ -220,3 +220,124 @@
       .replace(/"/g, '&quot;');
   }
 
+
+  /* =========================================================
+     تاریخ شمسی (جلالی) — بدون وابستگی به Intlِ مرورگر
+     =========================================================
+     چرا این بلوک لازم شد؟
+     `toLocaleDateString('fa-IR')` روی بعضی WebViewها (به‌ویژه iOS و اندرویدِ
+     قدیمی) تقویم «میلادی» را با رقم فارسی برمی‌گرداند، و از آن بدتر:
+     `formatReportDateTime` هر مقدارِ دارای ساعت را «قالب‌گرفته» فرض می‌کرد و
+     همان `2026-10-11 13:24:05` خام را نشان می‌داد. نتیجه: تاریخ درخواست‌ها
+     در اپ میلادی دیده می‌شد.
+     این‌جا همان الگوریتم `shared/fa_datetime.php` پیاده شده (همان اعداد مرجع:
+     ۳۵۵۶۶۶ / ۱۲۰۵۳ / ۱۴۶۱ / ۱۸۶) تا تاریخ در همه‌ی دستگاه‌ها «شمسی» باشد.
+
+     قرارداد ساعت: مقدارهای سرور بدون منطقه‌ی زمانی («2026-10-11 13:24:05»)
+     همان ساعتِ دیتابیس (UTC) هستند و به وقتِ دستگاه (تهران) نشان داده
+     می‌شوند — دقیقاً مثل پنل ادمین (`eplakFaDateTimeOf`).
+     در حالت انگلیسی، تاریخ میلادی می‌ماند (کاربر انگلیسی‌زبان شمسی نمی‌خواهد).
+  ========================================================= */
+  function eplakGregorianToJalali(gy, gm, gd) {
+    const gDays = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    const gy2 = gm > 2 ? gy + 1 : gy;
+    let days = 355666 + 365 * gy + Math.trunc((gy2 + 3) / 4) - Math.trunc((gy2 + 99) / 100)
+      + Math.trunc((gy2 + 399) / 400) + gd + gDays[gm - 1];
+    let jy = -1595 + 33 * Math.trunc(days / 12053);
+    days %= 12053;
+    jy += 4 * Math.trunc(days / 1461);
+    days %= 1461;
+    if (days > 365) { jy += Math.trunc((days - 1) / 365); days = (days - 1) % 365; }
+    let jm, jd;
+    if (days < 186) { jm = 1 + Math.trunc(days / 31); jd = 1 + (days % 31); }
+    else { jm = 7 + Math.trunc((days - 186) / 30); jd = 1 + ((days - 186) % 30); }
+    return { jy: jy, jm: jm, jd: jd };
+  }
+
+  const EPLAK_FA_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  function eplakToFaDigits(input) {
+    return String(input == null ? '' : input).replace(/[0-9]/g, (d) => EPLAK_FA_DIGITS[Number(d)]);
+  }
+  function eplakPad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function eplakIsEnglishUi() {
+    return !!(window.i18n && (window.i18n.currentLang === 'en'
+      || (typeof window.i18n.getLanguage === 'function' && window.i18n.getLanguage() === 'en')));
+  }
+
+  /* مقدار از قبل به فارسی/شمسی قالب گرفته شده؟ (مثلاً متن اعلانِ سمت سرور) */
+  function eplakIsFormattedFa(value) {
+    const s = String(value == null ? '' : value);
+    return s.indexOf('ساعت') !== -1 || /[۰-۹]{4}\/[۰-۹]{1,2}\/[۰-۹]{1,2}/.test(s);
+  }
+
+  /* خواندن مقدار تاریخ از سرور/حافظه: رشته‌ی بدون منطقه‌ی زمانی = UTC دیتابیس */
+  function eplakParseDateValue(value) {
+    if (value === null || value === undefined || value === '') return null;
+    if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+    if (typeof value === 'number') {
+      const dn = new Date(value > 100000000000 ? value : value * 1000);
+      return isNaN(dn.getTime()) ? null : dn;
+    }
+    let s = String(value).trim();
+    if (!s) return null;
+    if (/^\d{10,13}$/.test(s)) return eplakParseDateValue(Number(s));
+    /* مقدارهای صفر/خالیِ دیتابیس */
+    if (s.indexOf('0000-00-00') === 0 || s.indexOf('0001-01-01') === 0) return null;
+    let d = null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      d = new Date(s + 'T00:00:00Z');                       /* فقط تاریخ → UTC */
+    } else if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
+      const iso = s.replace(' ', 'T');
+      d = /(Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? new Date(iso) : new Date(iso + 'Z');
+    }
+    if (!d || isNaN(d.getTime())) {
+      d = new Date(s.replace(' ', 'T'));                     /* هر شکل دیگری: خودِ مرورگر */
+      if (isNaN(d.getTime())) d = new Date(s);
+      if (isNaN(d.getTime())) return null;
+    }
+    return d;
+  }
+
+  /* تاریخِ شمسی: «۱۴۰۴/۰۷/۱۹» — در حالت انگلیسی «2026-10-11» */
+  function eplakFaDate(value, fallback) {
+    const fb = fallback === undefined ? '' : String(fallback);
+    if (eplakIsFormattedFa(value)) return String(value);
+    const d = eplakParseDateValue(value);
+    if (!d) return fb;
+    if (eplakIsEnglishUi()) {
+      return d.getFullYear() + '-' + eplakPad2(d.getMonth() + 1) + '-' + eplakPad2(d.getDate());
+    }
+    const j = eplakGregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    return eplakToFaDigits(j.jy + '/' + eplakPad2(j.jm) + '/' + eplakPad2(j.jd));
+  }
+
+  /* ساعت: «۱۶:۵۴» */
+  function eplakFaTime(value, fallback) {
+    const fb = fallback === undefined ? '' : String(fallback);
+    const d = eplakParseDateValue(value);
+    if (!d) return fb;
+    const t = eplakPad2(d.getHours()) + ':' + eplakPad2(d.getMinutes());
+    return eplakIsEnglishUi() ? t : eplakToFaDigits(t);
+  }
+
+  /* تاریخ و ساعت: «۱۴۰۴/۰۷/۱۹ - ساعت ۱۶:۵۴» (همان شکل قبلیِ اپ) */
+  function eplakFaDateTime(value, fallback) {
+    const fb = fallback === undefined ? '' : String(fallback);
+    if (eplakIsFormattedFa(value)) return String(value);
+    const d = eplakParseDateValue(value);
+    if (!d) return fb;
+    if (eplakIsEnglishUi()) {
+      return d.getFullYear() + '-' + eplakPad2(d.getMonth() + 1) + '-' + eplakPad2(d.getDate())
+        + ' ' + eplakPad2(d.getHours()) + ':' + eplakPad2(d.getMinutes());
+    }
+    return eplakFaDate(d) + ' - ساعت ' + eplakFaTime(d);
+  }
+
+  window.eplakGregorianToJalali = eplakGregorianToJalali;
+  window.eplakToFaDigits = eplakToFaDigits;
+  window.eplakParseDateValue = eplakParseDateValue;
+  window.eplakFaDate = eplakFaDate;
+  window.eplakFaTime = eplakFaTime;
+  window.eplakFaDateTime = eplakFaDateTime;
+  window.eplakFaNow = function () { return eplakFaDateTime(new Date()); };

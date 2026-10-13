@@ -62,7 +62,7 @@ jobs:
       - name: آزمون‌های خودکار (کد قرمز روی هاست نمی‌رود)
         run: |
           set -e
-          for t in syntax notify notify-schema news app backend online push pushcrypto fcm security geo upload tiles placesadmin otp places ios pwa; do
+          for t in syntax notify notify-schema news jalali app backend online push pushcrypto fcm security geo upload tiles placesadmin otp places ios pwa; do
             echo "::group::آزمون $t"
             bash tools/dev/run-regression.sh "$t"
             echo "::endgroup::"

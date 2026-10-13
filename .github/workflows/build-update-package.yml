@@ -65,7 +65,7 @@ jobs:
           # android-apk.yml، ios-ipa.yml، pwa.yml، pwa-safari.yml و deploy.yml را
           # می‌سنجند (آن ورک‌فلوها بازسازی شده‌اند؛ اگر روزی پاک/خراب شوند، این
           # آزمون‌ها جلوی بسته‌ی خراب را می‌گیرند).
-          for t in syntax notify notify-schema news app backend online push pushcrypto fcm security geo upload tiles placesadmin otp places ios pwa; do
+          for t in syntax notify notify-schema news jalali app backend online push pushcrypto fcm security geo upload tiles placesadmin otp places ios pwa; do
             echo "::group::آزمون $t"
             bash tools/dev/run-regression.sh "$t"
             echo "::endgroup::"
@@ -79,7 +79,7 @@ jobs:
             echo
             echo "| هدف | نتیجه |"
             echo "| --- | --- |"
-            echo "| syntax · notify · notify-schema · news · app · backend · online · push · pushcrypto · fcm · security · geo · upload · tiles · placesadmin · otp · places · ios · pwa | ${{ job.status }} |"
+            echo "| syntax · notify · notify-schema · news · jalali · app · backend · online · push · pushcrypto · fcm · security · geo · upload · tiles · placesadmin · otp · places · ios · pwa | ${{ job.status }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ──────────────────────────────────────────────────────────────────────────

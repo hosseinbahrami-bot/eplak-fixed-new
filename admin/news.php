@@ -277,7 +277,7 @@ $newsBroken = !$status['table'] || $status['failed'] || !$status['badge'] || !$s
                     <?php endif; ?>
                   </td>
                   <td><?= (int)($row['sort_order'] ?? 0) ?></td>
-                  <td style="font-size: 12px; color: var(--dark-500);"><?= htmlspecialchars((string) ($row['updated_at'] ?? $row['created_at'] ?? '—')) ?></td>
+                  <td style="font-size: 12px; color: var(--dark-500);"><?= htmlspecialchars(eplakFaDateTimeOf($row['updated_at'] ?? $row['created_at'] ?? null, '—')) ?></td>
                   <td>
                     <div style="display:flex; gap:6px; flex-wrap:wrap;">
                       <a class="btn-action view" href="news_edit.php?id=<?= (int)$row['id'] ?>" title="ویرایش">

@@ -3,6 +3,9 @@ if (!defined('EPLAK_ROOT')) {
     define('EPLAK_ROOT', dirname(__DIR__));
 }
 require_once __DIR__ . '/paths.php';
+/* تاریخ و ساعت شمسی: هم برای متن اعلان‌ها و هم برای نمایش تاریخ‌ها در پنل
+   مدیریت (پیش از این، تاریخ گزارش‌ها/کاربران/تیکت‌ها میلادی چاپ می‌شد). */
+require_once __DIR__ . '/fa_datetime.php';
 
 function eplakIsHttpsRequest(): bool {
     if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {

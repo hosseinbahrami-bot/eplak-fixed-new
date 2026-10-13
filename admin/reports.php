@@ -216,7 +216,7 @@ $mediaCounts = getReportMediaCounts($pdo, $reportIds);
                       <span class="media-badge none">—</span>
                     <?php endif; ?>
                   </td>
-                  <td><?= htmlspecialchars($report['created_at']) ?></td>
+                  <td><?= htmlspecialchars(eplakFaDateTimeOf($report['created_at'] ?? null, '—')) ?></td>
                   <td>
                     <div class="action-buttons">
                       <a href="report_detail.php?id=<?= (int)$report['id'] ?>" class="btn-action view" title="مشاهده و پاسخ">

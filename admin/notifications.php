@@ -335,7 +335,7 @@ $fcmDevices = eplakFcmCount($pdo);
                     <?php endif; ?>
                   </td>
                   <td><?= htmlspecialchars($s['created_by'] ?: '—') ?></td>
-                  <td style="font-size:12px; color:var(--dark-500);"><?= htmlspecialchars($s['created_at']) ?></td>
+                  <td style="font-size:12px; color:var(--dark-500);"><?= htmlspecialchars(eplakFaDateTimeOf($s['created_at'] ?? null, '—')) ?></td>
                   <td>
                     <a class="btn-action view" href="notification_view.php?id=<?= (int)$s['id'] ?>" title="مشاهده گیرندگان">
                       <i class="fas fa-eye"></i>

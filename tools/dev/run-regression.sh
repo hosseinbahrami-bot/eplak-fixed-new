@@ -17,6 +17,9 @@
 #                 ویرایش مطلب با «عکس و متن» از پنل، api/news.php بدون ۵۰۰ روی
 #                 دیتابیس قدیمی (بدون ستون badge) و بدون جدول news، و رسیدن همان
 #                 مطلب‌ها با عکس به فهرست «اخبار و اطلاعیه‌ها» و پیشخوان در اپ
+#    jalali     → «تاریخ شمسی»: تاریخ درخواست/تیکت/کاربر/خبر/اعلان در پنل ادمین و
+#                 در اپ شمسی و به وقت تهران است (نه میلادی)، یک مبدأ برای هر دو سمت،
+#                 مقدار خام/خراب خطا نمی‌دهد، و در حالت انگلیسی میلادی می‌ماند
 #    app        → درخواست‌های اپ (خوانده‌شده، اعلان سیستمی، ثبت توکن فایربیس)
 #    otp        → ارسال OTP آموت، اعتبارسنجی سمت سرور، انقضا و محدودیت تلاش/ارسال
 #    pushcrypto → رمزنگاری اعلان مرورگر و امضای VAPID
@@ -103,7 +106,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "syntax" ]; then
   run_step "بررسی نحوی JS"  node "$WORK/js-syntax.mjs"  "$ROOT"
 fi
 
-for t in notify notify-schema news app pushcrypto fcm backend security online geo upload tiles push places placesadmin otp ios pwa; do
+for t in notify notify-schema news jalali app pushcrypto fcm backend security online geo upload tiles push places placesadmin otp ios pwa; do
   if [ "$TARGET" = "all" ] || [ "$TARGET" = "$t" ]; then
     if [ -f "$WORK/$t.test.mjs" ]; then
       run_step "آزمون $t" node "$WORK/$t.test.mjs"

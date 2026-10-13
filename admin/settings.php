@@ -342,7 +342,7 @@ $httpsOn = eplakIsHttpsRequest();
           </div>
           <div class="kv-row">
             <span class="kv-key">تاریخ ایجاد حساب</span>
-            <span class="kv-val"><?= htmlspecialchars((string) ($admin['created_at'] ?? '—')) ?></span>
+            <span class="kv-val"><?= htmlspecialchars(eplakFaDateTimeOf($admin['created_at'] ?? null, '—')) ?></span>
           </div>
         </div>
 
@@ -427,7 +427,7 @@ $httpsOn = eplakIsHttpsRequest();
               <?php else: ?>
                 «<?= htmlspecialchars($pushStats['last_send_title']) ?>» —
                 <?= (int) $pushStats['last_sent'] ?> موفق، <?= (int) $pushStats['last_failed'] ?> ناموفق
-                <span style="color: var(--dark-400); font-size: 12px;">(<?= htmlspecialchars($pushStats['last_send_at']) ?>)</span>
+                <span style="color: var(--dark-400); font-size: 12px;">(<?= htmlspecialchars(eplakFaDateTimeOf($pushStats['last_send_at'] ?? null, '—')) ?>)</span>
               <?php endif; ?>
             </span>
           </div>
@@ -464,7 +464,7 @@ $httpsOn = eplakIsHttpsRequest();
                     <td><?= htmlspecialchars((string) ($err['user_phone'] !== '' ? $err['user_phone'] : 'مهمان')) ?></td>
                     <td><?= (int) $err['fail_count'] ?></td>
                     <td style="font-size: 12px; direction: ltr; text-align: left;"><?= htmlspecialchars(mb_substr((string) $err['last_error'], 0, 160)) ?></td>
-                    <td style="font-size: 12px;"><?= htmlspecialchars((string) $err['updated_at']) ?></td>
+                    <td style="font-size: 12px;"><?= htmlspecialchars(eplakFaDateTimeOf($err['updated_at'] ?? null, '—')) ?></td>
                   </tr>
                 <?php endforeach; ?>
               </tbody>
@@ -622,7 +622,7 @@ $httpsOn = eplakIsHttpsRequest();
                 <tr>
                   <td dir="ltr" style="text-align:right;"><?= htmlspecialchars($maskPhone((string) $d['user_phone'])) ?></td>
                   <td><?= (int) $d['is_active'] === 1 ? '<span class="pill pill-ok">فعال</span>' : '<span class="pill pill-bad">غیرفعال</span>' ?></td>
-                  <td dir="ltr" style="text-align:right;"><?= htmlspecialchars((string) ($d['last_seen_at'] ?? '')) ?></td>
+                  <td dir="rtl" style="text-align:right;"><?= htmlspecialchars(eplakFaDateTimeOf($d['last_seen_at'] ?? null, '—')) ?></td>
                   <td style="color:var(--dark-500); word-break:break-word;"><?= htmlspecialchars((string) ($d['last_error'] ?? '')) ?: '—' ?></td>
                 </tr>
               <?php endforeach; ?>
@@ -642,7 +642,7 @@ $httpsOn = eplakIsHttpsRequest();
               <?php foreach ($fcmLogRows as $r): ?>
                 <?php $lab = $pushOutcomeLabels[(string) $r['outcome']] ?? [(string) $r['outcome'], 'warn']; ?>
                 <tr>
-                  <td dir="ltr" style="text-align:right;"><?= htmlspecialchars((string) ($r['created_at'] ?? '')) ?></td>
+                  <td dir="rtl" style="text-align:right;"><?= htmlspecialchars(eplakFaDateTimeOf($r['created_at'] ?? null, '—')) ?></td>
                   <td dir="ltr" style="text-align:right;"><?= htmlspecialchars($maskPhone((string) $r['user_phone'])) ?></td>
                   <td><?= htmlspecialchars(($r['code'] ?? '') !== '' ? (string) $r['code'] : (string) $r['kind']) ?></td>
                   <td><span class="pill pill-<?= htmlspecialchars($lab[1]) ?>"><?= htmlspecialchars($lab[0]) ?></span>

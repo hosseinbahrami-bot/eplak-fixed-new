@@ -257,7 +257,7 @@ function vBadge(bool $ok, string $good = 'درست', string $bad = 'ناقص'): 
                 <tr style="border-top: 1px dashed var(--dark-200);">
                   <td style="padding:6px 4px;" class="mono"><?= htmlspecialchars((string) $d['user_phone'] !== '' ? (string) $d['user_phone'] : 'مهمان') ?></td>
                   <td><?= (int) $d['is_active'] === 1 ? vBadge(true, 'فعال') : vBadge(false, '', 'غیرفعال') ?></td>
-                  <td class="mono"><?= htmlspecialchars((string) ($d['last_seen_at'] ?? '')) ?></td>
+                  <td class="mono"><?= htmlspecialchars(eplakFaDateTimeOf($d['last_seen_at'] ?? null, '—')) ?></td>
                 </tr>
                 <?php endforeach; ?>
               </tbody>
@@ -299,7 +299,7 @@ function vBadge(bool $ok, string $good = 'درست', string $bad = 'ناقص'): 
                   <td style="padding:6px 4px;">
                     <a href="notification_view.php?id=<?= (int) $s['id'] ?>"><?= htmlspecialchars((string) $s['title']) ?></a>
                   </td>
-                  <td style="padding:6px 4px;" class="mono"><?= htmlspecialchars((string) $s['created_at']) ?></td>
+                  <td style="padding:6px 4px;" class="mono"><?= htmlspecialchars(eplakFaDateTimeOf($s['created_at'] ?? null, '—')) ?></td>
                   <td style="padding:6px 4px;">
                     <?php $sent = (int) ($s['fcm_sent'] ?? 0); $failed = (int) ($s['fcm_failed'] ?? 0); ?>
                     <?php if ($sent + $failed === 0): ?>

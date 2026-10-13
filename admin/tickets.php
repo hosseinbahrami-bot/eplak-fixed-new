@@ -182,7 +182,7 @@ $doneTickets = count(array_filter($tickets, fn($t) => normalizeStatusValue($t['s
                         <?= $statusText ?>
                       </span>
                     </td>
-                    <td><?= htmlspecialchars($ticket['created_at']) ?></td>
+                    <td><?= htmlspecialchars(eplakFaDateTimeOf($ticket['created_at'] ?? null, '—')) ?></td>
                     <td>
                       <div class="action-buttons">
                         <a href="ticket_detail.php?id=<?= (int)$ticket['id'] ?>" class="btn-action view" title="مشاهده جزئیات">

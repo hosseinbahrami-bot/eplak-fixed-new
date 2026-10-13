@@ -105,7 +105,7 @@ $ticketDone = count(array_filter($tickets, fn($t) => normalizeStatusValue($t['st
             <?php if (!empty($user['address'])): ?>
               <span><i class="fas fa-map-pin"></i> <?= htmlspecialchars($user['address']) ?></span>
             <?php endif; ?>
-            <span><i class="fas fa-calendar-alt"></i> عضو از: <?= htmlspecialchars($user['created_at'] ?? 'نامشخص') ?></span>
+            <span><i class="fas fa-calendar-alt"></i> عضو از: <?= htmlspecialchars(eplakFaDate($user['created_at'] ?? null, 'نامشخص')) ?></span>
           </div>
           <div style="margin-top: 8px;">
             <span class="badge-code">
@@ -232,7 +232,7 @@ $ticketDone = count(array_filter($tickets, fn($t) => normalizeStatusValue($t['st
                         <?= $statusText ?>
                       </span>
                     </td>
-                    <td><?= htmlspecialchars($report['created_at']) ?></td>
+                    <td><?= htmlspecialchars(eplakFaDateTimeOf($report['created_at'] ?? null, '—')) ?></td>
                     <td>
                       <div class="action-buttons">
                         <a href="report_detail.php?id=<?= (int)$report['id'] ?>" class="btn-action view" title="مشاهده جزئیات">
@@ -325,7 +325,7 @@ $ticketDone = count(array_filter($tickets, fn($t) => normalizeStatusValue($t['st
                         <?= $statusText ?>
                       </span>
                     </td>
-                    <td><?= htmlspecialchars($ticket['created_at']) ?></td>
+                    <td><?= htmlspecialchars(eplakFaDateTimeOf($ticket['created_at'] ?? null, '—')) ?></td>
                     <td>
                       <div class="action-buttons">
                         <a href="ticket_detail.php?id=<?= (int)$ticket['id'] ?>" class="btn-action view" title="مشاهده جزئیات">

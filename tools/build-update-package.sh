@@ -55,7 +55,7 @@ for f in .htaccess index.html index.php sw.js manifest.json shared/bootstrap.php
          api/places.php admin/places.php shared/places_store.php \
          docs/DEPLOY_UPDATE_FA.md docs/DEPLOY_UPDATE_EN.md docs/CITY_MAP_FA.md docs/CITY_MAP_EN.md \
          docs/REPORT_MEDIA_GPS_FA.md docs/REPORT_MEDIA_GPS_EN.md \
-         docs/FIREBASE_SETUP_FA.md docs/FIREBASE_SETUP_EN.md docs/NOTIFICATIONS_FA.md docs/NEWS_FA.md \
+         docs/FIREBASE_SETUP_FA.md docs/FIREBASE_SETUP_EN.md docs/NOTIFICATIONS_FA.md docs/NEWS_FA.md docs/JALALI_FA.md \
          backend/fix-notifications-db.sql backend/fix-news-db.sql; do
   if has "$f"; then echo "   ✅ $f"; else echo "   ❌ $f گم شده!"; exit 1; fi
 done
