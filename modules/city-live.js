@@ -856,13 +856,14 @@
     try {
       const d = new Date(data.fetchedAt);
       const isEn = isEnglish();
-      if (isEn) {
-        const t = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-        node.textContent = 'Updated: ' + t;
-      } else {
-        const t = d.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
-        node.textContent = 'به‌روزرسانی: ' + t;
-      }
+      /* ساعت هم از ماژول شمسی می‌آید تا رقم‌ها روی همه‌ی WebViewها فارسی بمانند
+         (toLocaleTimeString('fa-IR') روی بعضی دستگاه‌ها رقم لاتین می‌دهد). */
+      const t = typeof window.eplakFaTime === 'function'
+        ? window.eplakFaTime(d)
+        : (typeof window.eplakFaTimeLocal === 'function'
+          ? window.eplakFaTimeLocal(d)
+          : d.toLocaleTimeString(isEn ? 'en-US' : 'fa-IR', { hour: '2-digit', minute: '2-digit', hour12: false }));
+      node.textContent = (isEn ? 'Updated: ' : 'به‌روزرسانی: ') + t;
     } catch (e) { /* بی‌صدا */ }
   }
 

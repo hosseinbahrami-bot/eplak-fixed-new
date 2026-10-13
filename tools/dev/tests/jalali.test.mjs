@@ -67,6 +67,9 @@ const JALALI = /[۰-۹]{4}\/[۰-۹]{2}\/[۰-۹]{2}/;
 /* «۲۰۲۶-۱۰-۰۳.۱» شماره‌ی نسخه‌ی اسکیماست نه تاریخ ⇒ پس از تاریخ، رقم/نقطه/
    خط تیره نباشد تا با کدِ نسخه اشتباه نشود. */
 const GREGORIAN = /(?:19|20)\d{2}-\d{2}-\d{2}(?![.\d-])/;
+/* نام ماه‌های میلادی هم نشانه‌ی تقویم میلادی است (مثلاً «۱۴ اکتبر ۲۰۲۶» که با
+   رقم فارسی نوشته می‌شد و الگوی بالا آن را نمی‌گرفت) */
+const GREG_MONTHS = /(ژانویه|فوریه|مارس|آوریل|ژوئن|ژوئیه|اوت|سپتامبر|اکتبر|نوامبر|دسامبر|January|February|March|April|May|June|July|August|September|October|November|December)/;
 
 /* الگوریتم مرجعِ شمسی (همان shared/fa_datetime.php) برای سنجش مقدارهایی که
    نمی‌شود دستی حدس زد (مثل timestamp عددی در منطقه‌ی زمانیِ آزمون). */
@@ -331,12 +334,70 @@ ok('تاریخ اعلان‌های داخل اپ شمسی است',
 ok('تاریخ خبرها/دانستنی‌های داخل اپ شمسی است',
   !newsHtml || (JALALI.test(newsHtml) && !GREGORIAN.test(visibleText(newsHtml))), newsHtml.slice(0, 120));
 
-/* حالت انگلیسی: کاربر انگلیسی‌زبان تاریخ میلادی می‌بیند (نه شمسی) */
+/* ── صفحه‌ی «جزئیات گزارش»: دقیقاً همان چیزی که کاربر در اپ می‌بیند ──
+   گزارش کارفرما: «داخل اپ قسمت جزییات گزارش تماما به میلادیه». این‌جا اپ با
+   داده‌ی واقعی از api/reports.php بالا می‌آید، صفحه‌ی جزئیات باز می‌شود و متنِ
+   دیده‌شده سنجیده می‌شود. */
+section('۳-۲) اپ: صفحه‌ی «جزئیات گزارش» و بقیه‌ی صفحه‌ها');
+w.localStorage.setItem('eplak_current_phone', '09120000001');
+const loaded = await w.loadReportsFromBackend('09120000001');
+ok('گزارشِ آزمون از API واقعی به اپ رسید', Array.isArray(loaded) && loaded.length >= 1,
+  String(loaded && loaded.length));
+const firstReport = (Array.isArray(loaded) && loaded[0]) ? loaded[0] : null;
+ok('تاریخِ گزارش در حافظه‌ی اپ شمسی است',
+  !!firstReport && JALALI.test(String(firstReport.dateTime)) && !GREGORIAN.test(String(firstReport.dateTime)),
+  JSON.stringify(firstReport && firstReport.dateTime));
+if (firstReport) {
+  w.openReportDetail(firstReport.id);
+  await new Promise((r) => setTimeout(r, 350));
+  const detailEl = w.document.getElementById('screen-report-detail');
+  const detailText = visibleText(detailEl ? detailEl.innerHTML : '');
+  const detailDate = (w.document.getElementById('detailDate') || {}).textContent || '';
+  ok('«جزئیات گزارش»: تاریخِ زیرِ عنوان شمسی است (۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴)',
+    detailDate === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴', JSON.stringify(detailDate));
+  ok('«جزئیات گزارش»: تاریخِ گام‌های «روند رسیدگی» هم شمسی است',
+    (detailText.match(/۱۴۰۵\/۰۷\/۱۹/g) || []).length >= 2,
+    String((detailText.match(/۱۴۰۵\/۰۷\/۱۹/g) || []).length));
+  ok('«جزئیات گزارش»: هیچ تاریخ میلادی در متنِ دیده‌شده نیست',
+    !GREGORIAN.test(detailText) && !GREG_MONTHS.test(detailText),
+    (detailText.match(/.{0,40}(?:\d{4}-\d{2}-\d{2}|اکتبر|ژانویه).{0,25}/) || [''])[0]);
+  ok('«جزئیات گزارش»: رقم‌ها فارسی‌اند (۲۰۲۶ یا 2026 دیده نمی‌شود)',
+    !/(?:۲۰۲۶|2026)/.test(detailText), (detailText.match(/.{0,25}(?:۲۰۲۶|2026).{0,15}/) || [''])[0]);
+}
+
+const loadedTickets = typeof w.loadTicketsFromBackend === 'function'
+  ? await w.loadTicketsFromBackend('09120000001') : null;
+if (Array.isArray(loadedTickets) && loadedTickets[0] && typeof w.openTicketDetail === 'function') {
+  w.openTicketDetail(loadedTickets[0].id);
+  await new Promise((r) => setTimeout(r, 300));
+  const ticketDate = (w.document.getElementById('ticketDetailDate') || {}).textContent || '';
+  ok('«جزئیات تیکت»: تاریخ و ساعتِ ثبت شمسی است',
+    ticketDate === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴', JSON.stringify(ticketDate));
+}
+
+/* پیشخوان: کارت «تاریخ امروز» و ساعت لوکس — خطِ میلادی برداشته شده است */
+const heroEl = w.document.querySelector('.dash-hero-datetime-row');
+const heroText = visibleText(heroEl ? heroEl.innerHTML : '');
+ok('کارت «تاریخ امروز» خطِ میلادی ندارد (فقط شمسی و قمری)',
+  !GREG_MONTHS.test(heroText) && !/luxGregDate[^>]*>\s*[^<]/.test(heroEl ? heroEl.innerHTML : ''),
+  heroText.slice(0, 140));
+ok('عنصرِ luxGregDate از index.html حذف شده', !/id="luxGregDate"/.test(fs.readFileSync(path.join(APP, 'index.html'), 'utf8')));
+
+/* جاروی کلِ صفحه: هرچه کاربر در اپ می‌بیند */
+const bodyText = visibleText(w.document.body.innerHTML);
+ok('در «کلِ» صفحه‌ی اپ هیچ تاریخ میلادیِ دیده‌شدنی نمانده',
+  !GREGORIAN.test(bodyText) && !GREG_MONTHS.test(bodyText),
+  (bodyText.match(/.{0,40}(?:\d{4}-\d{2}-\d{2}|اکتبر|ژانویه|November).{0,30}/) || [''])[0]);
+
+/* حالت انگلیسی: تقویم همان شمسی می‌ماند، فقط رقم‌ها لاتین می‌شوند */
 w.eval("window.i18n = { currentLang: 'en', getLanguage: function () { return 'en'; } };");
-ok('در حالت انگلیسی، تاریخ میلادیِ خوانا برمی‌گردد',
-  w.formatReportDate('2026-10-11 13:24:05') === '2026-10-11'
-    && w.formatReportDateTime('2026-10-11 13:24:05') === '2026-10-11 16:54',
+ok('در رابط انگلیسی هم تقویم شمسی است (فقط رقم لاتین: 1405/07/19)',
+  w.formatReportDate('2026-10-11 13:24:05') === '1405/07/19'
+    && w.formatReportDateTime('2026-10-11 13:24:05') === '1405/07/19 16:54',
   JSON.stringify([w.formatReportDate('2026-10-11 13:24:05'), w.formatReportDateTime('2026-10-11 13:24:05')]));
+ok('در رابط انگلیسی هم تاریخ میلادی چاپ نمی‌شود',
+  !/2026-10-11/.test(String(w.formatReportDateTime('2026-10-11 13:24:05'))), '');
+w.eval("window.i18n = { currentLang: 'fa', getLanguage: function () { return 'fa'; } };");
 try { w.close(); } catch (e) { /* مهم نیست */ }
 
 /* ───────────────── ۴) قراردادها ───────────────── */
@@ -357,6 +418,49 @@ ok('میان‌بُرِ «مقدارِ دارای ساعت = قالب‌گرفت
   reportsJs.indexOf("dateValue.includes('ساعت') ||") === -1);
 ok('faDate/faTime در live.js هم شمسی شدند',
   /window\.eplakFaDate/.test(liveJs) && /window\.eplakFaTime/.test(liveJs));
+const clockJs = read('modules/clock-lux.js');
+const dashJs = read('modules/dashboard.js');
+const cityLiveJs = read('modules/city-live.js');
+ok('ساعتِ پیشخوان دیگر تاریخ میلادی نمی‌سازد (نام ماه‌های میلادی حذف شد)',
+  !/G_MONTHS/.test(clockJs) && !/اکتبر|ژانویه|October|January/.test(clockJs));
+ok('کارت «تاریخ امروز» در حالت انگلیسی هم شمسی است (JALALI_MONTHS_EN، نه EN_MONTHS)',
+  /JALALI_MONTHS_EN/.test(dashJs) && !/EN_MONTHS\s*=/.test(dashJs));
+ok('مسیرِ جایگزینِ reports.js هم شمسی است (نه Intl)',
+  /eplakFaDateLocal/.test(reportsJs) && reportsJs.includes('355666') && /window\.eplakFaNowLocal/.test(reportsJs));
+ok('ساعتِ «به‌روزرسانی» در شهر زنده از ماژول شمسی می‌آید',
+  /window\.eplakFaTime/.test(cityLiveJs));
+ok('«مهلت پرداخت» قبض‌ها شمسی نشان داده می‌شود', /faDueDate\(p\.due\)/.test(dashJs));
+
+/* هیچ ماژولی تاریخ را با Intl نسازد (روی iOS/بعضی WebViewها میلادی می‌دهد) */
+function codeLines(src) {
+  let inBlock = false;
+  const out = [];
+  src.split('\n').forEach((line, i) => {
+    let l = line;
+    if (inBlock) {
+      const end = l.indexOf('*/');
+      if (end === -1) return;
+      l = l.slice(end + 2);
+      inBlock = false;
+    }
+    l = l.replace(/\/\*[\s\S]*?\*\//g, ' ');
+    const open = l.indexOf('/*');
+    if (open !== -1) { inBlock = true; l = l.slice(0, open); }
+    if (l.trim() !== '') out.push({ n: i + 1, t: l });
+  });
+  return out;
+}
+const intlSites = [];
+for (const f of ['core/state.js', 'modules/reports.js', 'modules/live.js', 'modules/dashboard.js',
+                 'modules/clock-lux.js', 'modules/city-live.js', 'modules/services.js', 'app.js']) {
+  for (const line of codeLines(read(f))) {
+    if (/toLocaleDateString\(|toLocaleTimeString\('fa-IR'|toLocaleString\('fa-IR'\)/.test(line.t)) {
+      intlSites.push(f + ':' + line.n);
+    }
+  }
+}
+ok('هیچ ماژولِ اپ تاریخ را با Intlِ مرورگر نمی‌سازد (ریشه‌ی میلادی شدن روی دستگاه)',
+  intlSites.length === 0, intlSites.join(', '));
 ok('bootstrap توابع تاریخ را برای همه‌ی صفحه‌ها بار می‌کند',
   /require_once __DIR__ \. '\/fa_datetime\.php';/.test(bootPhp));
 
@@ -373,7 +477,9 @@ for (const f of adminFiles) {
 }
 ok('در پنل ادمین هیچ تاریخِ خامی چاپ نمی‌شود (همه با eplakFaDate…)', rawSites.length === 0, rawSites.join(', '));
 ok('کش‌باسترها بالا رفتند تا گوشی‌ها کد تازه را بگیرند',
-  /core\/state\.js\?v=13/.test(indexHtml) && /modules\/reports\.js\?v=28/.test(indexHtml) && /modules\/live\.js\?v=18/.test(indexHtml));
+  /core\/state\.js\?v=14/.test(indexHtml) && /modules\/reports\.js\?v=29/.test(indexHtml)
+  && /modules\/live\.js\?v=18/.test(indexHtml) && /modules\/dashboard\.js\?v=16/.test(indexHtml)
+  && /modules\/city-live\.js\?v=14/.test(indexHtml) && /modules\/clock-lux\.js\?v=6/.test(indexHtml));
 ok('تنظیم منطقه‌ی زمانیِ دیتابیس مستند و قابل تغییر است',
   /EPLAK_DB_TIMEZONE/.test(faPhp) && /EPLAK_DISPLAY_TIMEZONE/.test(faPhp));
 

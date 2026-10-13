@@ -1,7 +1,7 @@
 /* modules/clock-lux.js — ساعت و تقویم لوکس پیشخوان
    ─ ساعت آنالوگ لوکس (SVG زنده با عقربهٔ ثانیهٔ لغزان)
    ─ دیجیتال + برچسب صبح/ظهر/عصر/شب
-   ─ سه‌گانهٔ تاریخ: شمسی + قمری (آوینی → Intl → محاسباتی) + میلادی
+   ─ تاریخ: شمسی (تقویم اصلیِ اپ) + قمری (آوینی → Intl → محاسباتی)
    ─ تقویم ماه شمسی: ناوبری ماه‌ها، جمعه‌ها و تعطیلات رسمی، انتخاب روز
    بدون تغییر در dashboard.js (همان idهای قبلی همچنان دیجیتال/تاریخ را می‌رانند) */
 (function () {
@@ -24,8 +24,9 @@
   const W_LETTERS = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'];
   const W_FULL = ['یک‌شنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه'];
   const W_FULL_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const G_MONTHS_FA = ['ژانویه', 'فوریه', 'مارس', 'آوریل', 'مه', 'ژوئن', 'ژوئیه', 'اوت', 'سپتامبر', 'اکتبر', 'نوامبر', 'دسامبر'];
-  const G_MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  /* نام ماه‌های میلادی عمداً حذف شد: تقویم اپ در همه‌جا «شمسی» است
+     (خواسته‌ی کارفرما: «هرچی تاریخ داخل اپ هست رو به شمسی تبدیل کن»).
+     سه‌گانه‌ی تاریخ به «شمسی + قمری» کاهش یافت. */
   const H_MONTHS_FA = ['', 'محرم', 'صفر', 'ربیع‌الاول', 'ربیع‌الثانی', 'جمادی‌الاول', 'جمادی‌الثانی', 'رجب', 'شعبان', 'رمضان', 'شوال', 'ذی‌القعده', 'ذی‌الحجه'];
   const H_MONTHS_EN = ['', 'Muharram', 'Safar', 'Rabi al-Awwal', 'Rabi al-Thani', 'Jumada al-Awwal', 'Jumada al-Thani', 'Rajab', 'Shaban', 'Ramadan', 'Shawwal', 'Dhu al-Qadah', 'Dhu al-Hijjah'];
   /* تعطیلات رسمی ثابت شمسی (ماه، روز) — مناسبت‌های قمری هر سال جابه‌جا می‌شوند */
@@ -276,11 +277,9 @@
         hEl.style.display = 'none';
       }
     }
-    if (gEl) {
-      gEl.textContent = en
-        ? now.getDate() + ' ' + G_MONTHS_EN[now.getMonth()] + ' ' + now.getFullYear()
-        : fa(now.getDate()) + ' ' + G_MONTHS_FA[now.getMonth()] + ' ' + fa(now.getFullYear()) + ' میلادی';
-    }
+    /* خطِ «میلادی» دیگر پر نمی‌شود: کارتِ «تاریخ امروز» شمسی و قمری نشان می‌دهد.
+       عنصر (اگر در نسخه‌ی کش‌شده‌ی index.html هنوز باشد) خالی و پنهان می‌ماند. */
+    if (gEl) { gEl.textContent = ''; gEl.hidden = true; }
     /* مناسبت‌های روز — جای خالی زیر دکمهٔ «تقویم» */
     const occEl = el('luxOccasion');
     if (occEl) {
@@ -367,13 +366,10 @@
       const s = _sel || { jy: tj[0], jm: tj[1], jd: tj[2] };
       const g = toGregorian(s.jy, s.jm, s.jd);
       const h = getHijri(new Date(g[0], g[1] - 1, g[2]));
-      const gd = new Date(g[0], g[1] - 1, g[2]);
       const parts = [];
       parts.push(fmtFull(s.jy, s.jm, s.jd));
       if (h) parts.push(en ? h.d + ' ' + H_MONTHS_EN[h.m] + ' ' + h.y + ' AH' : fa(h.d) + ' ' + (H_MONTHS_FA[h.m] || '') + ' ' + fa(h.y));
-      parts.push(en
-        ? gd.getDate() + ' ' + G_MONTHS_EN[gd.getMonth()] + ' ' + gd.getFullYear()
-        : fa(gd.getDate()) + ' ' + G_MONTHS_FA[gd.getMonth()] + ' ' + fa(gd.getFullYear()));
+      /* معادلِ میلادیِ روز از پانویس تقویم برداشته شد (تقویم اپ شمسی است) */
       foot.textContent = parts.join('  •  ');
     }
   }

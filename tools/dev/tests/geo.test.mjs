@@ -393,14 +393,15 @@ ok('apk اجازه‌ی درخواست شبکه از صفحه‌ی داخلی ر
 ok('سرور، بدنه‌ی JSON را با هر نوع محتوایی می‌خواند و پیام post_max_size می‌دهد',
   /text\/plain/.test(apiReports) && /post_max_size/.test(apiReports) && /413/.test(apiReports));
 ok('کش‌باستر فایل‌های تغییر‌یافته به‌روز شده است',
-  /core\/storage\.js\?v=21/.test(indexHtml) && /modules\/reports\.js\?v=28/.test(indexHtml)
+  /core\/storage\.js\?v=21/.test(indexHtml) && /modules\/reports\.js\?v=29/.test(indexHtml)
   && /assets\/js\/ep-camera\.js\?v=2/.test(indexHtml)
   && /ep-map\.js\?v=4/.test(indexHtml) && /core\/router\.js\?v=14/.test(indexHtml)
   && /assets\/css\/style\.css\?v=93/.test(indexHtml)
   && /assets\/js\/icons\.js\?v=13/.test(indexHtml)
-  && /core\/state\.js\?v=13/.test(indexHtml) && /core\/i18n\.js\?v=15/.test(indexHtml)
+  && /core\/state\.js\?v=14/.test(indexHtml) && /core\/i18n\.js\?v=15/.test(indexHtml)
   && /modules\/profile\.js\?v=12/.test(indexHtml) && /modules\/services\.js\?v=13/.test(indexHtml)
-  && /modules\/live\.js\?v=18/.test(indexHtml) && /modules\/city-live\.js\?v=13/.test(indexHtml));
+  && /modules\/live\.js\?v=18/.test(indexHtml) && /modules\/city-live\.js\?v=14/.test(indexHtml)
+  && /modules\/dashboard\.js\?v=16/.test(indexHtml) && /modules\/clock-lux\.js\?v=6/.test(indexHtml));
 
 /* ══════════ ۸) پایش زنده: پیش‌پرواز و سقف حجم بدنه ══════════ */
 console.log('\n=== پایش زنده (live-check) ===');

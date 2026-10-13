@@ -58,10 +58,48 @@ iOS، اندروید قدیمی، PWA و مرورگر دسکتاپ یکسان ش
   می‌کنند (و میان‌بُرِ «مقدارِ دارای ساعت = قالب‌گرفته» برداشته شد). لاگ‌های
   تشخیصی آپلود هم شمسی شدند.
 * `modules/live.js`: `faDate()`/`faTime()` (تاریخ خبرها، دانستنی‌ها و اعلان‌ها).
-* حالت **انگلیسی**: تاریخ میلادیِ خوانا برمی‌گردد (`2026-10-11 16:54`) — همان
-  رفتار قبلی، چون کاربر انگلیسی‌زبان شمسی نمی‌خواهد.
-* کش‌باسترها بالا رفتند: `core/state.js?v=13` · `modules/reports.js?v=28` ·
-  `modules/live.js?v=18` (وگرنه گوشی‌ها کد قدیمی را از کش نشان می‌دادند).
+* `modules/dashboard.js`: کارت «تاریخ امروز» (و در رابط انگلیسی)، «مهلت پرداخت»
+  قبض‌ها.
+* `modules/clock-lux.js`: خطِ «میلادی» از کارت تاریخ و پانویس تقویم برداشته شد
+  (تقویم اپ: شمسی + قمری).
+* `modules/city-live.js`: ساعتِ «به‌روزرسانی» از ماژول شمسی می‌آید تا رقم‌ها روی
+  همه‌ی WebViewها فارسی بمانند.
+* حالت **انگلیسی**: تقویم همان **شمسی** است و فقط رقم‌ها لاتین می‌شوند
+  (`1405/07/19 16:54`) — چون خواسته‌ی کارفرما «هر تاریخِ اپ شمسی باشد» است.
+* **مسیرِ جایگزین هم شمسی است**: اگر به هر دلیل `core/state.js` بار نشود،
+  `modules/reports.js` همان الگوریتم را به‌صورت محلی دارد
+  (`eplakFaDateLocal/eplakFaTimeLocal/eplakFaNowLocal`)؛ یعنی هیچ مسیری در اپ
+  به `Intl` مرورگر (که روی iOS میلادی با رقم فارسی می‌دهد) نمی‌رسد.
+* کش‌باسترها بالا رفتند: `core/state.js?v=14` · `modules/reports.js?v=29` ·
+  `modules/live.js?v=18` · `modules/dashboard.js?v=16` · `modules/city-live.js?v=14` ·
+  `modules/clock-lux.js?v=6` (وگرنه گوشی‌ها کد قدیمی را از کش نشان می‌دادند).
+
+---
+
+## ۲-ج) نکته‌ی مهم: چرا بعد از آپلودِ بسته، «اپ» هنوز میلادی بود؟
+
+فایل‌های وبِ اپ **داخل خودِ APK/IPA** هستند؛ اپ با
+`file:///android_asset/index.html` بالا می‌آید (نه از روی هاست). پس:
+
+| چه چیزی با آپلودِ `eplak-fixed-update.zip` درست می‌شود | چه چیزی نه |
+|---|---|
+| پنل ادمین (`admin/*.php`) — سمت سرور رندر می‌شود | اپِ نصب‌شده روی گوشی |
+| `api/*.php` و متن اعلان‌ها | فایل‌های وبِ داخل APK/IPA |
+| نسخه‌ی وب/PWA روی دامنه | — |
+
+برای درست شدن تاریخ‌ها **داخل اپ**، باید فایل تازه نصب شود:
+
+1. **اندروید**: `eplak-app.apk` تازه را نصب کنید (روی همان نسخه‌ی قبلی نصب می‌شود؛
+   داده‌ها پاک نمی‌شوند).
+2. **iOS**: `eplak-app-unsigned.ipa` تازه با Sideloadly/AltStore، یا «افزودن به
+   صفحه‌ی اصلی» از نسخه‌ی وبِ به‌روزشده.
+3. **نسخه‌ی وب/PWA**: همان بسته‌ی هاست کافی است؛ `index.html` با هدر
+   `no-store` ارسال می‌شود و کش‌باسترهای `?v=` هم بالا رفته‌اند، پس نیاز به
+   پاک‌کردن کش نیست (یک بار «بازخوانی» کافی است).
+
+هر سه فایل توسط ورک‌فلوهای GitHub Actions از همین کد ساخته می‌شوند
+(`android-apk.yml` · `ios-ipa.yml` · `pwa.yml` · `build-update-package.yml`) و
+هرکدام بررسی می‌کنند که فایل‌های وبِ داخل بسته **مو‌به‌مو با مخزن یکی** باشند.
 
 ---
 
@@ -91,7 +129,7 @@ phpMyAdmin بررسی کنید (`SELECT NOW();` را با ساعت دیواری 
 
 ## ۴) چطور امتحان شد
 
-`tools/dev/tests/jalali.test.mjs` — **۳۵ بررسی** (هدف `jalali` در
+`tools/dev/tests/jalali.test.mjs` — **۵۲ بررسی** (هدف `jalali` در
 `tools/dev/run-regression.sh` و در CI):
 
 1. **توابع سرور**: `2026-10-11 13:24:05` ⇒ `۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴`؛ مقدار ISO با
@@ -105,8 +143,16 @@ phpMyAdmin بررسی کنید (`SELECT NOW();` را با ساعت دیواری 
    مقدارِ خامِ دارای ساعت دیگر رد نمی‌شود، ISO/timestamp درست‌اند، متنِ ازقبل‌فارسیِ
    سرور دست‌نخورده می‌ماند، تاریخ اعلان‌ها و خبرها در DOM شمسی است، و
    **خروجی اپ با خروجی پنل ادمین مو‌به‌مو یکی است**.
-4. **قراردادها**: الگوریتم JS و PHP یکی است، هیچ صفحه‌ی پنلی تاریخ خام چاپ
-   نمی‌کند، و کش‌باسترها بالا رفته‌اند.
+4. **صفحه‌ی «جزئیات گزارش»** (همان شکایت کارفرما): اپ با داده‌ی واقعی از
+   `api/reports.php` بالا می‌آید، `openReportDetail()` صدا زده می‌شود و متنِ
+   دیده‌شده‌ی صفحه سنجیده می‌شود ⇒ `۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴` زیرِ عنوان، همان
+   تاریخ در گام‌های «روند رسیدگی»، و **هیچ** `2026-10-11`/«اکتبر»/«میلادی» در
+   صفحه نیست. همین بررسی برای «جزئیات تیکت»، کارت «تاریخ امروز» و **جاروی کلِ
+   `document.body`** تکرار می‌شود.
+5. **قراردادها**: الگوریتم JS و PHP یکی است، هیچ صفحه‌ی پنلی تاریخ خام چاپ
+   نمی‌کند، هیچ ماژولِ اپ با `Intl` تاریخ نمی‌سازد (کامنت‌ها کنار گذاشته
+   می‌شوند تا مثبتِ کاذب نشود)، `G_MONTHS`/`EN_MONTHS` حذف شده‌اند،
+   «مهلت پرداخت» شمسی است، و کش‌باسترها بالا رفته‌اند.
 
 نتیجه‌ی کل مجموعه در این نسخه: **همه‌ی ۲۰ هدف موفق** (syntax · notify ·
 notify-schema · news · **jalali** · app · pushcrypto · fcm · backend · security ·
@@ -121,9 +167,12 @@ online · geo · upload · tiles · push · places · placesadmin · otp · ios 
 | `shared/fa_datetime.php` | توابع `eplakFaDate` · `eplakFaDateTimeOf` · `eplakFaNow` · `eplakParseDbDateTime` · `eplakTimezoneSetting` (+ یکسان‌سازی جداکننده با اپ: `- ساعت`) |
 | `shared/bootstrap.php` | `require_once fa_datetime.php` تا توابع در همه‌ی صفحه‌ها/APIها باشند |
 | ۱۷ فایل در `admin/` | ۴۱ جای نمایش تاریخ ⇒ شمسی (و دو سلول `dir="ltr"` ⇒ `dir="rtl"`) |
-| `core/state.js` | ماژول تاریخ شمسیِ اپ (`window.eplakFaDate/eplakFaTime/eplakFaDateTime/eplakFaNow`) |
-| `modules/reports.js` | `formatReportDate`/`formatReportDateTime` شمسی + برداشتن میان‌بُرِ مخرب + لاگ‌های آپلود |
+| `core/state.js` | ماژول تاریخ شمسیِ اپ (`window.eplakFaDate/eplakFaTime/eplakFaDateTime/eplakFaNow`)؛ در رابط انگلیسی هم شمسی (رقم لاتین) |
+| `modules/reports.js` | `formatReportDate`/`formatReportDateTime` شمسی + برداشتن میان‌بُرِ مخرب + لاگ‌های آپلود + مسیرِ جایگزینِ شمسی (`eplakFa*Local`) |
 | `modules/live.js` | `faDate`/`faTime` شمسی (خبرها، دانستنی‌ها، اعلان‌ها) |
-| `index.html` | کش‌باسترها: `state.js?v=13` · `reports.js?v=28` · `live.js?v=18` |
+| `modules/dashboard.js` | «تاریخ امروز» (فارسی و انگلیسی) و «مهلت پرداخت» قبض‌ها شمسی |
+| `modules/clock-lux.js` | حذف خطِ میلادی از کارت تاریخ و پانویس تقویم (شمسی + قمری) |
+| `modules/city-live.js` | ساعتِ «به‌روزرسانی» از ماژول شمسی |
+| `index.html` | کش‌باسترها: `state.js?v=14` · `reports.js?v=29` · `live.js?v=18` · `dashboard.js?v=16` · `city-live.js?v=14` · `clock-lux.js?v=6` + حذف `<span id="luxGregDate">` |
 | `shared/config.example.php` | کلیدهای مستند `db_timezone` و `display_timezone` |
-| `tools/dev/tests/jalali.test.mjs` · `run-regression.sh` · `.github/workflows/*` | آزمون تازه (۳۵ بررسی) و ثبت هدف `jalali` در اجراهای محلی و CI |
+| `tools/dev/tests/jalali.test.mjs` · `run-regression.sh` · `.github/workflows/*` | آزمون تازه (۵۲ بررسی) و ثبت هدف `jalali` در اجراهای محلی و CI |

@@ -1527,7 +1527,7 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
               <span class="date-jalali" id="dashFullDate">در حال بارگذاری...</span>
               <span class="date-weekday" id="dashWeekDay">---</span>
               <span class="lux-hijri" id="luxHijriDate"></span>
-              <span class="lux-greg" id="luxGregDate"></span>
+              <!-- خطِ «میلادی» حذف شد: تقویم اپ در همه‌جا شمسی است -->
               <button type="button" class="lux-cal-toggle" id="luxCalToggle" aria-expanded="false" aria-controls="luxCalPanel">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 <span id="luxCalToggleLabel">تقویم</span>
@@ -3098,7 +3098,7 @@ title="شماره موبایل هویت حساب شماست و قابل تغیی
 <!-- ===== Core ===== -->
 <script src="core/sound.js?v=10"></script>
 <script src="core/i18n.js?v=15"></script>
-<script src="core/state.js?v=13"></script>
+<script src="core/state.js?v=14"></script>
 <script src="core/places-data.js?v=3"></script>
 <script src="core/places.js?v=2"></script>
 <script src="core/storage.js?v=21"></script>
@@ -3111,15 +3111,15 @@ title="شماره موبایل هویت حساب شماست و قابل تغیی
 <script src="modules/home.js?v=20"></script>
 <script src="assets/js/ep-map.js?v=4"></script>
 <script src="assets/js/ep-camera.js?v=2"></script>
-<script src="modules/reports.js?v=28"></script>
-<script src="modules/dashboard.js?v=15"></script>
+<script src="modules/reports.js?v=29"></script>
+<script src="modules/dashboard.js?v=16"></script>
 <script src="modules/city-map.js?v=2"></script>
 <script src="modules/profile.js?v=12"></script>
 <script src="modules/services.js?v=13"></script>
 <script src="modules/live.js?v=18"></script>
 <script src="modules/weather-3d.js?v=47"></script>
-<script src="modules/city-live.js?v=13"></script>
-<script src="modules/clock-lux.js?v=5"></script>
+<script src="modules/city-live.js?v=14"></script>
+<script src="modules/clock-lux.js?v=6"></script>
 
 <!-- ===== App entry point (runs init after everything is loaded) ===== -->
 <script src="app.js?v=11"></script>

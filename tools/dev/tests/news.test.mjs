@@ -568,7 +568,7 @@ ok('اپ: آدرس تصویرِ مطلب حل می‌شود و فهرست خال
 ok('اپ: فهرست خبرها همیشه با پاسخ سرور به‌روز می‌شود (نمونه‌ی پیش‌فرض جای واقعیت را نمی‌گیرد)',
   /newsData\.length = 0;/.test(liveJs) && !/if \(news\.length\) \{\s*newsData\.length = 0;/.test(liveJs));
 ok('صفحه‌ی اخبار نوار وضعیت «خوانده نشد از سرور» دارد و کش‌باسترها بالا رفته‌اند',
-  /id="newsSyncNotice"/.test(indexHtml) && /modules\/live\.js\?v=18/.test(indexHtml) && /modules\/dashboard\.js\?v=15/.test(indexHtml));
+  /id="newsSyncNotice"/.test(indexHtml) && /modules\/live\.js\?v=18/.test(indexHtml) && /modules\/dashboard\.js\?v=16/.test(indexHtml));
 ok('جزئیات خبر، پاراگراف‌های متن را حفظ می‌کند (white-space:pre-line)',
   /id="newsDetailBody"[^>]*white-space:pre-line/.test(indexHtml));
 

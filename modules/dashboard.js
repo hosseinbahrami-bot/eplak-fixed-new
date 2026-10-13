@@ -26,21 +26,29 @@
     'مهر','آبان','آذر','دی','بهمن','اسفند'
   ];
   const JALALI_WEEKDAYS = ['یک‌شنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنج‌شنبه','جمعه','شنبه'];
+  /* تقویمِ اپ در هر دو زبان شمسی است؛ در رابط انگلیسی نام ماه‌های شمسی به
+     انگلیسی و رقم‌ها لاتین نوشته می‌شوند (نه تاریخ میلادی). */
+  const JALALI_MONTHS_EN = [
+    'Farvardin','Ordibehesht','Khordad','Tir','Mordad','Shahrivar',
+    'Mehr','Aban','Azar','Dey','Bahman','Esfand'
+  ];
+  const JALALI_WEEKDAYS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
   function getJalaliDateStr(date) {
     const [jy, jm, jd] = toJalali(date.getFullYear(), date.getMonth() + 1, date.getDate());
     const weekday = JALALI_WEEKDAYS[date.getDay()];
     const short = toPersianDigits(jy) + '/' + toPersianDigits(String(jm).padStart(2,'0')) + '/' + toPersianDigits(String(jd).padStart(2,'0'));
     const full  = toPersianDigits(jd) + ' ' + JALALI_MONTHS[jm - 1] + ' ' + toPersianDigits(jy);
-    return { short, full, weekday };
+    const shortEn = jy + '/' + String(jm).padStart(2,'0') + '/' + String(jd).padStart(2,'0');
+    const fullEn  = jd + ' ' + JALALI_MONTHS_EN[jm - 1] + ' ' + jy;
+    return { short, full, weekday, shortEn, fullEn, weekdayEn: JALALI_WEEKDAYS_EN[date.getDay()] };
   }
 
   /* ساعت زنده — هر ثانیه به‌روز می‌شود */
   let _dashClockTimer = null;
   function startDashClock() {
     if (_dashClockTimer) clearInterval(_dashClockTimer);
-    const EN_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const EN_WEEKDAYS = JALALI_WEEKDAYS_EN;   /* نام روزها انگلیسی، تقویم شمسی */
 
     function tick() {
       const now  = new Date();
@@ -64,11 +72,11 @@
       const fullEl = document.getElementById('dashFullDate');
       const wdEl = document.getElementById('dashWeekDay');
 
+      const jalali = getJalaliDateStr(now);
       if (isEn) {
-        if (fullEl) fullEl.textContent = `${now.getDate()} ${EN_MONTHS[now.getMonth()]} ${now.getFullYear()}`;
-        if (wdEl) wdEl.textContent = EN_WEEKDAYS[now.getDay()];
+        if (fullEl) fullEl.textContent = jalali.fullEn;
+        if (wdEl) wdEl.textContent = jalali.weekdayEn;
       } else {
-        const jalali = getJalaliDateStr(now);
         if (fullEl) fullEl.textContent = jalali.full;
         if (wdEl) wdEl.textContent = jalali.weekday;
       }
@@ -295,6 +303,15 @@
     { id: '2', title: 'Urban Waste Management Fee', amount: 180000, due: '2024-09-30', status: 'done', code: 'BILL-9932-11' }
   ];
 
+  /* «مهلت پرداخت» هم شمسی نشان داده می‌شود: مقدارِ سرور/داده‌ی نمونه میلادی است
+     (2024-10-21) و پیش از این خام چاپ می‌شد. */
+  function faDueDate(value) {
+    if (!value) return '—';
+    if (typeof window.eplakFaDate === 'function') return window.eplakFaDate(value, String(value));
+    if (typeof window.eplakFaDateLocal === 'function') return window.eplakFaDateLocal(value, String(value));
+    return String(value);
+  }
+
   function formatToman(n) {
     const isEn = (window.i18n && typeof window.i18n.getLanguage === 'function')
       ? window.i18n.getLanguage() === 'en'
@@ -317,7 +334,7 @@
     wrap.innerHTML = payments.map((p, idx) => {
       const enItem = payments_EN[idx];
       const title = (isEn && enItem) ? enItem.title : p.title;
-      const dueText = isEn ? ('Due: ' + p.due) : ('مهلت: ' + p.due);
+      const dueText = isEn ? ('Due: ' + faDueDate(p.due)) : ('مهلت: ' + faDueDate(p.due));
       const statusText = p.status === 'done' ? (isEn ? 'Paid' : 'پرداخت‌شده') : (isEn ? 'Unpaid' : 'پرداخت‌نشده');
       return `
         <div class="report-item" onclick="openPaymentDetail('${p.id}')">
@@ -344,7 +361,7 @@
 
     document.getElementById('payDetailTitle').textContent = title;
     document.getElementById('payDetailCode').textContent = p.code;
-    document.getElementById('payDetailDue').textContent = p.due;
+    document.getElementById('payDetailDue').textContent = faDueDate(p.due);
     const statusEl = document.getElementById('payDetailStatus');
     statusEl.className = 'report-status ' + (p.status === 'done' ? 'status-done' : 'status-pending');
     statusEl.textContent = p.status === 'done' ? (isEn ? 'Paid' : 'پرداخت‌شده') : (isEn ? 'Unpaid' : 'پرداخت‌نشده');

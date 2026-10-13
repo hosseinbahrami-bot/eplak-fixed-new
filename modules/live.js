@@ -66,13 +66,13 @@
   }
 
   /* تاریخِ خبر/دانستنی/اعلان «شمسی» است — از core/state.js.
-     (toLocaleDateString('fa-IR') روی iOS و بعضی WebViewها میلادی می‌داد.) */
+     (toLocaleDateString('fa-IR') روی iOS و بعضی WebViewها میلادی می‌داد، پس
+     مسیرِ جایگزین هم از ماژول شمسیِ modules/reports.js می‌آید نه از Intl.) */
   function faDate(value) {
     try {
       if (typeof window.eplakFaDate === 'function') return window.eplakFaDate(value || new Date(), '');
-      const d = value ? new Date(String(value).replace(' ', 'T')) : new Date();
-      if (isNaN(d.getTime())) return '';
-      return d.toLocaleDateString('fa-IR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+      if (typeof window.eplakFaDateLocal === 'function') return window.eplakFaDateLocal(value || new Date(), '');
+      return '';
     } catch (e) {
       return '';
     }
@@ -81,9 +81,8 @@
   function faTime(value) {
     try {
       if (typeof window.eplakFaTime === 'function') return window.eplakFaTime(value || new Date(), '');
-      const d = value ? new Date(String(value).replace(' ', 'T')) : new Date();
-      if (isNaN(d.getTime())) return '';
-      return d.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
+      if (typeof window.eplakFaTimeLocal === 'function') return window.eplakFaTimeLocal(value || new Date());
+      return '';
     } catch (e) {
       return '';
     }

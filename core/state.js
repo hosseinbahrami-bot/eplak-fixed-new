@@ -236,7 +236,8 @@
      قرارداد ساعت: مقدارهای سرور بدون منطقه‌ی زمانی («2026-10-11 13:24:05»)
      همان ساعتِ دیتابیس (UTC) هستند و به وقتِ دستگاه (تهران) نشان داده
      می‌شوند — دقیقاً مثل پنل ادمین (`eplakFaDateTimeOf`).
-     در حالت انگلیسی، تاریخ میلادی می‌ماند (کاربر انگلیسی‌زبان شمسی نمی‌خواهد).
+     تقویم در «هر دو زبان» شمسی است؛ فقط رقم‌ها به زبانِ رابط کاربری‌اند
+     (فارسی: ۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴ · انگلیسی: 1405/07/19 16:54).
   ========================================================= */
   function eplakGregorianToJalali(gy, gm, gd) {
     const gDays = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
@@ -299,17 +300,15 @@
     return d;
   }
 
-  /* تاریخِ شمسی: «۱۴۰۴/۰۷/۱۹» — در حالت انگلیسی «2026-10-11» */
+  /* تاریخِ شمسی: «۱۴۰۵/۰۷/۱۹» — در رابط انگلیسی «1405/07/19» (همان تقویم) */
   function eplakFaDate(value, fallback) {
     const fb = fallback === undefined ? '' : String(fallback);
     if (eplakIsFormattedFa(value)) return String(value);
     const d = eplakParseDateValue(value);
     if (!d) return fb;
-    if (eplakIsEnglishUi()) {
-      return d.getFullYear() + '-' + eplakPad2(d.getMonth() + 1) + '-' + eplakPad2(d.getDate());
-    }
     const j = eplakGregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
-    return eplakToFaDigits(j.jy + '/' + eplakPad2(j.jm) + '/' + eplakPad2(j.jd));
+    const text = j.jy + '/' + eplakPad2(j.jm) + '/' + eplakPad2(j.jd);
+    return eplakIsEnglishUi() ? text : eplakToFaDigits(text);
   }
 
   /* ساعت: «۱۶:۵۴» */
@@ -321,17 +320,15 @@
     return eplakIsEnglishUi() ? t : eplakToFaDigits(t);
   }
 
-  /* تاریخ و ساعت: «۱۴۰۴/۰۷/۱۹ - ساعت ۱۶:۵۴» (همان شکل قبلیِ اپ) */
+  /* تاریخ و ساعت: «۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴» (همان شکل قبلیِ اپ) */
   function eplakFaDateTime(value, fallback) {
     const fb = fallback === undefined ? '' : String(fallback);
     if (eplakIsFormattedFa(value)) return String(value);
     const d = eplakParseDateValue(value);
     if (!d) return fb;
-    if (eplakIsEnglishUi()) {
-      return d.getFullYear() + '-' + eplakPad2(d.getMonth() + 1) + '-' + eplakPad2(d.getDate())
-        + ' ' + eplakPad2(d.getHours()) + ':' + eplakPad2(d.getMinutes());
-    }
-    return eplakFaDate(d) + ' - ساعت ' + eplakFaTime(d);
+    return eplakIsEnglishUi()
+      ? eplakFaDate(d) + ' ' + eplakFaTime(d)
+      : eplakFaDate(d) + ' - ساعت ' + eplakFaTime(d);
   }
 
   window.eplakGregorianToJalali = eplakGregorianToJalali;
