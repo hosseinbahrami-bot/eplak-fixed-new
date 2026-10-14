@@ -525,17 +525,35 @@ function eplakFcmSendOne(PDO $pdo, array $device, string $accessToken, string $p
 
     $status = '';
     $detail = '';
+    $code   = '';
     $parsed = json_decode((string) $response['body'], true);
     if (is_array($parsed) && isset($parsed['error']) && is_array($parsed['error'])) {
         $status = (string) ($parsed['error']['status'] ?? '');
         $detail = (string) ($parsed['error']['message'] ?? '');
+        /* کد دقیق FCM در details (type.googleapis.com/google.firebase.fcm.v1.FcmError):
+           UNREGISTERED / SENDER_ID_MISMATCH / INVALID_ARGUMENT / … — status کلی‌تر است
+           (مثلاً برای SenderId mismatch فقط PERMISSION_DENIED می‌گوید). */
+        foreach ((array) ($parsed['error']['details'] ?? []) as $d) {
+            if (is_array($d) && !empty($d['errorCode'])) {
+                $code = strtoupper((string) $d['errorCode']);
+                break;
+            }
+        }
     }
+    if ($code === '' && preg_replace('/[\s_-]+/', '', strtoupper($detail)) === 'SENDERIDMISMATCH') {
+        $code = 'SENDER_ID_MISMATCH';
+    }
+    $out['code'] = $code;
 
     $out['error'] = trim(($response['status'] ? 'HTTP ' . $response['status'] . ' ' : '') . $status . ' ' . $detail);
     if ($out['error'] === '') {
         $out['error'] = $response['error'] !== '' ? $response['error'] : 'خطای نامشخص در ارسال به گوگل';
     }
-    $out['fatal'] = eplakFcmErrorIsFatal($status, (int) $response['status']);
+    $out['fatal'] = eplakFcmErrorIsFatal($status, (int) $response['status']) || eplakFcmErrorIsFatal($code, (int) $response['status']);
+    if ($code === 'SENDER_ID_MISMATCH') {
+        /* سرنوشت این خطا (توکنِ کهنه یا کلیدِ اشتباه) در eplakFcmSend تصمیم گرفته می‌شود */
+        $out['fatal'] = false;
+    }
 
     return $out;
 }
@@ -619,6 +637,22 @@ function eplakFcmSend(PDO $pdo, array $devices, string $title, string $body, arr
                 $upd->execute([':id' => (int) $device['id']]);
             } catch (\Throwable $e) {}
             continue;
+        }
+
+        /* گوگل خودش «SenderId mismatch» داد (گوشی پروژه‌اش را گزارش نکرده بود یا هم‌خوان بود):
+             • کلید همان پروژه‌ی APK فعلی است ⇒ توکن از نسخه/پروژه‌ی قدیمی اپ مانده و دیگر هرگز
+               کار نمی‌کند ⇒ غیرفعال می‌شود (با باز شدن APK جدید، توکن تازه ثبت می‌شود).
+             • کلید از پروژه‌ی دیگری است ⇒ اشتباه از کلید است، نه گوشی ⇒ توکن فعال می‌ماند و
+               دلیل دقیق روی ردیف می‌نشیند تا مدیر کلید را عوض کند. */
+        if (($one['code'] ?? '') === 'SENDER_ID_MISMATCH') {
+            if ($cfg['project_match'] !== false && $deviceProject === '') {
+                $one['fatal'] = true;
+                $one['error'] = 'SENDER_ID_MISMATCH: توکن از نسخه/پروژه‌ی قدیمی اپ است (کلید فعلی برای پروژه‌ی «' . $cfg['project_id'] . '» درست است)؛ کاربر باید APK جدید را باز کند تا دوباره ثبت شود';
+            } else {
+                $one['fatal'] = false;
+                $one['error'] = 'SENDER_ID_MISMATCH: اپ با پروژه‌ی «' . ($deviceProject !== '' ? $deviceProject : $cfg['app_project'])
+                    . '» ساخته شده ولی کلید سرویس برای پروژه‌ی «' . $cfg['project_id'] . '» است (پاسخ گوگل: ' . $one['error'] . ')';
+            }
         }
 
         $result['failed']++;

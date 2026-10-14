@@ -85,14 +85,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         /* کلید سرویس فایربیس (JSON) — از Firebase Console → Project settings →
            Service accounts → Generate new private key */
         $raw = trim((string) ($_POST['fcm_service_account'] ?? ''));
-        if ($raw === '') {
+        /* راه ساده‌تر (به‌خصوص روی گوشی): انتخاب خودِ فایل JSON به‌جای کپی/چسباندن متن.
+           اگر فایلی انتخاب شده باشد، همان مبنا است. */
+        $upload = $_FILES['fcm_service_account_file'] ?? null;
+        $uploadError = '';
+        if (is_array($upload) && (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            if ((int) $upload['error'] !== UPLOAD_ERR_OK) {
+                $uploadError = 'آپلود فایل کلید ناموفق بود (کد ' . (int) $upload['error'] . ').';
+            } elseif ((int) ($upload['size'] ?? 0) > 64 * 1024 || (int) ($upload['size'] ?? 0) <= 0) {
+                $uploadError = 'اندازه‌ی فایل کلید غیرعادی است (فایل کلید سرویس چند کیلوبایت است).';
+            } elseif (!is_uploaded_file((string) $upload['tmp_name'])) {
+                $uploadError = 'فایل کلید دریافت نشد.';
+            } else {
+                $raw = trim((string) file_get_contents((string) $upload['tmp_name']));
+                /* BOM احتمالی ویرایشگرهای ویندوز */
+                $raw = ltrim($raw, "\xEF\xBB\xBF");
+            }
+        }
+        if ($uploadError !== '') {
+            $message = '⚠️ ' . $uploadError;
+            $messageType = 'danger';
+        } elseif ($raw === '') {
             eplakSetAppSetting($pdo, 'fcm_service_account', '');
             $message = '✅ کلید سرویس فایربیس پاک شد. اعلان اپ اندروید غیرفعال می‌شود.';
             $messageType = 'success';
         } else {
             $decoded = json_decode($raw, true);
-            if (!is_array($decoded) || empty($decoded['project_id']) || empty($decoded['client_email']) || empty($decoded['private_key'])) {
-                $message = '⚠️ محتوای کلید سرویس نامعتبر است. کل فایل JSON را (از { تا }) کپی کنید.';
+            if (is_array($decoded) && (isset($decoded['project_info']) || (isset($decoded['type']) && $decoded['type'] !== 'service_account'))) {
+                /* اشتباه رایج: به‌جای کلید سرویس، فایل google-services.json (مخصوص داخل APK) داده می‌شود */
+                $message = '⚠️ این فایل «کلید سرویس» نیست (به نظر google-services.json یا فایل دیگری است). کلید سرویس از Firebase Console → Project settings → Service accounts → Generate new private key دانلود می‌شود و فیلد "type":"service_account" دارد.';
+                $messageType = 'danger';
+            } elseif (!is_array($decoded) || empty($decoded['project_id']) || empty($decoded['client_email']) || empty($decoded['private_key'])) {
+                $message = '⚠️ محتوای کلید سرویس نامعتبر است. کل فایل JSON را (از { تا }) کپی کنید یا خودِ فایل را انتخاب کنید.';
                 $messageType = 'danger';
             } else {
                 eplakSetAppSetting($pdo, 'fcm_service_account', (string) json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
@@ -102,8 +126,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $cfg = eplakFcmConfig($pdo);
                 $auth = eplakFcmAccessToken($pdo, true);
-                if ($cfg['ready'] && $auth['token'] !== '') {
-                    $message = '✅ کلید سرویس فایربیس ذخیره شد و اتصال به گوگل برقرار است (پروژه: ' . htmlspecialchars($cfg['project_id']) . ').';
+                if ($cfg['ready'] && $auth['token'] !== '' && $cfg['project_match'] === false) {
+                    /* کلید سالم است ولی به APK این مخزن نمی‌رسد — همین‌جا، نه بعد از اولین ارسالِ ناموفق */
+                    $message = '⛔ کلید ذخیره شد و گوگل آن را می‌پذیرد، ولی ' . htmlspecialchars((string) $cfg['warning']);
+                    $messageType = 'danger';
+                } elseif ($cfg['ready'] && $auth['token'] !== '') {
+                    $message = '✅ کلید سرویس فایربیس ذخیره شد و اتصال به گوگل برقرار است (پروژه: ' . htmlspecialchars($cfg['project_id']) . ' — همان پروژه‌ی اپ اندروید).';
                     $messageType = 'success';
                 } else {
                     $message = '⚠️ کلید ذخیره شد ولی اتصال به گوگل برقرار نشد: ' . htmlspecialchars($auth['error'] !== '' ? $auth['error'] : $cfg['error']);
@@ -585,16 +613,22 @@ $httpsOn = eplakIsHttpsRequest();
           </div>
         </div>
 
-        <form method="post" style="display:grid; gap:14px;">
+        <form method="post" enctype="multipart/form-data" style="display:grid; gap:14px;">
           <?= eplakCsrfField() ?>
           <input type="hidden" name="action" value="save_fcm">
           <div class="form-group">
-            <label for="fcm_service_account"><i class="fas fa-key" style="color: var(--primary-500); margin-left: 6px;"></i> کلید سرویس فایربیس (محتوای فایل JSON)</label>
+            <label for="fcm_service_account_file"><i class="fas fa-file-arrow-up" style="color: var(--primary-500); margin-left: 6px;"></i> فایل کلید سرویس فایربیس (ساده‌ترین راه: خودِ فایل JSON را انتخاب کنید)</label>
+            <input class="form-control" type="file" id="fcm_service_account_file" name="fcm_service_account_file" accept=".json,application/json" data-testid="fcm-key-file">
+            <p class="field-hint">فایلی با نامی شبیه <code dir="ltr">&lt;پروژه&gt;-firebase-adminsdk-xxxxx.json</code> که از Firebase Console → Project settings → Service accounts → Generate new private key دانلود شده. اگر فایل انتخاب شود، کادر متنی زیر نادیده گرفته می‌شود.</p>
+          </div>
+          <div class="form-group">
+            <label for="fcm_service_account"><i class="fas fa-key" style="color: var(--primary-500); margin-left: 6px;"></i> یا محتوای فایل JSON را این‌جا بچسبانید</label>
             <textarea class="form-control" id="fcm_service_account" name="fcm_service_account" rows="6"
                       dir="ltr" style="text-align:left; font-family:monospace; font-size:12px;"
                       placeholder='{"type":"service_account","project_id":"...","private_key":"-----BEGIN PRIVATE KEY-----
 ...","client_email":"..."}'><?= htmlspecialchars((string) eplakAppSetting($pdo, 'fcm_service_account', '')) ?></textarea>
-            <p class="field-hint">این کلید محرمانه است؛ فقط روی سرور شما ذخیره می‌شود و در گیت‌هاب قرار نمی‌گیرد. برای پاک کردن، کادر را خالی کنید و ذخیره بزنید.</p>
+            <p class="field-hint">این کلید محرمانه است؛ فقط روی سرور شما ذخیره می‌شود و در گیت‌هاب قرار نمی‌گیرد. برای پاک کردن، کادر را خالی کنید (و فایلی انتخاب نکنید) و ذخیره بزنید.
+              کلید باید از پروژه‌ی <code dir="ltr"><?= htmlspecialchars((string) $fcmConfig['app_project']) ?></code> (پروژه‌ی خودِ APK) باشد.</p>
           </div>
           <div>
             <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> ذخیره و بررسی اتصال</button>

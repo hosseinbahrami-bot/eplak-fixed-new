@@ -78,6 +78,11 @@ const fakeGoogle = http.createServer((req, res) => {
       if (parsed?.message?.token === 'BAD-TOKEN') {
         return json(404, { error: { status: 'UNREGISTERED', message: 'Requested entity was not found.' } });
       }
+      /* همان پاسخ واقعی گوگل برای توکنِ پروژه‌ی دیگر: status کلی PERMISSION_DENIED و کد دقیق در details */
+      if (String(parsed?.message?.token || '').startsWith('OLD-PROJECT-')) {
+        return json(403, { error: { code: 403, message: 'SenderId mismatch', status: 'PERMISSION_DENIED',
+          details: [{ '@type': 'type.googleapis.com/google.firebase.fcm.v1.FcmError', errorCode: 'SENDER_ID_MISMATCH' }] } });
+      }
       return json(200, { name: 'projects/eplak-test-project/messages/' + G.messages.length });
     }
     res.writeHead(404); res.end('{}');
@@ -139,10 +144,19 @@ const absorb = (res) => {
     jar[pair.slice(0, i).trim()] = pair.slice(i + 1).trim();
   }
 };
-async function req(method, url, { form, json, rawBody, ctype, cookies = false } = {}) {
+async function req(method, url, { form, multipart, json, rawBody, ctype, cookies = false } = {}) {
   const headers = {};
   let body;
   if (form) { headers['content-type'] = 'application/x-www-form-urlencoded'; body = enc.encode(new URLSearchParams(form).toString()); }
+  else if (multipart) {
+    /* فرم چندبخشی (آپلود فایل): fields = {name: value}, files = {name: {filename, content}} */
+    const boundary = '----eplakBoundary' + Date.now();
+    let out = '';
+    for (const [k, v] of Object.entries(multipart.fields || {})) out += `--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`;
+    for (const [k, f] of Object.entries(multipart.files || {})) out += `--${boundary}\r\nContent-Disposition: form-data; name="${k}"; filename="${f.filename}"\r\nContent-Type: application/json\r\n\r\n${f.content}\r\n`;
+    out += `--${boundary}--\r\n`;
+    headers['content-type'] = 'multipart/form-data; boundary=' + boundary; body = enc.encode(out);
+  }
   else if (json !== undefined) { headers['content-type'] = 'application/json'; body = enc.encode(JSON.stringify(json)); }
   else if (rawBody !== undefined) { headers['content-type'] = ctype || 'text/plain'; body = enc.encode(rawBody); }
   if (cookies && Object.keys(jar).length) headers.cookie = Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
@@ -159,6 +173,7 @@ const appGet = (q) => req('GET', `/api/push.php?${q}`);
 const admin = {
   get: (url) => req('GET', url, { cookies: true }),
   post: (url, form) => req('POST', url, { form, cookies: true }),
+  upload: (url, fields, files) => req('POST', url, { multipart: { fields, files }, cookies: true }),
 };
 const csrfOf = (html) => (String(html).match(/name="_token" value="([a-f0-9]+)"/) || [])[1] || '';
 
@@ -732,9 +747,9 @@ ok('صفحه‌ی «اعلان‌ها» بدون خطا رندر می‌شود',
 ok('پنل صریح می‌گوید «اعلانِ اپ اندروید (APK) غیرفعال است» (نه سکوت)',
   notifPage.text.includes('اعلانِ اپ اندروید (APK) غیرفعال است'),
   notifPage.text.includes('فایربیس) فعال است') ? 'بنرِ موفقیت دیده شد (کلید در دیتابیسِ آزمون هست)' : 'بنری پیدا نشد');
-ok('همان بنر راهِ حل را هم می‌گوید (Service accounts + پیوندِ تنظیمات)',
+ok('همان بنر راهِ حل را هم می‌گوید (Service accounts + پیوندِ تنظیمات + نام پروژه‌ی APK)',
   notifPage.text.includes('Generate new private key') && notifPage.text.includes('settings.php#fcm-section')
-    && notifPage.text.includes('eplak-63c74'));
+    && notifPage.text.includes('eplak-test-project'));
 
 await exec(`eplakSetAppSetting($pdo, 'fcm_service_account', ${JSON.stringify(JSON.stringify(serviceAccount))});`);
 const notifPageOk = await admin.get('/admin/notifications.php');
@@ -893,6 +908,62 @@ setEnv(GOOGLE_ENV);
 const okAgain = await admin.get('/admin/notifications.php');
 ok('با کلیدِ پروژه‌ی درست، بنر قرمز می‌رود و بنر سبز برمی‌گردد',
   okAgain.text.includes('اعلان اپ اندروید (فایربیس) فعال است') && !okAgain.text.includes('fcm-project-mismatch-banner'));
+
+/* و) گوگل خودش «SenderId mismatch» می‌دهد (توکنِ APK قدیمی که پروژه‌اش را گزارش نکرده):
+      کلید همان پروژه‌ی APK است ⇒ توکن کهنه است ⇒ غیرفعال می‌شود؛ ولی اگر کلید از پروژه‌ی دیگر
+      باشد ⇒ اشتباه از کلید است ⇒ توکن فعال می‌ماند. (تغییر پروژه‌ی فایربیس دقیقاً همین را می‌سازد.) */
+console.log('\n=== پاسخ واقعی گوگل SenderId mismatch برای توکن‌های قدیمی ===');
+const OLD_PHONE = '09120005555';
+await appPost({ action: 'register_fcm', phone: OLD_PHONE, token: 'OLD-PROJECT-TOKEN-1', platform: 'android' });
+g0 = gMsgs();
+const legacy = grab(await exec(`
+  $res = eplakFcmSend($pdo, eplakFcmTokens($pdo, ['${OLD_PHONE}']), 'آزمون', 'توکن قدیمی');
+  echo '<<<' . json_encode($res, JSON_UNESCAPED_UNICODE) . '>>>';`));
+rows = await q("SELECT is_active, last_error FROM device_tokens WHERE token='OLD-PROJECT-TOKEN-1'");
+ok('کلید = پروژه‌ی APK ⇒ توکنِ پروژه‌ی قبلی غیرفعال می‌شود و دلیل می‌گوید «APK جدید را باز کند» (گوگل یک‌بار صدا شد)',
+  legacy.failed === 1 && gMsgs() === g0 + 1 && Number(rows[0]?.is_active) === 0 && /SENDER_ID_MISMATCH/.test(rows[0]?.last_error || '') && /APK جدید/.test(rows[0]?.last_error || ''),
+  JSON.stringify({ legacy, rows }));
+ok('ارسال بعدی به همان شماره دیگر سراغ توکن کهنه نمی‌رود (گوشی ثبت‌شده‌ی فعال ندارد)', (await q(`SELECT COUNT(*) AS n FROM device_tokens WHERE user_phone='${OLD_PHONE}' AND is_active=1`))[0].n == 0);
+await appPost({ action: 'register_fcm', phone: OLD_PHONE, token: 'OLD-PROJECT-TOKEN-1', platform: 'android' });
+ok('باز شدن دوباره‌ی اپ، همان ردیف را دوباره فعال می‌کند (ثبت مجدد = زنده شدن)', Number((await q("SELECT is_active FROM device_tokens WHERE token='OLD-PROJECT-TOKEN-1'"))[0]?.is_active) === 1);
+setEnv(MISMATCH_ENV);
+g0 = gMsgs();
+const legacy2 = grab(await exec(`
+  $res = eplakFcmSend($pdo, eplakFcmTokens($pdo, ['${OLD_PHONE}']), 'آزمون', 'کلید اشتباه');
+  echo '<<<' . json_encode($res, JSON_UNESCAPED_UNICODE) . '>>>';`));
+rows = await q("SELECT is_active, last_error FROM device_tokens WHERE token='OLD-PROJECT-TOKEN-1'");
+ok('کلید ≠ پروژه‌ی APK ⇒ همان پاسخ گوگل، ولی توکن فعال می‌ماند و دلیل «کلید سرویس برای پروژه‌ی دیگر» است',
+  legacy2.failed === 1 && gMsgs() === g0 + 1 && Number(rows[0]?.is_active) === 1 && /کلید سرویس برای پروژه‌ی «eplak-test-project»/.test(rows[0]?.last_error || ''),
+  JSON.stringify({ legacy2, rows }));
+ok('توضیح فارسی برای این خطا همان راهنمای «کلید از پروژه‌ی دیگر» است (نه ۴۰۳ کلی)',
+  /Generate new private key/.test(grab(await exec(`echo '<<<' . json_encode([eplakFcmExplainError(${JSON.stringify(String(rows[0]?.last_error || ''))})], JSON_UNESCAPED_UNICODE) . '>>>';`))[0]));
+setEnv(GOOGLE_ENV);
+
+/* ز) پنل → تنظیمات: انتخاب خودِ فایل کلید (به‌جای کپی/چسباندن) + اشتباه‌های رایج */
+console.log('\n=== ذخیره‌ی کلید سرویس با انتخاب فایل ===');
+let setPage = await admin.get('/admin/settings.php');
+ok('فرم کلید فایربیس فیلد انتخاب فایل دارد و multipart است',
+  setPage.text.includes('data-testid="fcm-key-file"') && /enctype="multipart\/form-data"[^>]*>\s*(<[^>]+>\s*)*<input type="hidden" name="action" value="save_fcm">/.test(setPage.text));
+let tokenF = csrfOf(setPage.text);
+const gsFileText = read('android-app/app/google-services.json');
+let up = await admin.upload('/admin/settings.php', { _token: tokenF, action: 'save_fcm', fcm_service_account: '' }, { fcm_service_account_file: { filename: 'google-services.json', content: gsFileText } });
+ok('آپلود google-services.json به‌جای کلید سرویس با پیام روشن رد می‌شود (کلید قبلی دست نمی‌خورد)',
+  up.text.includes('این فایل «کلید سرویس» نیست') && (await q("SELECT setting_value FROM app_settings WHERE setting_key='fcm_service_account'"))[0]?.setting_value.includes('eplak-test-project'),
+  up.text.match(/alert[^>]*>[\s\S]{0,200}/)?.[0]);
+const otherKey = { ...serviceAccount, project_id: 'eplak-other-project', client_email: 'firebase-adminsdk-x@eplak-other-project.iam.gserviceaccount.com' };
+tokenF = csrfOf((await admin.get('/admin/settings.php')).text);
+up = await admin.upload('/admin/settings.php', { _token: tokenF, action: 'save_fcm', fcm_service_account: 'ignored-when-file-present' }, { fcm_service_account_file: { filename: 'eplak-other-project-firebase-adminsdk-abc.json', content: JSON.stringify(otherKey) } });
+ok('آپلود کلیدِ پروژه‌ی دیگر: ذخیره می‌شود ولی همان لحظه پیام ⛔ «کلید از پروژه‌ی دیگری است» با راه حل می‌آید (نه «✅ برقرار است»)',
+  up.text.includes('⛔ کلید ذخیره شد و گوگل آن را می‌پذیرد، ولی') && up.text.includes('eplak-other-project') && up.text.includes('Generate new private key') && !up.text.includes('✅ کلید سرویس فایربیس ذخیره شد'),
+  up.text.match(/alert[^>]*>[\s\S]{0,240}/)?.[0]);
+ok('فایل بر متنِ کادر مقدم است (کلید ذخیره‌شده همان فایل است)', (await q("SELECT setting_value FROM app_settings WHERE setting_key='fcm_service_account'"))[0]?.setting_value.includes('eplak-other-project'));
+tokenF = csrfOf((await admin.get('/admin/settings.php')).text);
+up = await admin.upload('/admin/settings.php', { _token: tokenF, action: 'save_fcm', fcm_service_account: '' }, { fcm_service_account_file: { filename: 'eplak-test-project-firebase-adminsdk-abc.json', content: '\uFEFF' + JSON.stringify(serviceAccount, null, 2) } });
+ok('آپلود کلیدِ درست (حتی با BOM و تورفتگی): «✅ ذخیره شد … همان پروژه‌ی اپ اندروید»',
+  up.text.includes('✅ کلید سرویس فایربیس ذخیره شد') && up.text.includes('همان پروژه‌ی اپ اندروید') && (await q("SELECT setting_value FROM app_settings WHERE setting_key='fcm_service_account'"))[0]?.setting_value.includes('eplak-test-project'),
+  up.text.match(/alert[^>]*>[\s\S]{0,240}/)?.[0]);
+ok('ابزارهای توسعه: check-firebase-key.mjs و apply-google-services.mjs در مخزن هستند',
+  fs.existsSync(path.join(ROOT, 'tools/dev/check-firebase-key.mjs')) && fs.existsSync(path.join(ROOT, 'tools/dev/apply-google-services.mjs')));
 
 /* ══════════════════════════════════════════════════════════════════
    ۶) «ضربان اپ‌ها»: هر دریافت فهرست اعلان‌ها در پنل دیده می‌شود

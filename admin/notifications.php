@@ -211,7 +211,7 @@ $fcmProjectMismatch = $fcmReady && ($fcmConfigN['project_match'] ?? null) === fa
           </p>
           <ol style="margin:8px 0 0; padding-inline-start:20px; font-size:13px;">
             <li>در <span dir="ltr">console.firebase.google.com</span> پروژه‌ی اپ را باز کنید
-                (پروژه‌ی APKِ فعلیِ مخزن: <code dir="ltr">eplak-63c74</code> — اگر پروژه‌ی دیگری
+                (پروژه‌ی APKِ فعلیِ مخزن: <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['app_project']) ?></code> — اگر پروژه‌ی دیگری
                 ساخته‌اید، APK باید با <code dir="ltr">google-services.json</code> همان پروژه ساخته شود).</li>
             <li><strong>Project settings ← Service accounts ← Generate new private key</strong> را بزنید
                 و فایل JSON را دانلود کنید.</li>
