@@ -209,6 +209,30 @@ phpMyAdmin با ساعتِ دیواری یکی نیست و `SET time_zone` هم 
    می‌شود، مسیرِ جایگزینِ `reports.js` همان قرارداد را دارد، و کش‌باسترها بالا
    رفته‌اند.
 
+### دیدنِ چشمی (بدون گوشی، روی همان کد)
+
+`tools/dev/timezone-demo.html` **همان فایلِ واقعیِ اپ** (`core/state.js` با مسیرِ نسبی،
+بدون هیچ کپی) را بار می‌کند و خروجی‌اش را با خروجیِ **واقعیِ سرور**
+(`tools/dev/timezone-demo-samples.php` که `shared/bootstrap.php` را لود می‌کند) مقایسه
+می‌کند: ساعتِ زنده‌ی دستگاه در برابرِ «اکنونِ تهران»، «تاریخِ امروزِ» شمسی، و جدولِ
+«قبل/بعد» برای مقدارهای نمونه (مقدارِ بدون منطقه‌ی زمانی، `…Z`، `…+03:30`، فقط تاریخ،
+timestamp، خالی و `0000-00-00`).
+
+```bash
+node tools/dev/demo-server.mjs     # ⇒ http://localhost:4173/  (ریشه: خودِ مخزن)
+```
+
+اگر منطقه‌ی زمانیِ دستگاهتان تهران نباشد، این صفحه همان‌جا ثابت می‌کند که اپ ساعتِ
+تهران را نشان می‌دهد نه ساعتِ دستگاه را؛ و ستونِ «منطقِ قبلی» همان `۱۶:۵۴` را
+بازتولید می‌کند که پیش از این تعمیر دیده می‌شد. برای تازه‌سازیِ داده‌های سمتِ PHP:
+
+```bash
+php tools/dev/timezone-demo-samples.php                        # پیش‌فرض: تهران
+EPLAK_DB_TIMEZONE=UTC php tools/dev/timezone-demo-samples.php   # داده‌ی قدیمیِ UTC
+```
+
+---
+
 نتیجه‌ی کل مجموعه در این نسخه: **همه‌ی ۲۰ هدف موفق** (syntax · notify ·
 notify-schema · news · **jalali** · app · pushcrypto · fcm · backend · security ·
 online · geo · upload · tiles · push · places · placesadmin · otp · ios · pwa).
@@ -231,4 +255,5 @@ online · geo · upload · tiles · push · places · placesadmin · otp · ios 
 | `index.html` | کش‌باسترها: `state.js?v=15` · `reports.js?v=30` · `live.js?v=18` · `dashboard.js?v=17` · `city-live.js?v=14` · `clock-lux.js?v=7` + حذف `<span id="luxGregDate">` |
 | `shared/config.example.php` | کلیدهای مستند `db_timezone` (**پیش‌فرض: تهران**) و `display_timezone` + راهنمای داده‌ی قدیمیِ UTC |
 | `api/reports.php` · `api/push.php` · `api/ping.php` · `shared/media.php` · `admin/users.php` | ساعتِ پاسخ‌ها و پنجره‌های زمانی با «ساعتِ دیتابیس»؛ `server_time` در `ping.php` به وقت تهران |
+| `tools/dev/timezone-demo.html` · `tools/dev/timezone-demo-samples.php` · `tools/dev/demo-server.mjs` | دموی چشمیِ «ساعتِ تهران»: مقایسه‌ی خروجیِ واقعیِ اپ (`core/state.js`) و سرور، با مولدِ نمونه‌های PHP و سرورِ ایستای توسعه |
 | `tools/dev/tests/jalali.test.mjs` · `run-regression.sh` · `.github/workflows/*` | آزمون تازه (۶۴ بررسی، از جمله قراردادِ منطقه‌ی زمانی) و ثبت هدف `jalali` در اجراهای محلی و CI |
