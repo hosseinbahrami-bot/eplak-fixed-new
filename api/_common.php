@@ -45,6 +45,11 @@ function eplakNormalizePhone(?string $raw): string {
     $raw = str_replace($fa, $en, $raw);
     $raw = str_replace($ar, $en, $raw);
     $raw = preg_replace('/[\s\-()]+/', '', $raw);
+    /* پیش‌شماره‌ی بین‌المللی با دو صفر: 00989121112233 → 09121112233
+       (برخی گوشی‌ها/دفترچه‌ها شماره را این‌گونه ذخیره و ارسال می‌کنند.) */
+    if (strpos($raw, '00') === 0) {
+        $raw = substr($raw, 2);
+    }
     if (preg_match('/^\+?98(9\d{9})$/', $raw, $m)) {
         $raw = '0' . $m[1];
     } elseif (preg_match('/^(9\d{9})$/', $raw, $m)) {
@@ -52,6 +57,10 @@ function eplakNormalizePhone(?string $raw): string {
     }
     return preg_match('/^09\d{9}$/', $raw) ? $raw : '';
 }
+
+/* «eplakPhoneVariants» (همه‌ی قالب‌های نوشتنِ یک شماره) در shared/bootstrap.php
+   تعریف شده است تا هم پنل ادمین و هم همه‌ی نقطه‌های پایانی API آن را داشته
+   باشند؛ این‌جا فقط شماره‌ی «یکدست» ساخته می‌شود. */
 
 function eplakReadJsonBody(): array {
     $raw = file_get_contents('php://input');

@@ -203,6 +203,8 @@ class LocalLoader extends ResourceLoader {
 }
 
 const appLogs = [];
+/* هر درخواستی که اپ به api/notifications.php می‌زند (برای سنجش «تازه‌سازی هنگام باز شدن صفحه») */
+const notifFetchCalls = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => appLogs.push('jsdomError: ' + (e && e.message)));
 const dom = await JSDOM.fromFile(path.join(APP, 'index.html'), {
@@ -231,6 +233,7 @@ const dom = await JSDOM.fromFile(path.join(APP, 'index.html'), {
     };
     window.fetch = async (input, init) => {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (/notifications\.php/i.test(url)) notifFetchCalls.push(url);
       const method = (((init || {}).method) || 'GET').toUpperCase();
       const body = (init || {}).body || null;
       const m = url.match(/(?:^|\/)(api\/[a-z0-9_\-]+\.php)(?:\?([^#]*))?/i);
@@ -385,6 +388,162 @@ $send = (int) $pdo->query('SELECT MAX(id) FROM notification_sends')->fetchColumn
 $stmt = $pdo->prepare('SELECT COUNT(*) FROM notifications WHERE send_id = :s'); $stmt->execute([':s' => $send]);
 echo json_encode(['rows' => (int) $stmt->fetchColumn()]);`));
 ok('اعلان‌های ارسالی به send_id همان ارسال گره خورده‌اند (صفحه‌ی گیرندگان)', (linked.rows || 0) > 0, JSON.stringify(linked));
+
+/* ───────── ۱۰) قالب‌های شماره: ردیف‌های قدیمی و شماره‌ی «+98…» اپ ─────────
+   کارفرما: «در نسخه‌ی APK اعلان سیستمی می‌آید ولی در فهرست اعلان‌های داخل اپ
+   نمی‌آید.» اگر ردیف اعلان با قالبی غیر از «09xxxxxxxxx» ذخیره شده باشد
+   («+98…»، «0098…»، «98912…»، بدون صفر، یا رقم فارسی)، فهرست باید همان ردیف
+   را هم برای کاربر پیدا کند؛ و اگر اپ خودش شماره را در یکی از این قالب‌ها
+   بفرستد، باز هم باید همه‌ی اعلان‌هایش را ببیند. */
+section('۱۰) قالب‌های شماره (ردیف‌های قدیمی و شماره‌ی «+98…» اپ)');
+const variantPhones = ['+989121112233', '00989121112233', '989121112233', '9121112233', '۰۹۱۲۱۱۱۲۲۳۳'];
+const seeded = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+$variants = ${phpVal(variantPhones)};
+/* نسخه‌های قدیمی هم کاربر را با همان قالب در users می‌ساختند؛ پس این‌جا هم
+   ردیف users ساخته می‌شود تا قید خارجیِ دیتابیس قدیمی نقض نشود. */
+$userIns = $pdo->prepare('INSERT OR IGNORE INTO users (phone, name) VALUES (:p, :n)');
+$ins = $pdo->prepare('INSERT INTO notifications (user_phone, title, body, read_flag) VALUES (:p, :t, :b, 0)');
+$ids = [];
+foreach ($variants as $i => $v) {
+    $userIns->execute([':p' => $v, ':n' => 'کاربر قالب ' . ($i + 1)]);
+    $ins->execute([':p' => $v, ':t' => 'اعلان با قالب شماره ' . ($i + 1), ':b' => 'متن آزمون قالب ' . $v]);
+    $ids[$v] = (int) $pdo->lastInsertId();
+}
+echo json_encode(['ids' => $ids]);`));
+ok('ردیف‌های آزمون با قالب‌های غیرِ استاندارد ذخیره شدند',
+  !!seeded && Object.keys(seeded.ids || {}).length === variantPhones.length, JSON.stringify(seeded));
+
+const listVariants = await api('api/notifications.php', { get: { phone: PHONE } });
+const variantTitles = ((listVariants && listVariants.notifications) || []).map((n) => String(n.title));
+ok('فهرست کاربر، ردیف‌های +98/0098/98912/بدون‌صفر/رقم‌فارسی را هم برمی‌گرداند',
+  [1, 2, 3, 4, 5].every((i) => variantTitles.includes('اعلان با قالب شماره ' + i)), JSON.stringify(variantTitles));
+ok('اعلان «ثبت درخواست» در همین فهرست هم دیده می‌شود',
+  variantTitles.some((t) => /ثبت درخواست/.test(t)), JSON.stringify(variantTitles));
+
+const listPlus98 = await api('api/notifications.php', { get: { phone: '+98' + PHONE.slice(1) } });
+ok('اپ اگر شماره را «+98…» بفرستد، اعلان‌های خودش را می‌بیند',
+  ((listPlus98 && listPlus98.notifications) || []).some((n) => /ثبت درخواست/.test(String(n.title))), JSON.stringify(listPlus98).slice(0, 200));
+
+const listFaDigits = await api('api/notifications.php', { get: { phone: '۰۹۱۲۱۱۱۲۲۳۳' } });
+ok('اپ اگر شماره را با رقم فارسی بفرستد، اعلان‌های خودش را می‌بیند',
+  ((listFaDigits && listFaDigits.notifications) || []).some((n) => /ثبت درخواست/.test(String(n.title))), JSON.stringify(listFaDigits).slice(0, 200));
+
+const variantDeleteId = (seeded.ids || {})['+989121112233'];
+await api('api/notifications.php', { method: 'POST', post: { action: 'delete', phone: PHONE, device: 'dev-variant-1', id: String(variantDeleteId || 0) } });
+const afterVariantDelete = await api('api/notifications.php', { get: { phone: PHONE, device: 'dev-variant-1' } });
+ok('حذف ردیفِ «+98…» هم با شماره‌ی استاندارد کاربر کار می‌کند (ردیف برنمی‌گردد)',
+  !((afterVariantDelete && afterVariantDelete.notifications) || []).some((n) => Number(n.id) === Number(variantDeleteId)),
+  JSON.stringify((afterVariantDelete && afterVariantDelete.notifications || []).map((n) => n.id)));
+
+/* ثبت دوباره‌ی همان درخواست (اپ اندروید بعد از قطعی اینترنت دوباره می‌فرستد):
+   نباید اعلان تکراری در فهرست بسازد. */
+const dupFirst = await api('api/reports.php', { method: 'POST', post: { phone: PHONE, title: 'درخواست تکراری آزمون', description: 'شرح آزمون ثبت تکراری', category: 'سایر', client_ref: 'EPL-TEST-DUP-1' } });
+const dupSecond = await api('api/reports.php', { method: 'POST', post: { phone: PHONE, title: 'درخواست تکراری آزمون', description: 'شرح آزمون ثبت تکراری', category: 'سایر', client_ref: 'EPL-TEST-DUP-1' } });
+ok('ارسال دوباره‌ی همان درخواست، همان کد پیگیری را می‌دهد (deduped)',
+  !!dupFirst && !!dupSecond && dupSecond.deduped === true && dupFirst.tracking_code === dupSecond.tracking_code,
+  JSON.stringify({ first: dupFirst && dupFirst.tracking_code, second: dupSecond && dupSecond.tracking_code }));
+const dupCount = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+$stmt = $pdo->prepare('SELECT COUNT(*) FROM notifications WHERE user_phone = :p AND body LIKE :c');
+$stmt->execute([':p' => ${phpVal(PHONE)}, ':c' => '%' . ${phpVal(String(dupFirst && dupFirst.tracking_code || ''))} . '%']);
+echo json_encode(['count' => (int) $stmt->fetchColumn()]);`));
+ok('برای آن کد پیگیری فقط یک اعلان در فهرست کاربر وجود دارد',
+  (dupCount && dupCount.count) === 1, JSON.stringify(dupCount));
+
+
+/* ───────── ۱۱) «فهرست خالیِ بی‌توضیح» دیگر تکرار نمی‌شود ─────────
+   گزارش کارفرما: «اعلان‌ها داخل .apk نمایش داده نمی‌شه هنوز — نه اعلان‌های پنل نه
+   اعلان‌های ثبت درخواست.» اگر سرور خطا بدهد، یا درخواست اصلاً به سرور نرسد، یا
+   ساخت فهرست به هر دلیلی خطا بخورد، کاربر باید «دلیل» را روی همان صفحه ببیند؛
+   پیش‌تر در همه‌ی این حالت‌ها فقط یک فهرست خالی دیده می‌شد و هیچ سرنخی نبود. */
+section('۱۱) دلیلِ قابل‌مشاهده وقتی فهرست خالی است (اپ اندروید)');
+
+const savedFetch = w.fetch;
+const savedEscape = w.escapeHtml;
+
+/* الف) سرور پاسخ خطا می‌دهد (مثل دیتابیس قدیمیِ هاست) */
+w.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  if (/notifications\.php/i.test(url)) {
+    return {
+      ok: false, status: 500,
+      json: async () => ({ success: false, error: "Unknown column 'send_id'", hint: 'ساختار جدول اعلان‌ها قدیمی است.' }),
+      text: async () => ''
+    };
+  }
+  return savedFetch(input, init);
+};
+await w.eval('window.syncNotifications()');
+await new Promise((r) => setTimeout(r, 300));
+ok('خطای سرور در وضعیت اعلان‌ها ثبت می‌شود (http:500 + پیام سرور)',
+  w.eplakNotificationStatus().outcome === 'http:500' && /قدیمی/.test(w.eplakNotificationStatus().notice),
+  JSON.stringify(w.eplakNotificationStatus()));
+ok('eplakNotificationStatus برای عیب‌یابی در دسترس است (شماره/تعداد/نتیجه)',
+  typeof w.eplakNotificationStatus === 'function'
+  && 'phone' in w.eplakNotificationStatus() && 'count' in w.eplakNotificationStatus()
+  && w.eplakPushState().notifSync && w.eplakPushState().notifSync.outcome === 'http:500');
+w.eval('renderNotifications()');
+ok('کاربر روی صفحه‌ی اعلان‌ها دلیل را می‌بیند (نه فهرست خالیِ بی‌توضیح)',
+  /ساختار جدول اعلان‌ها قدیمی است/.test(rendered()), rendered().slice(0, 240));
+
+/* ب) درخواست اصلاً به سرور نمی‌رسد (اینترنت/فایروال/مهلت تمام‌شده) */
+w.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  if (/notifications\.php/i.test(url)) throw new TypeError('Failed to fetch');
+  return savedFetch(input, init);
+};
+await w.eval('window.syncNotifications()');
+await new Promise((r) => setTimeout(r, 300));
+ok('نرسیدن به سرور هم ثبت می‌شود (net:…) و پیامِ قابل‌فهم دارد',
+  /^net:/.test(w.eplakNotificationStatus().outcome)
+  && /ارتباط با سرور اعلان‌ها/.test(w.eplakNotificationStatus().notice),
+  JSON.stringify(w.eplakNotificationStatus()));
+w.eval('renderNotifications()');
+ok('روی صفحه نوشته می‌شود «ارتباط با سرور اعلان‌ها برقرار نشد»',
+  /ارتباط با سرور اعلان‌ها برقرار نشد/.test(rendered()), rendered().slice(0, 240));
+ok('فهرست قبلیِ روی گوشی با خطای شبکه پاک نمی‌شود',
+  /قطعی آب|ثبت درخواست/.test(rendered()), rendered().slice(0, 240));
+
+/* پ) سرور پاسخ سالم می‌دهد ولی برای این شماره ردیفی نیست */
+const emptyReasonHtml = w.notifEmptyReason({ at: Date.now(), outcome: 'ok:0', phone: PHONE, notice: '' }, false);
+ok('حالت «سرور پاسخ داد ولی اعلانی برای این شماره نیست» شماره را نشان می‌دهد',
+  typeof emptyReasonHtml === 'string' && emptyReasonHtml.includes(PHONE) && /ثبت نشده/.test(emptyReasonHtml),
+  String(emptyReasonHtml).slice(0, 200));
+
+/* ت) خطای غیرمنتظره در ساخت فهرست (تابع کمکیِ ناقص/قدیمی) */
+w.fetch = savedFetch;
+await w.eval('window.syncNotifications()');
+await new Promise((r) => setTimeout(r, 400));
+w.escapeHtml = undefined;
+w.eval('renderNotifications()');
+w.escapeHtml = savedEscape;
+ok('اگر ساخت فهرست خطا بدهد، همان خطا روی صفحه دیده می‌شود (نه فهرست خالی)',
+  /نمایش اعلان‌ها با خطا متوقف شد/.test(rendered()), rendered().slice(0, 240));
+w.eval('renderNotifications()');
+ok('بعد از رفع خطا، فهرست سالم برمی‌گردد', /قطعی آب|ثبت درخواست/.test(rendered()), rendered().slice(0, 240));
+
+/* ث) باز شدن صفحه‌ی اعلان‌ها خودش فهرست را از سرور تازه می‌کند */
+const notifCallsBefore = notifFetchCalls.length;
+w.eval("showScreen('screen-notifications')");
+await new Promise((r) => setTimeout(r, 600));
+ok('باز شدن صفحه‌ی اعلان‌ها یک درخواست تازه به سرور می‌زند',
+  notifFetchCalls.length > notifCallsBefore,
+  notifFetchCalls.length + ' > ' + notifCallsBefore);
+ok('تازه‌سازی، اعلان‌ها را تکراری نمی‌کند (هر عنوان یک‌بار)',
+  (rendered().match(/قطعی آب/g) || []).length <= 1, rendered().slice(0, 300));
+
+/* ج) صفحه‌ی عیب‌یابی پنل: هست، فقط-خواندنی است، و از منو در دسترس است */
+const diagSrc = fs.readFileSync(path.join(APP, 'admin/notif_diag.php'), 'utf8');
+ok('صفحه‌ی عیب‌یابی اعلان‌ها در پنل هست و هیچ چیزی را تغییر نمی‌دهد (فقط SELECT)',
+  /notif_diag/.test(diagSrc)
+  && !/INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|DROP\s+TABLE|ALTER\s+TABLE/i.test(diagSrc));
+ok('صفحه‌ی عیب‌یابی به ورود مدیر وابسته است',
+  /require_once __DIR__ \. '\/auth\.php'/.test(diagSrc));
+ok('صفحه‌ی عیب‌یابی، «ضربان اپ‌ها» و بررسی یک شماره را نشان می‌دهد',
+  /eplakHeartbeatList/.test(diagSrc) && /eplakPhoneVariants/.test(diagSrc));
+ok('لینک صفحه‌ی عیب‌یابی در منوی «ارسال اعلان» پنل هست',
+  fs.readFileSync(path.join(APP, 'admin/notifications.php'), 'utf8').includes('notif_diag.php'));
 
 console.log('\n====================================================');
 console.log('NOTIFY-SCHEMA: ' + pass + ' passed, ' + fail + ' failed');

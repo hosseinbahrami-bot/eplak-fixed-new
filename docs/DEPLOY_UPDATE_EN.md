@@ -174,7 +174,7 @@ Summary:
 **A) Create a free Firebase project**
 1. <https://console.firebase.google.com> → **Add project**.
 2. Inside the project → **Android** icon → package name exactly
-   `com.example.eplakfixed` → **Register app**.
+   `com.eplak` → **Register app**.
 3. Download **`google-services.json`**.
 
 **B) Put the file in the project (so the APK is built with Firebase)**

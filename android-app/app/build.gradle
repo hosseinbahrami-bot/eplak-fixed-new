@@ -10,11 +10,17 @@ android {
     buildToolsVersion"36.0.0"
 
     defaultConfig {
-        applicationId 'com.example.eplakfixed'
+        /* نام بسته‌ی اپ = همان نامی که اپ اندروید در پروژه‌ی فایربیس (eplak-7e6ed) با آن ثبت شده
+           (google-services.json → client[].android_client_info.package_name). پلاگین google-services
+           فقط client هم‌نام را می‌پذیرد؛ وگرنه ساخت با «No matching client found» می‌ایستد.
+           namespace (بسته‌ی کدِ کاتلین) عمداً com.example.eplakfixed مانده — اندروید اجازه می‌دهد
+           applicationId با namespace فرق کند. ⚠️ تغییر applicationId یعنی «اپ دیگری»: نسخه‌ی قبلی
+           (com.example.eplakfixed) باید حذف شود وگرنه دو آیکن می‌ماند. (نسخه‌ی ۲.۱) */
+        applicationId 'com.eplak'
         minSdk 24
         targetSdk 36
-        versionCode 2
-        versionName '2.0'
+        versionCode 3
+        versionName '2.1'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
@@ -23,7 +29,26 @@ android {
         buildConfig true
     }
 
+    /* کلید امضای «دیباگِ ثابت» (app/eplak-debug.keystore، داخل مخزن).
+       پیش از این هر اجرای CI با کلید دیباگِ تازه‌ی همان ماشین امضا می‌کرد؛ در نتیجه
+       اندروید نصب APK جدید روی نسخه‌ی قبلی را رد می‌کرد («برنامه نصب نشد») و کاربر
+       مجبور بود اپ را حذف کند — که توکن فایربیس گوشی را هم باطل می‌کرد (NotRegistered).
+       با کلید ثابت، APKهای بعدی روی هم به‌روزرسانی می‌شوند و توکن می‌ماند.
+       (این کلید فقط برای دیباگ/تست است؛ برای فروشگاه کلید release جداگانه لازم است.) */
+    signingConfigs {
+        debug {
+            storeFile file('eplak-debug.keystore')
+            storePassword 'android'
+            keyAlias 'eplakdebug'
+            keyPassword 'android'
+            storeType 'PKCS12'
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

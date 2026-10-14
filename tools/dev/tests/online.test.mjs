@@ -218,8 +218,13 @@ const claims = [
   ['README.md', 'اعلان فایربیس (اپ بسته)'],
 ];
 claims.forEach(([file, text]) => ok(`ادعای «${text}» در ${file} حذف شده`, !read(file).includes(text)));
-ok('به کاربر راهنمای واقعی (تنظیمات گوشی + نسخه‌ی تازه) نشان داده می‌شود',
-  live.includes('تنظیمات گوشی') && live.includes('آخرین نسخه'));
+/* کادر وضعیت اعلان (که همین راهنما را نشان می‌داد) به درخواست مالک کلاً حذف شد؛ پس
+   اپ نه ادعای «فعال است» می‌کند و نه کادری می‌سازد. راهنما در docs/NOTIFICATIONS_FA.md است. */
+ok('کادر وضعیت اعلان کلاً حذف شده (نه ادعا، نه راهنما داخل صفحه‌ی اعلان‌ها)',
+  !live.includes('renderDeviceNotice') && !live.includes('notifDeviceNotice')
+  && !read('index.html').includes('notifDeviceNotice'));
+ok('راهنمای تنظیمات گوشی در مستندات هست (docs/NOTIFICATIONS_FA.md)',
+  /تنظیمات گوشی ← برنامه‌ها ← ای‌پلاک ← اعلان‌ها/.test(read('docs/NOTIFICATIONS_FA.md')));
 
 console.log('\n' + '='.repeat(52));
 console.log(`ONLINE: ${pass} passed, ${fail} failed`);
