@@ -70,6 +70,28 @@ if ($phone === 'all') {
 $device   = preg_replace('/[^A-Za-z0-9_-]/', '', trim((string) $input('device', ''))) ?? '';
 $readerKey = eplakNotificationReaderKey($phone, $device);
 
+/* ── همه‌ی قالب‌های همین شماره ────────────────────────────────────────────
+   نسخه‌های قدیمی اپ/پنل شماره را بدون پاک‌سازی ذخیره می‌کردند: «+98912…»،
+   «0098…»، «98912…»، رقم فارسی یا بدون صفرِ ابتدایی. حالا ردیف‌های همان کاربر
+   با همه‌ی این قالب‌ها پیدا می‌شوند؛ وگرنه اعلان «✅ ثبت درخواست» روی سرور بود
+   ولی در فهرست اعلان‌های خودِ کاربر دیده نمی‌شد. */
+$phoneVariants = ($phone !== '' && function_exists('eplakPhoneVariants'))
+    ? eplakPhoneVariants($phone)
+    : ($phone !== '' ? [$phone] : []);
+$phonePlaceholders = static function (int $count): string {
+    return implode(', ', array_fill(0, max(1, $count), '?'));
+};
+/* ساخت مجموعه‌ی «:p0, :p1, …» + مقادیرش برای یک کوئری نام‌دار */
+$phoneNamedSet = static function (string $prefix, array &$params) use ($phoneVariants): string {
+    $names = [];
+    foreach ($phoneVariants as $i => $variant) {
+        $key = ':' . $prefix . $i;
+        $names[] = $key;
+        $params[$key] = $variant;
+    }
+    return implode(', ', $names);
+};
+
 /* ── ساختار واقعی جدول اعلان‌ها (یک‌بار برای همه‌ی شاخه‌ها) ────────────────
    دیتابیس قدیمیِ هاست (backend/eplak-db.sql) ستون send_id ندارد. پیش از این،
    کوئری‌های همین فایل «همیشه» send_id را می‌خواستند و با خطای
@@ -111,8 +133,8 @@ try {
         /* «حذف همه» = هر اعلانی که همین کاربر می‌بیند */
         if (!$ids || (int) $input('all', 0) === 1) {
             if ($phone !== '') {
-                $stmt = $pdo->prepare("SELECT id FROM notifications WHERE user_phone = :phone OR user_phone = 'all' OR user_phone = ''");
-                $stmt->execute([':phone' => $phone]);
+                $stmt = $pdo->prepare("SELECT id FROM notifications WHERE user_phone IN (" . $phonePlaceholders(count($phoneVariants)) . ") OR user_phone = 'all' OR user_phone = ''");
+                $stmt->execute($phoneVariants);
             } else {
                 $stmt = $pdo->query("SELECT id FROM notifications WHERE user_phone = 'all' OR user_phone = ''");
             }
@@ -126,8 +148,10 @@ try {
             $sql = "SELECT id FROM notifications WHERE id IN ($in)";
             $par = $ids;
             if ($phone !== '') {
-                $sql .= " AND (user_phone = ? OR user_phone = 'all' OR user_phone = '')";
-                $par[] = $phone;
+                $sql .= " AND (user_phone IN (" . $phonePlaceholders(count($phoneVariants)) . ") OR user_phone = 'all' OR user_phone = '')";
+                foreach ($phoneVariants as $variant) {
+                    $par[] = $variant;
+                }
             } else {
                 $sql .= " AND (user_phone = 'all' OR user_phone = '')";
             }
@@ -155,8 +179,8 @@ try {
         /* همه‌ی اعلان‌های همین کاربر (کلید «همه را خواندم» در اپ) */
         if (!$ids || (int) $input('all', 0) === 1) {
             if ($phone !== '') {
-                $stmt = $pdo->prepare('SELECT id FROM notifications WHERE user_phone = :phone');
-                $stmt->execute([':phone' => $phone]);
+                $stmt = $pdo->prepare('SELECT id FROM notifications WHERE user_phone IN (' . $phonePlaceholders(count($phoneVariants)) . ')');
+                $stmt->execute($phoneVariants);
             } else {
                 /* کاربر مهمان: اعلان‌های عمومی (و ردیف خالی) */
                 $stmt = $pdo->query("SELECT id FROM notifications WHERE user_phone = 'all' OR user_phone = ''");
@@ -175,8 +199,10 @@ try {
         if ($phone !== '') {
             $publicIds = [];
             if ($hasSend) {
-                $stmt = $pdo->prepare("SELECT id FROM notifications WHERE (user_phone = 'all' OR user_phone = '') AND (send_id IS NULL OR send_id NOT IN (SELECT send_id FROM notifications WHERE user_phone = :phone AND send_id IS NOT NULL))");
-                $stmt->execute([':phone' => $phone]);
+                $pubParams = [];
+                $pubSet    = $phoneNamedSet('rp', $pubParams);
+                $stmt = $pdo->prepare("SELECT id FROM notifications WHERE (user_phone = 'all' OR user_phone = '') AND (send_id IS NULL OR send_id NOT IN (SELECT send_id FROM notifications WHERE user_phone IN ($pubSet) AND send_id IS NOT NULL))");
+                $stmt->execute($pubParams);
                 $publicIds = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
             } else {
                 /* حالت سازگار: همه‌ی ردیف‌های عمومی (رسید خواندن برای همین
@@ -196,8 +222,10 @@ try {
             $sql  = "SELECT id FROM notifications WHERE id IN ($in)";
             $par  = $ids;
             if ($phone !== '') {
-                $sql .= " AND (user_phone = ? OR user_phone = 'all' OR user_phone = '')";
-                $par[] = $phone;
+                $sql .= " AND (user_phone IN (" . $phonePlaceholders(count($phoneVariants)) . ") OR user_phone = 'all' OR user_phone = '')";
+                foreach ($phoneVariants as $variant) {
+                    $par[] = $variant;
+                }
             } else {
                 $sql .= " AND (user_phone = 'all' OR user_phone = '')";
             }
@@ -224,20 +252,22 @@ try {
     $cols   = 'id, title, body' . ($hasRead ? ', read_flag' : '') . ', created_at' . ($hasSend ? ', send_id' : '');
     $params = [];
     if ($phone !== '') {
-        /* اعلان‌های خودِ کاربر + اعلان‌های عمومی‌ای که نسخه‌ی اختصاصی برای او ندارند */
-        $inner = "SELECT $cols FROM notifications WHERE user_phone = :phone";
+        /* اعلان‌های خودِ کاربر (با همه‌ی قالب‌های شماره) + اعلان‌های عمومی‌ای که
+           نسخه‌ی اختصاصی برای او ندارند */
+        $inSet  = $phoneNamedSet('pp', $params);
+        $inSet2 = $phoneNamedSet('pv', $params);
+        $inner = "SELECT $cols FROM notifications WHERE user_phone IN ($inSet)";
         if ($hasSend) {
             $inner .= " UNION SELECT $cols FROM notifications WHERE (user_phone = 'all' OR user_phone = '')"
-                   . ' AND (send_id IS NULL OR send_id NOT IN (SELECT send_id FROM notifications WHERE user_phone = :phone2 AND send_id IS NOT NULL))';
+                   . " AND (send_id IS NULL OR send_id NOT IN (SELECT send_id FROM notifications WHERE user_phone IN ($inSet2) AND send_id IS NOT NULL))";
         } else {
             /* بدون send_id نمی‌شود فهمید کدام اعلان عمومی «نسخه‌ی عمومیِ همان
                اعلان اختصاصی» است؛ پس ردیف عمومیِ هم‌عنوان و هم‌متنِ اعلان
                اختصاصیِ همین کاربر نادیده گرفته می‌شود تا اعلان دوبار دیده نشود. */
+            $inSet3 = $phoneNamedSet('pb', $params);
             $inner .= " UNION SELECT $cols FROM notifications AS b WHERE (b.user_phone = 'all' OR b.user_phone = '')"
-                   . ' AND NOT EXISTS (SELECT 1 FROM notifications AS p WHERE p.user_phone = :phone2 AND p.title = b.title AND p.body = b.body)';
+                   . " AND NOT EXISTS (SELECT 1 FROM notifications AS p WHERE p.user_phone IN ($inSet3) AND p.title = b.title AND p.body = b.body)";
         }
-        $params[':phone']  = $phone;
-        $params[':phone2'] = $phone;
     } else {
         /* کاربر مهمان: فقط اعلان‌های عمومی */
         $inner = "SELECT $cols FROM notifications WHERE (user_phone = 'all' OR user_phone = '')";
@@ -268,10 +298,12 @@ try {
             $hasRead = false;
         }
         $cols   = 'id, title, body' . ($hasRead ? ', read_flag' : '') . ', created_at' . ($hasSend ? ', send_id' : '');
-        $simple = $phone !== ''
-            ? "SELECT $cols FROM notifications WHERE user_phone = :phone OR user_phone = 'all' OR user_phone = ''"
-            : "SELECT $cols FROM notifications WHERE user_phone = 'all' OR user_phone = ''";
-        $simpleParams = $phone !== '' ? [':phone' => $phone] : [];
+        $simpleParams = [];
+        if ($phone !== '') {
+            $simple = "SELECT $cols FROM notifications WHERE user_phone IN (" . $phoneNamedSet('sp', $simpleParams) . ") OR user_phone = 'all' OR user_phone = ''";
+        } else {
+            $simple = "SELECT $cols FROM notifications WHERE user_phone = 'all' OR user_phone = ''";
+        }
         if ($sinceId > 0) {
             $simple .= ' AND id > :since_id';
             $simpleParams[':since_id'] = $sinceId;

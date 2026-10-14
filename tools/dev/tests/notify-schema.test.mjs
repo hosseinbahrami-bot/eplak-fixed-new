@@ -386,6 +386,68 @@ $stmt = $pdo->prepare('SELECT COUNT(*) FROM notifications WHERE send_id = :s'); 
 echo json_encode(['rows' => (int) $stmt->fetchColumn()]);`));
 ok('اعلان‌های ارسالی به send_id همان ارسال گره خورده‌اند (صفحه‌ی گیرندگان)', (linked.rows || 0) > 0, JSON.stringify(linked));
 
+/* ───────── ۱۰) قالب‌های شماره: ردیف‌های قدیمی و شماره‌ی «+98…» اپ ─────────
+   کارفرما: «در نسخه‌ی APK اعلان سیستمی می‌آید ولی در فهرست اعلان‌های داخل اپ
+   نمی‌آید.» اگر ردیف اعلان با قالبی غیر از «09xxxxxxxxx» ذخیره شده باشد
+   («+98…»، «0098…»، «98912…»، بدون صفر، یا رقم فارسی)، فهرست باید همان ردیف
+   را هم برای کاربر پیدا کند؛ و اگر اپ خودش شماره را در یکی از این قالب‌ها
+   بفرستد، باز هم باید همه‌ی اعلان‌هایش را ببیند. */
+section('۱۰) قالب‌های شماره (ردیف‌های قدیمی و شماره‌ی «+98…» اپ)');
+const variantPhones = ['+989121112233', '00989121112233', '989121112233', '9121112233', '۰۹۱۲۱۱۱۲۲۳۳'];
+const seeded = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+$variants = ${phpVal(variantPhones)};
+/* نسخه‌های قدیمی هم کاربر را با همان قالب در users می‌ساختند؛ پس این‌جا هم
+   ردیف users ساخته می‌شود تا قید خارجیِ دیتابیس قدیمی نقض نشود. */
+$userIns = $pdo->prepare('INSERT OR IGNORE INTO users (phone, name) VALUES (:p, :n)');
+$ins = $pdo->prepare('INSERT INTO notifications (user_phone, title, body, read_flag) VALUES (:p, :t, :b, 0)');
+$ids = [];
+foreach ($variants as $i => $v) {
+    $userIns->execute([':p' => $v, ':n' => 'کاربر قالب ' . ($i + 1)]);
+    $ins->execute([':p' => $v, ':t' => 'اعلان با قالب شماره ' . ($i + 1), ':b' => 'متن آزمون قالب ' . $v]);
+    $ids[$v] = (int) $pdo->lastInsertId();
+}
+echo json_encode(['ids' => $ids]);`));
+ok('ردیف‌های آزمون با قالب‌های غیرِ استاندارد ذخیره شدند',
+  !!seeded && Object.keys(seeded.ids || {}).length === variantPhones.length, JSON.stringify(seeded));
+
+const listVariants = await api('api/notifications.php', { get: { phone: PHONE } });
+const variantTitles = ((listVariants && listVariants.notifications) || []).map((n) => String(n.title));
+ok('فهرست کاربر، ردیف‌های +98/0098/98912/بدون‌صفر/رقم‌فارسی را هم برمی‌گرداند',
+  [1, 2, 3, 4, 5].every((i) => variantTitles.includes('اعلان با قالب شماره ' + i)), JSON.stringify(variantTitles));
+ok('اعلان «ثبت درخواست» در همین فهرست هم دیده می‌شود',
+  variantTitles.some((t) => /ثبت درخواست/.test(t)), JSON.stringify(variantTitles));
+
+const listPlus98 = await api('api/notifications.php', { get: { phone: '+98' + PHONE.slice(1) } });
+ok('اپ اگر شماره را «+98…» بفرستد، اعلان‌های خودش را می‌بیند',
+  ((listPlus98 && listPlus98.notifications) || []).some((n) => /ثبت درخواست/.test(String(n.title))), JSON.stringify(listPlus98).slice(0, 200));
+
+const listFaDigits = await api('api/notifications.php', { get: { phone: '۰۹۱۲۱۱۱۲۲۳۳' } });
+ok('اپ اگر شماره را با رقم فارسی بفرستد، اعلان‌های خودش را می‌بیند',
+  ((listFaDigits && listFaDigits.notifications) || []).some((n) => /ثبت درخواست/.test(String(n.title))), JSON.stringify(listFaDigits).slice(0, 200));
+
+const variantDeleteId = (seeded.ids || {})['+989121112233'];
+await api('api/notifications.php', { method: 'POST', post: { action: 'delete', phone: PHONE, device: 'dev-variant-1', id: String(variantDeleteId || 0) } });
+const afterVariantDelete = await api('api/notifications.php', { get: { phone: PHONE, device: 'dev-variant-1' } });
+ok('حذف ردیفِ «+98…» هم با شماره‌ی استاندارد کاربر کار می‌کند (ردیف برنمی‌گردد)',
+  !((afterVariantDelete && afterVariantDelete.notifications) || []).some((n) => Number(n.id) === Number(variantDeleteId)),
+  JSON.stringify((afterVariantDelete && afterVariantDelete.notifications || []).map((n) => n.id)));
+
+/* ثبت دوباره‌ی همان درخواست (اپ اندروید بعد از قطعی اینترنت دوباره می‌فرستد):
+   نباید اعلان تکراری در فهرست بسازد. */
+const dupFirst = await api('api/reports.php', { method: 'POST', post: { phone: PHONE, title: 'درخواست تکراری آزمون', description: 'شرح آزمون ثبت تکراری', category: 'سایر', client_ref: 'EPL-TEST-DUP-1' } });
+const dupSecond = await api('api/reports.php', { method: 'POST', post: { phone: PHONE, title: 'درخواست تکراری آزمون', description: 'شرح آزمون ثبت تکراری', category: 'سایر', client_ref: 'EPL-TEST-DUP-1' } });
+ok('ارسال دوباره‌ی همان درخواست، همان کد پیگیری را می‌دهد (deduped)',
+  !!dupFirst && !!dupSecond && dupSecond.deduped === true && dupFirst.tracking_code === dupSecond.tracking_code,
+  JSON.stringify({ first: dupFirst && dupFirst.tracking_code, second: dupSecond && dupSecond.tracking_code }));
+const dupCount = pickJson(await run(`
+require '${APP}/admin/includes/db.php';
+$stmt = $pdo->prepare('SELECT COUNT(*) FROM notifications WHERE user_phone = :p AND body LIKE :c');
+$stmt->execute([':p' => ${phpVal(PHONE)}, ':c' => '%' . ${phpVal(String(dupFirst && dupFirst.tracking_code || ''))} . '%']);
+echo json_encode(['count' => (int) $stmt->fetchColumn()]);`));
+ok('برای آن کد پیگیری فقط یک اعلان در فهرست کاربر وجود دارد',
+  (dupCount && dupCount.count) === 1, JSON.stringify(dupCount));
+
 console.log('\n====================================================');
 console.log('NOTIFY-SCHEMA: ' + pass + ' passed, ' + fail + ' failed');
 console.log('====================================================\n');

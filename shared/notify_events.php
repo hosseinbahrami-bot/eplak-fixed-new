@@ -115,7 +115,68 @@ function eplakNotifyUser(PDO $pdo, string $phone, string $title, string $body, a
         }
     }
 
+    /* ۳) اگر اعلان سیستمی از مسیر فایربیس نرفت (کلید فایربیس تنظیم نشده، سرور به
+          گوگل نمی‌رسد، یا کاربر با مرورگر/PWA وارد شده)، همان پیام از مسیر
+          «اعلان پس‌زمینه‌ی مرورگر» (Web Push) فرستاده می‌شود تا کاربری که اپش
+          بسته است هم خبر بگیرد. پیش‌تر این مسیر فقط برای «پاسخ مدیر» بود. */
+    if (empty($out['pushed']) && function_exists('eplakPushNotifyPhone')) {
+        try {
+            $push = eplakPushNotifyPhone($pdo, $phone, $title, $body, [
+                'url'  => 'index.html#screen-notifications',
+                'tag'  => 'eplak-' . ($extra['kind'] ?? 'event') . '-' . ($extra['code'] ?? $out['id']),
+                'kind' => (string) ($extra['kind'] ?? ''),
+            ]);
+            if (((int) ($push['sent'] ?? 0)) > 0) {
+                $out['pushed'] = true;
+                $out['push'] = array_merge($out['push'] ?? [], [
+                    'outcome' => 'sent_web',
+                    'sent'    => (int) $push['sent'],
+                    'hint'    => '',
+                ]);
+            }
+        } catch (Throwable $e) {
+            error_log('[eplak-notify-event] پوش مرورگر ناموفق: ' . $e->getMessage());
+        }
+    }
+
     return $out;
+}
+
+/**
+ * آیا برای این شماره/کد پیگیری از قبل اعلانی ساخته شده است؟
+ *
+ * کاربرد: مسیر «درخواست تکراری» در api/reports.php. اگر گزارش قبلاً ساخته شده
+ * ولی اعلانش (به هر دلیلی) ثبت نشده باشد، همان اعلان یک‌بار ساخته می‌شود؛
+ * ولی اگر اعلان هست، دوباره ساخته نمی‌شود (اعلان تکراری در فهرست کاربر).
+ */
+function eplakNotifyExistsForCode(PDO $pdo, string $phone, string $code): bool
+{
+    $phone = eplakNotifyNormalizePhone($phone);
+    $code  = trim($code);
+    if ($phone === '' || $code === '') {
+        return false;
+    }
+    try {
+        /* ردیف ممکن است با قالب دیگری از همین شماره ذخیره شده باشد
+           («+98…»، «0098…»، بدون صفر یا رقم فارسی) */
+        $variants = function_exists('eplakPhoneVariants') ? eplakPhoneVariants($phone) : [$phone];
+        if (!$variants) {
+            $variants = [$phone];
+        }
+        $names  = [];
+        $params = [];
+        foreach ($variants as $i => $variant) {
+            $names[] = ':p' . $i;
+            $params[':p' . $i] = $variant;
+        }
+        $params[':c'] = '%' . $code . '%';
+        $stmt = $pdo->prepare('SELECT id FROM notifications WHERE user_phone IN (' . implode(', ', $names) . ') AND (title LIKE :c OR body LIKE :c) LIMIT 1');
+        $stmt->execute($params);
+        return (bool) $stmt->fetchColumn();
+    } catch (Throwable $e) {
+        /* در بدترین حالت «هست» فرض می‌کنیم تا اعلان تکراری ساخته نشود */
+        return true;
+    }
 }
 
 /**
