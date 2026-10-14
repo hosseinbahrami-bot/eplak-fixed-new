@@ -875,6 +875,7 @@ function eplakSqliteBootstrap(PDO $pdo): void {
         is_active TINYINT(1) NOT NULL DEFAULT 1,
         fail_count INT NOT NULL DEFAULT 0,
         last_error VARCHAR(255) DEFAULT '',
+        app_project VARCHAR(80) NOT NULL DEFAULT '',
         last_seen_at TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -2120,6 +2121,7 @@ function eplakGetPdo(): PDO {
         is_active TINYINT(1) NOT NULL DEFAULT 1,
         fail_count INT NOT NULL DEFAULT 0,
         last_error VARCHAR(255) DEFAULT '',
+        app_project VARCHAR(80) NOT NULL DEFAULT '',
         last_seen_at TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

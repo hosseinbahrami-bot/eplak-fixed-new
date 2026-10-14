@@ -44,7 +44,7 @@ has() { printf '%s\n' "$LIST" | grep -Fxq "$1"; }
 
 for f in .htaccess index.html index.php sw.js manifest.json shared/bootstrap.php \
          shared/webpush.php shared/media.php shared/notification_reads.php shared/fcm.php \
-         shared/notify_events.php shared/fa_datetime.php shared/tiles.php \
+         shared/notify_events.php shared/fa_datetime.php shared/tiles.php shared/app_heartbeat.php \
          api/_common.php api/ping.php api/push.php api/media.php api/tiles.php api/reports.php api/notifications.php \
          admin/settings.php admin/login.php admin/report_detail.php admin/notification_view.php \
          admin/version.php \

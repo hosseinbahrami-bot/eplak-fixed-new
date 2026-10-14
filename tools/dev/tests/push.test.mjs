@@ -85,8 +85,12 @@ const fakeGoogle = http.createServer((req, res) => {
 });
 await new Promise((r) => fakeGoogle.listen(G_PORT, '127.0.0.1', r));
 const setEnv = (obj) => fs.writeFileSync(CTL, JSON.stringify(obj));
-const GOOGLE_ENV = { EPLAK_TEST_TOKEN_URL: `http://127.0.0.1:${G_PORT}/token`, EPLAK_TEST_FCM_BASE: `http://127.0.0.1:${G_PORT}/v1/projects/` };
-const DEAD_ENV = { EPLAK_TEST_TOKEN_URL: 'http://127.0.0.1:1/token', EPLAK_TEST_FCM_BASE: 'http://127.0.0.1:1/v1/projects/' };
+/* EPLAK_APP_FCM_PROJECT: در آزمون، «پروژه‌ی APK» همان پروژه‌ی کلید ساختگی است تا
+   سناریوهای عادی «هم‌خوان» باشند؛ سناریوی «کلید از پروژه‌ی دیگر» جداگانه آزموده می‌شود. */
+const GOOGLE_ENV = { EPLAK_TEST_TOKEN_URL: `http://127.0.0.1:${G_PORT}/token`, EPLAK_TEST_FCM_BASE: `http://127.0.0.1:${G_PORT}/v1/projects/`, EPLAK_APP_FCM_PROJECT: 'eplak-test-project' };
+const DEAD_ENV = { EPLAK_TEST_TOKEN_URL: 'http://127.0.0.1:1/token', EPLAK_TEST_FCM_BASE: 'http://127.0.0.1:1/v1/projects/', EPLAK_APP_FCM_PROJECT: 'eplak-test-project' };
+/* همان گوگلِ ساختگی، ولی APK «با پروژه‌ی دیگری» ساخته شده است */
+const MISMATCH_ENV = { ...GOOGLE_ENV, EPLAK_APP_FCM_PROJECT: 'eplak-63c74' };
 setEnv(GOOGLE_ENV);
 
 /* ══════════ نسخه‌ی آزمایشی کد (فقط نشانی گوگل عوض می‌شود؛ به مخزن دست نمی‌زنیم) ══════════ */
@@ -386,7 +390,8 @@ const tokenS = csrfOf(settings.text);
 const v0 = G.validateCalls;
 let diag = await admin.post('/admin/settings.php', { _token: tokenS, action: 'diagnose_fcm' });
 ok('نتیجه‌ی گام‌به‌گام نمایش داده می‌شود', /data-testid="fcm-diagnose"/.test(diag.text), '');
-ok('گام‌ها: کلید، OAuth گوگل، سرویس ارسال، گوشی‌ها — همه سالم', (diag.text.match(/✔ سالم/g) || []).length === 4 && !/✖ مشکل/.test(diag.text), `${(diag.text.match(/✔ سالم/g) || []).length} سالم / ${(diag.text.match(/✖ مشکل/g) || []).length} مشکل`);
+ok('گام‌ها: کلید، هم‌خوانی پروژه، OAuth گوگل، سرویس ارسال، گوشی‌ها — همه سالم', (diag.text.match(/✔ سالم/g) || []).length === 5 && !/✖ مشکل/.test(diag.text), `${(diag.text.match(/✔ سالم/g) || []).length} سالم / ${(diag.text.match(/✖ مشکل/g) || []).length} مشکل`);
+ok('گام «هم‌خوانی پروژه‌ی کلید با پروژه‌ی اپ اندروید» در فهرست هست', diag.text.includes('هم‌خوانی پروژه‌ی کلید با پروژه‌ی اپ اندروید'));
 ok('درخواست «خشک» validate_only به گوگل رفت (پیامی به کسی ارسال نشد)', G.validateCalls === v0 + 1 && !G.messages.some((m) => String(m.message?.token || '').startsWith('eplak-diagnose')));
 g0 = gMsgs();
 s = await quick(RA, 'in_progress', '');
@@ -774,8 +779,191 @@ ok('CI: نبودِ سیم‌کشی FCM ساخت را متوقف می‌کند (e
 ok('مستندات: بخش «چرا اعلان روی APK نمی‌آید» با راهِ فعال‌سازی هست',
   read('docs/NOTIFICATIONS_FA.md').includes('چرا اعلان روی **APK** نمی‌آید')
     && read('docs/NOTIFICATIONS_FA.md').includes('Generate new private key'));
-ok('کش‌باسترِ live.js بالا رفت (v=20 — حذف کادر وضعیت اعلان) تا گوشی‌ها کد تازه را بگیرند',
-  read('index.html').includes('modules/live.js?v=20'));
+ok('کش‌باسترِ live.js بالا رفت (v=21 — گزارش پروژه‌ی فایربیس و ضربان اپ) تا گوشی‌ها کد تازه را بگیرند',
+  read('index.html').includes('modules/live.js?v=21') && /LIVE_VERSION = '21'/.test(read('modules/live.js')));
+
+/* ══════════════════════════════════════════════════════════════════
+   ۵) «کلید سرویس از پروژه‌ی دیگری است» (SenderId mismatch)
+   گزارش واقعی مالک: گوشی ثبت می‌شود، گام‌های OAuth و validate_only سبزند،
+   ولی هر ارسال با «HTTP 403 PERMISSION_DENIED SenderId mismatch» رد می‌شود،
+   چون کلید پنل از پروژه‌ای غیر از پروژه‌ی google-services.json داخل APK بود.
+   ══════════════════════════════════════════════════════════════════ */
+console.log('\n=== کلید سرویس از پروژه‌ی دیگر (SenderId mismatch) ===');
+const gsJson = JSON.parse(read('android-app/app/google-services.json'));
+const fcmPhp = read('shared/fcm.php');
+const gsProject = gsJson.project_info?.project_id;
+const gsSender = gsJson.project_info?.project_number;
+const gsPackage = gsJson.client?.[0]?.client_info?.android_client_info?.package_name;
+ok('ثابت‌های shared/fcm.php با google-services.json داخل APK یکی‌اند (پروژه، شناسه‌ی فرستنده، نام بسته)',
+  fcmPhp.includes(`define('EPLAK_APP_FCM_PROJECT_ID', '${gsProject}')`)
+    && fcmPhp.includes(`define('EPLAK_APP_FCM_SENDER_ID', '${gsSender}')`)
+    && fcmPhp.includes(`define('EPLAK_APP_PACKAGE', '${gsPackage}')`),
+  `${gsProject} / ${gsSender} / ${gsPackage}`);
+
+/* الف) توضیح فارسیِ خطا: متن واقعی گوگل «SenderId mismatch» (نه فقط SENDER_ID_MISMATCH) */
+const explain = grab(await exec(`echo '<<<' . json_encode([
+  eplakFcmExplainError('HTTP 403 PERMISSION_DENIED SenderId mismatch'),
+  eplakFcmExplainError('SENDER_ID_MISMATCH'),
+  eplakFcmExplainError('HTTP 403 PERMISSION_DENIED The caller does not have permission'),
+], JSON_UNESCAPED_UNICODE) . '>>>';`));
+ok('«SenderId mismatch» (متن واقعی پاسخ ۴۰۳ گوگل) به توضیح دقیق «کلید از پروژه‌ی دیگر» نگاشته می‌شود — نه متن کلیِ «اجازه نداد»',
+  /پروژه‌ی دیگری/.test(explain[0]) && explain[0].includes('Generate new private key') && explain[0].includes('eplak-test-project'),
+  explain[0]);
+ok('کد قدیمی SENDER_ID_MISMATCH هم همان توضیح را می‌گیرد', explain[1] === explain[0]);
+ok('۴۰۳ِ معمولی (بدون SenderId) همچنان توضیح کلیِ خودش را دارد', /اجازه‌ی ارسال نداد/.test(explain[2]) && explain[2] !== explain[0]);
+
+/* ب) سرور: کلید معتبر ولی APK با پروژه‌ی دیگری ساخته شده */
+setEnv(MISMATCH_ENV);
+r = await appGet('action=config');
+ok('config: fcm_ready=false و دلیل «کلید سرویس … پروژه‌ی دیگر» با نام هر دو پروژه',
+  r.json?.fcm_ready === false && r.json?.fcm_project_match === false
+    && r.json?.fcm_key_project === 'eplak-test-project' && r.json?.fcm_app_project === 'eplak-63c74'
+    && /eplak-63c74/.test(r.json?.fcm_reason || '') && /SenderId mismatch/.test(r.json?.fcm_reason || ''),
+  r.text.slice(0, 300));
+
+r = await appPost({ action: 'register_fcm', phone: PHONE, token: 'TOK-MISMATCH-1', platform: 'android', project_id: 'eplak-63c74', sender_id: '817151129705' });
+ok('ثبت گوشی با project_id: ذخیره می‌شود ولی پاسخ صریح می‌گوید کلید با پروژه‌ی اپ یکی نیست',
+  r.json?.success === true && r.json?.fcm_ready === false && r.json?.project_match === false
+    && r.json?.app_project === 'eplak-63c74' && r.json?.key_project === 'eplak-test-project'
+    && /Generate new private key/.test(r.json?.fcm_reason || ''),
+  r.text.slice(0, 300));
+rows = await q("SELECT user_phone, app_project, is_active FROM device_tokens WHERE token='TOK-MISMATCH-1'");
+ok('پروژه‌ی گزارش‌شده‌ی گوشی در ستون device_tokens.app_project نگه داشته می‌شود (ستون خودکار اضافه شد)',
+  rows[0]?.app_project === 'eplak-63c74' && Number(rows[0]?.is_active) === 1, JSON.stringify(rows));
+r = await appPost({ action: 'register_fcm', phone: PHONE, token: 'TOK-MISMATCH-2', platform: 'android', project_id: 'eplak-test-project' });
+ok('گوشی‌ای که با پروژه‌ی خودِ کلید ساخته شده (project_id هم‌خوان) همچنان fcm_ready=true می‌گیرد',
+  r.json?.success === true && r.json?.fcm_ready === true && r.json?.project_match === true, r.text.slice(0, 200));
+r = await appPost({ action: 'register_fcm', phone: PHONE, token: 'TOK-MISMATCH-3', platform: 'android', project_id: '<bad>$(x)' });
+rows = await q("SELECT app_project FROM device_tokens WHERE token='TOK-MISMATCH-3'");
+ok('project_id با نویسه‌های نامعتبر پاک‌سازی می‌شود (فقط حروف لاتین/رقم/نقطه/خط تیره)', r.json?.success === true && rows[0]?.app_project === 'badx', JSON.stringify(rows));
+
+/* ج) ارسال: برای گوشیِ ناهم‌خوان اصلاً به گوگل نمی‌رویم؛ دلیل دقیق روی ردیف می‌نشیند؛ توکن غیرفعال نمی‌شود */
+g0 = gMsgs();
+const mm = grab(await exec(`
+  $devs = array_values(array_filter(eplakFcmTokens($pdo, ['${PHONE}']), fn($d) => in_array($d['token'], ['TOK-MISMATCH-1', 'TOK-MISMATCH-2'], true)));
+  $res = eplakFcmSend($pdo, $devs, 'آزمون', 'ناهم‌خوانی پروژه');
+  echo '<<<' . json_encode(['n' => count($devs), 'res' => $res], JSON_UNESCAPED_UNICODE) . '>>>';`));
+rows = await q("SELECT token, is_active, fail_count, last_error FROM device_tokens WHERE token IN ('TOK-MISMATCH-1','TOK-MISMATCH-2') ORDER BY token");
+ok('گوشیِ ناهم‌خوان بدون تماس با گوگل «شکست» می‌خورد و گوشیِ هم‌خوان عادی ارسال می‌شود',
+  mm.n === 2 && mm.res.failed === 1 && mm.res.sent === 1 && gMsgs() === g0 + 1, JSON.stringify(mm));
+ok('دلیل دقیق (SENDER_ID_MISMATCH با نام هر دو پروژه) روی ردیف گوشی می‌نشیند و توکن فعال می‌ماند (با عوض شدن کلید همین توکن کار می‌کند)',
+  Number(rows[0]?.is_active) === 1 && /SENDER_ID_MISMATCH/.test(rows[0]?.last_error || '') && /eplak-63c74/.test(rows[0]?.last_error || '') && /eplak-test-project/.test(rows[0]?.last_error || '')
+    && rows[1]?.last_error === '', JSON.stringify(rows));
+
+/* د) پنل: بنر قرمزِ صریح در «اعلان‌ها» و وضعیت/عیب‌یابی در «تنظیمات» */
+const mmNotif = await admin.get('/admin/notifications.php');
+ok('پنل → اعلان‌ها: بنر قرمز «کلید سرویس فایربیس از پروژه‌ی دیگری است» با نام هر دو پروژه و راه حل',
+  mmNotif.text.includes('data-testid="fcm-project-mismatch-banner"') && mmNotif.text.includes('eplak-63c74')
+    && mmNotif.text.includes('eplak-test-project') && mmNotif.text.includes('Generate new private key')
+    && !mmNotif.text.includes('اعلان اپ اندروید (فایربیس) فعال است'),
+  mmNotif.text.includes('فعال است') ? 'بنر سبزِ گمراه‌کننده هنوز هست' : 'بنر قرمز پیدا نشد');
+let mmSettings = await admin.get('/admin/settings.php');
+ok('پنل → تنظیمات: وضعیت کلید «کلید از پروژه‌ی دیگری است» + پروژه‌ی اپ با ✖',
+  mmSettings.text.includes('data-testid="fcm-project-mismatch"') && mmSettings.text.includes('✖ با کلید سرویس یکی نیست')
+    && mmSettings.text.includes('data-testid="fcm-project-mismatch-text"'));
+ok('پنل → تنظیمات: جدول گوشی‌ها پروژه‌ی گزارش‌شده‌ی هر گوشی را با نشان «≠ کلید» نشان می‌دهد',
+  mmSettings.text.includes('≠ کلید') && /<th>پروژه‌ی اپ<\/th>/.test(mmSettings.text));
+const tokenMm = csrfOf(mmSettings.text);
+const mmDiag = await admin.post('/admin/settings.php', { _token: tokenMm, action: 'diagnose_fcm' });
+ok('عیب‌یابی: گام «هم‌خوانی پروژه» ✖ با راه حل، در حالی که OAuth و سرویس ارسال سبزند (همان الگوی گزارش مالک)',
+  /هم‌خوانی پروژه‌ی کلید با پروژه‌ی اپ اندروید/.test(mmDiag.text) && (mmDiag.text.match(/✖ مشکل/g) || []).length === 1
+    && (mmDiag.text.match(/✔ سالم/g) || []).length === 4 && /گزارش خودِ گوشی‌ها/.test(mmDiag.text),
+  `${(mmDiag.text.match(/✔ سالم/g) || []).length} سالم / ${(mmDiag.text.match(/✖ مشکل/g) || []).length} مشکل`);
+
+/* ه) اپ: پروژه را از پل اندروید می‌گیرد و همراه ثبت می‌فرستد؛ اپ قدیمی بدون پل هم بی‌خطا */
+const LP = buildLive({ token: 'TOK-LIVE-PROJ', phone: '09120007777', start: true });
+LP.sb.AndroidApp.getFcmProject = () => JSON.stringify({ project_id: 'eplak-63c74', sender_id: '817151129705', app_id: '1:817151129705:android:x' });
+await LP.sb.registerAppDevice(true);
+await LP.settle();
+const projBody = new URLSearchParams(LP.registerCalls().at(-1)?.body || '');
+ok('live.js: پروژه‌ی فایربیس اپ (getFcmProject) همراه register_fcm فرستاده می‌شود',
+  projBody.get('project_id') === 'eplak-63c74' && projBody.get('sender_id') === '817151129705', projBody.toString());
+ok('eplakPushState پروژه‌ی اپ را گزارش می‌کند', LP.sb.eplakPushState().appProject === 'eplak-63c74');
+const LN = buildLive({ token: 'TOK-LIVE-NOPROJ', phone: '09120007778', start: true });
+await LN.settle(); await LN.settle();
+const noProjBody = new URLSearchParams(LN.registerCalls()[0]?.body || '');
+ok('اپ قدیمی (بدون getFcmProject): ثبت مثل قبل، بدون فیلد project_id و بدون خطا',
+  LN.registerCalls().length === 1 && !noProjBody.has('project_id') && LN.sb.eplakPushState().registered === true);
+ok('MainActivity: پل getFcmProject از FirebaseOptions (projectId/gcmSenderId/applicationId) می‌خواند',
+  kt.includes('fun getFcmProject') && kt.includes('options.projectId') && kt.includes('options.gcmSenderId') && kt.includes('@JavascriptInterface\n        fun getFcmProject'));
+ok('CI: ورک‌فلوی APK وجود پل getFcmProject و ضربان اپ را داخل APK بررسی می‌کند',
+  apkWf.includes("grep -q 'fun getFcmProject'") && apkWf.includes("grep -q 'getFcmProject' apk-check/assets/modules/live.js"));
+
+setEnv(GOOGLE_ENV);
+const okAgain = await admin.get('/admin/notifications.php');
+ok('با کلیدِ پروژه‌ی درست، بنر قرمز می‌رود و بنر سبز برمی‌گردد',
+  okAgain.text.includes('اعلان اپ اندروید (فایربیس) فعال است') && !okAgain.text.includes('fcm-project-mismatch-banner'));
+
+/* ══════════════════════════════════════════════════════════════════
+   ۶) «ضربان اپ‌ها»: هر دریافت فهرست اعلان‌ها در پنل دیده می‌شود
+   (عیب‌یابی «فهرست اعلان‌های APK خالی است» بدون دسترسی به کنسول گوشی)
+   ══════════════════════════════════════════════════════════════════ */
+console.log('\n=== ضربان اپ‌ها (آخرین دریافت فهرست اعلان‌ها) ===');
+const HB_PHONE = '09120001111';
+r = await req('GET', `/api/notifications.php?phone=${HB_PHONE}&device=dev-apk-1&app=android&v=21&prev=first&t=1`);
+ok('GET notifications.php با app=android مثل قبل فهرست را برمی‌گرداند', r.json?.success === true && Array.isArray(r.json?.notifications), r.text.slice(0, 160));
+let hb = await q(`SELECT setting_key, setting_value FROM app_settings WHERE setting_key LIKE 'app_poll:%' ORDER BY setting_key`);
+const hbRow = hb.find((x) => x.setting_key === `app_poll:android:${HB_PHONE}`);
+const hbVal = hbRow ? JSON.parse(hbRow.setting_value) : null;
+ok('ضربان با کلید app_poll:android:<شماره> ثبت می‌شود و تعداد اعلان‌های برگشتی را دارد',
+  !!hbVal && hbVal.platform === 'android' && hbVal.count === r.json.count && hbVal.v === '21' && hbVal.prev === 'first' && typeof hbVal.at === 'number',
+  JSON.stringify(hb).slice(0, 300));
+r = await req('GET', `/api/notifications.php?phone=${HB_PHONE}&device=dev-apk-1&app=android&v=21&prev=ok:${hbVal?.count ?? 0}&t=2`);
+hb = await q(`SELECT setting_value FROM app_settings WHERE setting_key = 'app_poll:android:${HB_PHONE}'`);
+ok('درخواست دوم در کمتر از ۱۰ ثانیه دوباره نوشته نمی‌شود (سقف نوشتن؛ اپ هر ۳٫۵ ثانیه می‌پرسد)',
+  JSON.parse(hb[0]?.setting_value || '{}').prev === 'first', hb[0]?.setting_value);
+r = await req('GET', `/api/notifications.php?phone=all&device=dev-guest-9&app=android&v=21&prev=net:TypeError&t=3`);
+hb = await q(`SELECT setting_key, setting_value FROM app_settings WHERE setting_key LIKE 'app_poll:android:guest:%'`);
+ok('مهمانِ APK (phone=all، هنوز وارد نشده) با کلید guest:<دستگاه> ثبت می‌شود و prev شبکه‌ای را نگه می‌دارد',
+  hb.length === 1 && hb[0].setting_key === 'app_poll:android:guest:dev-guest-9' && JSON.parse(hb[0].setting_value).prev === 'net:TypeError', JSON.stringify(hb));
+r = await req('GET', `/api/notifications.php?phone=all&device=dev-guest-web&app=web&v=21&prev=first&t=3`);
+hb = await q(`SELECT COUNT(*) AS n FROM app_settings WHERE setting_key LIKE 'app_poll:web:guest:%'`);
+ok('مهمانِ وب (هر بازدیدکننده‌ی سایت) ثبت نمی‌شود تا app_settings پر نشود', r.json?.success === true && Number(hb[0]?.n) === 0);
+r = await req('GET', `/api/notifications.php?phone=09120002222&device=dev-pwa&app=web&v=21&prev=ok:2&t=3`);
+hb = await q(`SELECT setting_key FROM app_settings WHERE setting_key = 'app_poll:web:09120002222'`);
+ok('کاربرِ واردشده‌ی PWA ثبت می‌شود (برای مقایسه‌ی APK با PWA در پنل)', hb.length === 1);
+r = await req('GET', `/api/notifications.php?phone=${HB_PHONE}&device=dev-old&t=4`);
+hb = await q(`SELECT COUNT(*) AS n FROM app_settings WHERE setting_key LIKE 'app_poll:%'`);
+ok('اپ قدیمی (بدون app=) ضربانی نمی‌سازد (بدون ردیف اضافی) و پاسخش هم تغییری نمی‌کند', r.json?.success === true && Number(hb[0]?.n) === 3, JSON.stringify(hb));
+r = await req('GET', `/api/notifications.php?phone=${HB_PHONE}&device=dev-x&app=<script>&v=1&t=5`);
+hb = await q(`SELECT COUNT(*) AS n FROM app_settings WHERE setting_key LIKE 'app_poll:%'`);
+ok('سکوی ناشناخته (app=<script>) ثبت نمی‌شود', Number(hb[0]?.n) === 3);
+const hbSettings = await admin.get('/admin/settings.php');
+ok('پنل → تنظیمات: جدول «ضربان اپ‌ها» با سکو، کاربر، «n ثانیه پیش»، تعداد اعلان، نسخه و تفسیر prev',
+  hbSettings.text.includes('data-testid="app-heartbeats"') && hbSettings.text.includes('اپ اندروید (APK)') && hbSettings.text.includes('وب / PWA')
+    && /ثانیه پیش/.test(hbSettings.text) && hbSettings.text.includes('اولین درخواست پس از باز شدن اپ')
+    && hbSettings.text.includes('درخواست قبلی به سرور نرسید') && hbSettings.text.includes('پاسخ قبلی سالم خوانده شد (2 اعلان)'),
+  hbSettings.text.includes('app-heartbeats-empty') ? 'جدول خالی است' : 'جدول/متن‌ها پیدا نشد');
+await exec(`require_once '${SHIM}/shared/app_heartbeat.php'; $pdo->exec("UPDATE app_settings SET updated_at = '2020-01-01 00:00:00' WHERE setting_key = 'app_poll:android:guest:dev-guest-9'"); eplakHeartbeatPrune($pdo, 30);`);
+hb = await q(`SELECT COUNT(*) AS n FROM app_settings WHERE setting_key LIKE 'app_poll:%'`);
+ok('پاک‌سازی: ضربان‌های قدیمی‌تر از ۳۰ روز حذف می‌شوند و بقیه می‌مانند', Number(hb[0]?.n) === 2, JSON.stringify(hb));
+
+/* اپ: پارامترهای ضربان را می‌فرستد و نتیجه‌ی درخواست قبلی را گزارش می‌کند */
+const LH = buildLive({ token: 'TOK-LIVE-HB', phone: '09120006666', start: true });
+await LH.settle(); await LH.settle();
+const hbCalls = () => LH.calls.filter((c) => c.url.includes('notifications.php') && c.method === 'GET');
+ok('live.js: درخواست فهرست اعلان‌ها app=android&v=21&prev=first دارد (اولین بار)',
+  hbCalls().length >= 1 && /app=android/.test(hbCalls()[0].url) && /v=21/.test(hbCalls()[0].url) && /prev=first/.test(hbCalls()[0].url), hbCalls()[0]?.url);
+await LH.sb.syncNotifications();
+await LH.settle();
+ok('درخواست بعدی نتیجه‌ی قبلی را می‌فرستد (prev=ok:0) و eplakPushState آن را دارد',
+  /prev=ok%3A0|prev=ok:0/.test(hbCalls().at(-1).url) && LH.sb.eplakPushState().lastPoll === 'ok:0' && LH.sb.eplakPushState().platform === 'android', hbCalls().at(-1).url);
+LH.sb.AndroidApp = undefined;
+LH.sb.EPLAK_IOS_APP = true;
+await LH.sb.syncNotifications();
+ok('پوسته‌ی iOS (window.EPLAK_IOS_APP) خودش را app=ios معرفی می‌کند', /app=ios/.test(hbCalls().at(-1).url), hbCalls().at(-1).url);
+LH.sb.EPLAK_IOS_APP = undefined;
+await LH.sb.syncNotifications();
+ok('مرورگر/PWA خودش را app=web معرفی می‌کند', /app=web/.test(hbCalls().at(-1).url), hbCalls().at(-1).url);
+ok('مستندات: NOTIFICATIONS_FA.md «SenderId mismatch» و «ضربان اپ‌ها» را توضیح می‌دهد',
+  read('docs/NOTIFICATIONS_FA.md').includes('SenderId mismatch') && read('docs/NOTIFICATIONS_FA.md').includes('ضربان اپ‌ها'));
+ok('مستندات: FIREBASE_SETUP_FA.md می‌گوید کلید باید از پروژه‌ی خودِ APK باشد (SenderId mismatch)',
+  read('docs/FIREBASE_SETUP_FA.md').includes('SenderId mismatch'));
+ok('APK با کلید دیباگِ ثابتِ مخزن امضا می‌شود (نصب به‌روزرسانی بدون حذف؛ توکن فایربیس می‌ماند)',
+  fs.existsSync(path.join(ROOT, 'android-app/app/eplak-debug.keystore'))
+    && read('android-app/app/build.gradle').includes("storeFile file('eplak-debug.keystore')")
+    && read('android-app/.gitignore').includes('!app/eplak-debug.keystore')
+    && apkWf.includes('apksigner') && apkWf.includes('EXPECTED_SHA256='));
 
 fakeGoogle.close();
 console.log('\n' + '='.repeat(52));

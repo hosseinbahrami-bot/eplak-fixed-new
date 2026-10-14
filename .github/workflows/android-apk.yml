@@ -143,6 +143,15 @@ jobs:
             MERGED_MANIFEST="$(find android-app/app/build/intermediates -name 'AndroidManifest.xml' 2>/dev/null | head -1 || true)"
           fi
           test -n "$MERGED_MANIFEST" || { echo "::error::مانیفستِ ادغام‌شده پیدا نشد (بررسی FCM ممکن نیست)"; exit 1; }
+          # پل «پروژه‌ی فایربیس اپ» (getFcmProject) باید هم در اپ نیتیو و هم در live.jsِ داخل APK باشد؛
+          # با آن، سرور «کلید سرویس از پروژه‌ی دیگر» (SenderId mismatch) را همان لحظه‌ی ثبت گوشی می‌فهمد.
+          grep -q 'fun getFcmProject' android-app/app/src/main/java/com/example/eplakfixed/MainActivity.kt \
+            || { echo "::error::MainActivity.kt متد getFcmProject ندارد"; exit 1; }
+          grep -q 'getFcmProject' apk-check/assets/modules/live.js \
+            || { echo "::error::live.jsِ داخل APK پروژه‌ی فایربیس را به سرور گزارش نمی‌کند (getFcmProject)"; exit 1; }
+          grep -q "app=' + encodeURIComponent(appPlatform())" apk-check/assets/modules/live.js \
+            || { echo "::error::live.jsِ داخل APK «ضربان اپ» (app=android) را به سرور نمی‌فرستد"; exit 1; }
+          echo "✅ پل getFcmProject و ضربان اپ داخل APK هستند"
           for NEED in "com.google.firebase.messaging.FirebaseMessagingService" \
                       "com.google.firebase.MESSAGING_EVENT" \
                       "android.permission.POST_NOTIFICATIONS" \
@@ -173,6 +182,29 @@ jobs:
             exit 1
           fi
           echo "::notice title=بازرسی APK::$FILES فایل وب داخل APK · $CACHE · همه با مخزن یکی‌اند"
+
+      # ── امضای ثابت ────────────────────────────────────────────────────────
+      # APK باید با کلیدِ دیباگِ ثابتِ مخزن (android-app/app/eplak-debug.keystore)
+      # امضا شده باشد؛ وگرنه کاربر نمی‌تواند نسخه‌ی جدید را روی قبلی نصب کند و
+      # باید اپ را حذف کند (و توکن فایربیس گوشی هم باطل می‌شود). اثر انگشتِ
+      # گواهی با مقدار ثابت زیر مقایسه می‌شود تا تعویض ناخواسته‌ی کلید فوراً معلوم شود.
+      - name: بررسی امضای APK (کلید دیباگِ ثابت مخزن)
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$SDK/build-tools/36.0.0/apksigner"
+          [ -x "$APKSIGNER" ] || { echo "::error::apksigner پیدا نشد ($APKSIGNER)"; exit 1; }
+          EXPECTED_SHA256="4174a98420410c42c9c344b4c980dce49d066af9348129d32ec2019e59068b11"
+          CERTS="$("$APKSIGNER" verify --print-certs "$APK_NAME")"
+          echo "$CERTS"
+          ACTUAL="$(printf '%s\n' "$CERTS" | grep -i 'certificate SHA-256 digest' | head -1 | awk '{print $NF}' | tr 'A-F' 'a-f')"
+          if [ "$ACTUAL" != "$EXPECTED_SHA256" ]; then
+            echo "::error::APK با کلید دیباگِ ثابت مخزن امضا نشده (SHA-256 گواهی: ${ACTUAL:-?} ≠ $EXPECTED_SHA256). signingConfigs.debug در build.gradle یا app/eplak-debug.keystore را بررسی کنید."
+            exit 1
+          fi
+          echo "APK_SIGNER_SHA256=$ACTUAL" >> "$GITHUB_ENV"
+          echo "✅ APK با کلید ثابتِ مخزن امضا شده است (CN=Eplak Debug · SHA-256 $ACTUAL)"
+          echo "::notice title=امضای APK::کلید دیباگِ ثابت مخزن · نصبِ به‌روزرسانی روی نسخه‌ی قبلی بدون حذف ممکن است (پس از یک‌بار نصبِ این نسخه)"
 
       # ── شاخص همگام‌سازی اماکنِ پنل با اپ ──────────────────────────────────
       # اپ «اماکن شهری» را از دو منبع می‌گیرد:
@@ -227,6 +259,7 @@ jobs:
             echo "| sha256 | \`${APK_SHA:-?}\` |"
             echo "| شاخص همگام‌سازی اماکن (PLACES_SYNC_CODE) | \`${PLACES_SYNC_CODE:-?}\` |"
             echo "| اعلانِ گوشی (FCM) داخلِ APK | پروژه‌ی \`${FCM_PROJECT:-?}\` · سیم‌کشی تأیید شد |"
+            echo "| امضای APK (کلید دیباگِ ثابت مخزن) | \`${APK_SIGNER_SHA256:-?}\` |"
             echo "| شاخه / کامیت | \`${GITHUB_REF_NAME}\` / \`${GITHUB_SHA}\` |"
             echo
             echo "دانلود پس از انتشار: <https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$APK_NAME>"

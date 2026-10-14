@@ -71,6 +71,8 @@ $fcmConfigN = eplakFcmConfig($pdo);
 $fcmReady   = (bool) $fcmConfigN['ready'];
 $fcmError   = trim((string) ($fcmConfigN['error'] ?? ''));
 $fcmDevices = eplakFcmCount($pdo);
+/* کلید معتبر ولی از پروژه‌ی دیگری (SenderId mismatch): اعلان‌های APK همه رد می‌شوند */
+$fcmProjectMismatch = $fcmReady && ($fcmConfigN['project_match'] ?? null) === false;
 ?>
 <!doctype html>
 <html lang="fa" dir="rtl">
@@ -167,7 +169,27 @@ $fcmDevices = eplakFcmCount($pdo);
         </div>
       <?php endif; ?>
 
-      <?php if ($fcmReady): ?>
+      <?php if ($fcmProjectMismatch): ?>
+        <div class="alert alert-danger" style="margin: 0 24px 16px; line-height:1.9;" data-testid="fcm-project-mismatch-banner">
+          <i class="fas fa-triangle-exclamation"></i>
+          <strong>اعلانِ اپ اندروید (APK) نمی‌رسد: کلید سرویس فایربیس از پروژه‌ی دیگری است</strong> —
+          کلید فعلی برای پروژه‌ی <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['project_id']) ?></code> است،
+          ولی APK با پروژه‌ی <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['app_project']) ?></code> ساخته شده؛
+          گوگل هر ارسال را با <code dir="ltr">HTTP 403 PERMISSION_DENIED SenderId mismatch</code> رد می‌کند
+          (همان خطایی که در ستون «آخرین خطا»ی گوشی‌ها دیده می‌شود).
+          <ol style="margin:8px 0 0; padding-inline-start:20px; font-size:13px;">
+            <li>در <span dir="ltr">console.firebase.google.com</span> پروژه‌ی
+                <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['app_project']) ?></code> را باز کنید.</li>
+            <li><strong>Project settings ← Service accounts ← Generate new private key</strong> را بزنید و فایل JSON را دانلود کنید.</li>
+            <li>محتوای کاملِ همان فایل را در
+                <a href="settings.php#fcm-section"><strong>تنظیمات ← اعلان گوشی برای اپ اندروید (فایربیس)</strong></a>
+                به‌جای کلید فعلی بچسبانید و ذخیره کنید؛ سپس «بررسی اتصال» و «ارسال آزمایشی» را بزنید.</li>
+          </ol>
+          <p style="margin:8px 0 0; font-size:13px;">
+            تا آن زمان اعلان‌ها فقط در وب/PWA و داخل خودِ اپ (وقتی باز است) دیده می‌شوند.
+          </p>
+        </div>
+      <?php elseif ($fcmReady): ?>
         <div class="alert alert-success" style="margin: 0 24px 16px;">
           <i class="fas fa-mobile-screen-button"></i>
           <strong>اعلان اپ اندروید (فایربیس) فعال است</strong> —

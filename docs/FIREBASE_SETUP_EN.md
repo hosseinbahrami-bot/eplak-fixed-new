@@ -128,6 +128,13 @@ Install that APK on the phone (it updates over the previous version; if you get
 > 🔒 This file is your server’s password. Keep it out of GitHub, chat and email.
 > The repository’s `.gitignore` already blocks `*firebase-adminsdk*.json`.
 
+> ⚠️ **The key must come from the same Firebase project as the app’s `google-services.json`.**
+> The repository’s APK is built against project **`eplak-63c74`** (sender ID `817151129705`).
+> A key from any other project is accepted by the panel and even passes the “check connection”
+> steps, but Google rejects every send with `HTTP 403 PERMISSION_DENIED SenderId mismatch`,
+> so nothing ever reaches the APK. The admin panel now detects this (“service-account key
+> belongs to a different project”) on the Notifications and Settings pages.
+
 Open it in a text editor (do **not** change anything). Note the two useful values:
 
 ```json

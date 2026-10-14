@@ -18,6 +18,7 @@
 */
 require_once __DIR__ . '/../admin/includes/db.php';
 require_once __DIR__ . '/../shared/notification_reads.php';
+require_once __DIR__ . '/../shared/app_heartbeat.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -333,6 +334,23 @@ try {
     if (array_key_exists('emoji', $schema) && empty($schema['emoji'])) {
         $degraded[] = 'utf8mb3';
     }
+
+    /* «ضربان اپ»: اپ با app=android|ios|web می‌گوید کیست؛ پنل → تنظیمات →
+       «ضربان اپ‌ها» نشان می‌دهد هر اپ کِی آخرین بار فهرست را گرفت و چند اعلان
+       برایش برگشت (عیب‌یابی «اعلان در APK نمی‌آید» بدون دسترسی به گوشی). */
+    $str = static fn($v): string => is_scalar($v) ? (string) $v : '';
+    eplakHeartbeatRecord($pdo, [
+        'platform' => $str($input('app', '')),
+        'phone'    => $phone,
+        'device'   => $device,
+        'count'    => count($items),
+        'unread'   => $unread,
+        'rows'     => count($rows),
+        'hidden'   => count($hidden),
+        'degraded' => $degraded,
+        'v'        => $str($input('v', '')),
+        'prev'     => $str($input('prev', '')),
+    ]);
 
     echo json_encode([
         'success'       => true,

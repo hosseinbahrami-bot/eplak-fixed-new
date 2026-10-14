@@ -9,6 +9,16 @@
   var seenNotifIds = new Set();
   var isSyncing = false;
 
+  /* نسخه‌ی همین اسکریپت (با v= در index.html هم‌خوان است) — همراه هر درخواستِ
+     فهرست اعلان‌ها به سرور می‌رود تا در پنل معلوم باشد هر گوشی چه نسخه‌ای دارد. */
+  var LIVE_VERSION = '21';
+
+  /* نتیجه‌ی آخرین درخواست فهرست اعلان‌ها از نگاه اپ:
+       first | ok:N | http:S | json | net:<پیام کوتاه>
+     با درخواست بعدی (prev=) برای سرور فرستاده می‌شود؛ پس حتی وقتی اپ نمی‌تواند
+     پاسخ را بخواند، پنل → تنظیمات → «ضربان اپ‌ها» دلیلش را نشان می‌دهد. */
+  var lastPollOutcome = 'first';
+
   function apiBase() {
     return (typeof window.EPLAK_API_BASE_URL === 'string' && window.EPLAK_API_BASE_URL)
       ? window.EPLAK_API_BASE_URL.replace(/\/$/, '')
@@ -158,6 +168,30 @@
       }
     } catch (e) {}
     return null;
+  }
+
+  /* سکوی همین اپ برای «ضربان اپ‌ها» در پنل: android (پل AndroidApp)، ios (پوسته‌ی
+     WKWebView که window.EPLAK_IOS_APP را تزریق می‌کند)، وگرنه web (سایت/PWA). */
+  function appPlatform() {
+    try {
+      if (nativeBridge()) return 'android';
+      if (window.EPLAK_IOS_APP === true) return 'ios';
+    } catch (e) {}
+    return 'web';
+  }
+  window.eplakAppPlatform = appPlatform;
+
+  /* پروژه‌ی فایربیسی که خودِ APK با آن ساخته شده (از google-services.json داخل
+     اپ). اپ‌های قدیمی این متد را ندارند → {} */
+  function nativeFcmProject() {
+    var bridge = nativeBridge();
+    if (!bridge || typeof bridge.getFcmProject !== 'function') return {};
+    try {
+      var parsed = JSON.parse(String(bridge.getFcmProject() || '{}'));
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch (e) {
+      return {};
+    }
   }
 
   /* آیا اعلان سیستمی روی این دستگاه ممکن است؟ */
@@ -732,13 +766,19 @@
          روی سرور با کلید (شماره + دستگاه) ثبت می‌شود. بدون device، کاربر
          مهمان هر بار اعلان‌های خوانده‌شده را دوباره خوانده‌نشده می‌دید و
          «خوانده شد»ها بین چند گوشی یک نفر هم قاطی می‌شد. */
+      /* app/v/prev فقط برای «ضربان اپ‌ها» در پنل است (سرور با آن‌ها چیزی را فیلتر
+         نمی‌کند): کدام اپ، با کدام نسخه، و درخواست قبلی‌اش چه شد. */
       var query = 'phone=' + encodeURIComponent(queryPhone)
                 + '&device=' + encodeURIComponent(deviceId())
+                + '&app=' + encodeURIComponent(appPlatform())
+                + '&v=' + encodeURIComponent(LIVE_VERSION)
+                + '&prev=' + encodeURIComponent(lastPollOutcome)
                 + '&t=' + Date.now();
       const res = await fetch(apiBase() + '/notifications.php?' + query, { cache: 'no-store' });
       const data = await res.json().catch(function () { return null; });
 
       if (!res.ok || !data || data.success !== true) {
+        lastPollOutcome = !res.ok ? ('http:' + res.status) : (!data ? 'json' : 'fail');
         /* پیش‌تر این‌جا فقط «false» برگردانده می‌شد و هیچ سرنخی نمی‌ماند که چرا
            فهرست اعلان‌ها خالی مانده (مثلاً ستون send_id در دیتابیس قدیمیِ هاست
            وجود نداشت و سرور ۵۰۰ می‌داد). علت/راهنمای سرور نگه داشته می‌شود
@@ -755,9 +795,12 @@
       setServerNotificationNotice(
         (Array.isArray(data.degraded) && data.degraded.length && data.hint) ? data.hint : ''
       );
-      applyNotifications(data.notifications || []);
+      var list = Array.isArray(data.notifications) ? data.notifications : [];
+      lastPollOutcome = 'ok:' + list.length;
+      applyNotifications(list);
       return true;
     } catch (e) {
+      lastPollOutcome = 'net:' + String((e && (e.name || e.message)) || 'error').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 24);
       return false;
     }
   }
@@ -826,7 +869,10 @@
      register_fcm و push.php?action=config). بدون این، اپ حتی وقتی سرور کلید نداشت
      «✅ ثبت شده است» می‌گفت و کاربر دلیل نرسیدن اعلان را نمی‌فهمید. */
   var fcmState = { token: false, registered: false, attached: false, phone: '', reason: '',
-                   attempts: 0, at: 0, serverReady: null, serverReason: '' };
+                   attempts: 0, at: 0, serverReady: null, serverReason: '',
+                   /* پروژه‌ی فایربیس اپ (از خود APK) و پروژه‌ی کلید سرویس روی سرور؛
+                      projectMatch=false یعنی گوگل ارسال را با SenderId mismatch رد می‌کند */
+                   appProject: '', keyProject: '', projectMatch: null };
   /* پیام سرور درباره‌ی وضعیت جدول اعلان‌ها (دیتابیس قدیمی/خطای خواندن).
      کادر نمایشِ آن در صفحه‌ی اعلان‌ها به درخواست مالک حذف شد؛ پیام فقط برای
      عیب‌یابی نگه داشته می‌شود (کنسول و خروجی eplakPushState). */
@@ -946,7 +992,15 @@
     }
 
     try {
-      var sent = await postFcm({ action: 'register_fcm', phone: phone, token: token, platform: 'android' }, 20000);
+      var fields = { action: 'register_fcm', phone: phone, token: token, platform: 'android' };
+      /* اپ می‌گوید با کدام پروژه‌ی فایربیس ساخته شده تا سرور «کلید از پروژه‌ی
+         دیگر» را همان لحظه تشخیص دهد (به‌جای ۴۰۳ SenderId mismatch هنگام ارسال). */
+      var project = nativeFcmProject();
+      if (project.project_id) fields.project_id = String(project.project_id);
+      if (project.sender_id) fields.sender_id = String(project.sender_id);
+      if (project.project_id) fcmState.appProject = String(project.project_id);
+
+      var sent = await postFcm(fields, 20000);
       var data = sent.data;
       if (data && data.success === true) {
         try {
@@ -961,8 +1015,13 @@
         fcmState.at = Date.now();
         if (typeof data.fcm_ready === 'boolean') fcmState.serverReady = data.fcm_ready;
         fcmState.serverReason = String(data.fcm_reason || '');
+        if (data.key_project) fcmState.keyProject = String(data.key_project);
+        if (typeof data.project_match === 'boolean') fcmState.projectMatch = data.project_match;
+        if (data.project_match === false) {
+          console.warn('[fcm] کلید سرویس فایربیس سرور از پروژه‌ی دیگری است: ' + fcmState.serverReason);
+        }
         console.log('[fcm] دستگاه اپ ثبت شد');
-        return { ok: true, devices: data.devices, fcm_ready: data.fcm_ready, attached: data.attached };
+        return { ok: true, devices: data.devices, fcm_ready: data.fcm_ready, attached: data.attached, project_match: data.project_match };
       }
       scheduleFcmRetry();
       return fcmFail('server', data && data.error);
@@ -1064,8 +1123,12 @@
       phone: fcmState.phone, reason: fcmState.reason, attempts: fcmState.attempts,
       /* وضعیتِ سمتِ سرور: آیا «کلید سرویس فایربیس» هست و اعلانِ حالتِ بسته می‌رسد؟ */
       serverReady: fcmState.serverReady, serverReason: fcmState.serverReason,
+      /* پروژه‌ی فایربیس اپ در برابر پروژه‌ی کلید سرویس سرور (false = SenderId mismatch) */
+      appProject: fcmState.appProject, keyProject: fcmState.keyProject, projectMatch: fcmState.projectMatch,
       /* آخرین پیام سرور درباره‌ی جدول اعلان‌ها (دیتابیس قدیمی/خطای خواندن) */
       serverNotice: serverNoticeLine,
+      /* نتیجه‌ی آخرین دریافت فهرست اعلان‌ها (ok:N / http:S / json / net:…) و سکوی اپ */
+      lastPoll: lastPollOutcome, platform: appPlatform(), version: LIVE_VERSION,
       at: fcmState.at, native: diag
     };
   };
@@ -1256,6 +1319,10 @@
       if (!cfg) return null;
       if (typeof cfg.fcm_ready === 'boolean') fcmState.serverReady = cfg.fcm_ready;
       fcmState.serverReason = String(cfg.fcm_reason || '');
+      if (cfg.fcm_key_project) fcmState.keyProject = String(cfg.fcm_key_project);
+      if (typeof cfg.fcm_project_match === 'boolean' && fcmState.projectMatch === null) {
+        fcmState.projectMatch = cfg.fcm_project_match;
+      }
       return cfg;
     }).catch(function () { return null; });
   }

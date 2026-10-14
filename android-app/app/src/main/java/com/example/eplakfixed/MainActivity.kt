@@ -969,7 +969,33 @@ class MainActivity : AppCompatActivity() {
                     false
                 }
             )
+            try {
+                info.put("project", JSONObject(getFcmProject()))
+            } catch (ignored: Throwable) {
+            }
             return info.toString()
+        }
+
+        /**
+         * پروژه‌ی فایربیسی که همین APK با آن ساخته شده (از google-services.json که
+         * افزونه‌ی google-services هنگام ساخت داخل منابع اپ می‌گذارد).
+         * اپ آن را همراه ثبت دستگاه برای سرور می‌فرستد تا پنل بی‌درنگ بفهمد
+         * «کلید سرویس» از همین پروژه است یا نه (وگرنه گوگل هر ارسال را با
+         * SenderId mismatch رد می‌کند و اعلان حالت بسته هرگز نمی‌رسد).
+         * خروجی: {"project_id":"…","sender_id":"…","app_id":"…"} یا {} اگر فایربیس نباشد.
+         */
+        @JavascriptInterface
+        fun getFcmProject(): String {
+            val out = JSONObject()
+            try {
+                val options = com.google.firebase.FirebaseApp.getInstance().options
+                out.put("project_id", options.projectId ?: "")
+                out.put("sender_id", options.gcmSenderId ?: "")
+                out.put("app_id", options.applicationId)
+            } catch (e: Throwable) {
+                /* فایربیس راه‌اندازی نشده (google-services.json نبوده) */
+            }
+            return out.toString()
         }
 
         /** باز کردن «تنظیمات اعلان» همین برنامه (وقتی اندروید دیگر پنجره‌ی اجازه را نشان نمی‌دهد) */
