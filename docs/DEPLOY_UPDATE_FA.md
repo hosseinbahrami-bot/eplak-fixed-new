@@ -7,6 +7,25 @@
 
 ## ۱) فایل‌هایی که باید آپلود شوند
 
+### بسته را از کجا بگیرم؟
+
+بسته‌ی `eplak-fixed-update.zip` **دیگر در مخزن نگه داشته نمی‌شود**؛ هر بار که کد
+عوض شود، ورک‌فلوی `.github/workflows/build-update-package.yml` آن را از کدِ روز
+می‌سازد و در ریلیز `latest-update` منتشر می‌کند. پس این آدرس همیشه تازه‌ترین
+بسته است (بدون شماره‌ی نسخه):
+
+```
+https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/latest-update/eplak-fixed-update.zip
+```
+
+(یا صفحه‌ی Releases ← «بسته‌ی به‌روزرسانی سایت (خودکار از کد روز)». در هر اجرای
+CI همان فایل به‌عنوان **Artifact** هم برای شاخه‌های دیگر/PR در دسترس است.)
+
+همراه بسته یک فایل `eplak-fixed-update.zip.sha256` هم هست تا درستی دانلود را
+بسنجید: `sha256sum -c eplak-fixed-update.zip.sha256`.
+
+---
+
 اگر از فایل `eplak-fixed-update.zip` استفاده می‌کنید، همه‌ی فایل‌های لازم داخلش هست؛
 کافی است محتوایش را در ریشه‌ی `eplak-fixed/` روی هاست «Extract» کنید.
 
@@ -62,8 +81,18 @@
 
 1. **ترمیم خودکار دیتابیس:** یک‌بار وارد پنل شوید
    (`https://eplak.ir/eplak-fixed/admin/login.php`).
-   کد جدید خودش ستون‌های تازه (مثل `notifications.send_id`) را به دیتابیس اضافه می‌کند.
+   کد جدید خودش ستون‌های تازه (مثل `notifications.send_id`) را به دیتابیس اضافه می‌کند،
+   کلید خارجیِ مزاحم `notifications.user_phone` را برمی‌دارد و نویسه‌گان جدول اعلان‌ها
+   را به `utf8mb4` تبدیل می‌کند (تا ایموجی عنوان/متن ذخیره شود).
    برای اطمینان: **تنظیمات پنل → ساختار دیتابیس → دکمه‌ی «بررسی و ترمیم ساختار دیتابیس»**.
+
+   اگر کاربر دیتابیس اجازه‌ی `ALTER` نداشته باشد، اعلان‌ها **باز هم** کار می‌کنند
+   (کد در «حالت سازگار» بدون آن ستون و بدون ایموجی ذخیره/نمایش می‌دهد و اپ به‌جای
+   صفحه‌ی خالی، پیام علت را نشان می‌دهد). برای ترمیم قطعی و یک‌جا، این فایل را یک‌بار
+   در phpMyAdmin اجرا کنید: `backend/fix-notifications-db.sql`.
+
+   > 🩺 اگر اعلان‌ها در اپ نمی‌آیند یا پنل «⚠️ خطا در ارسال» می‌دهد، همه‌ی علت‌ها و
+   > راه‌حل‌ها: **`docs/NOTIFICATIONS_FA.md`**.
 2. **کش مرورگر:** در اپ/سایت یک‌بار صفحه را با `Ctrl+F5` (یا در گوشی: بستن کامل اپ و باز کردن دوباره)
    تازه کنید. فایل `.htaccess` جدید کاری می‌کند که از این به بعد
    `index.html` و فایل‌های JS کش نشوند و تغییرات بعدی فوراً دیده شوند.
@@ -157,7 +186,7 @@
 
 ### ۶-۴) دانلود و نصب APK تازه (بدون Android Studio)
 **لینک ثابت دانلود:**
-`https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk`
+`https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk`
 
 یا صفحه‌ی Releases → بخش Assets → `eplak-app.apk`
 

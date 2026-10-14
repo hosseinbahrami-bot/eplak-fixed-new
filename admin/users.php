@@ -7,7 +7,13 @@ $users = getAllUsers($pdo);
 // محاسبه آمار
 $totalUsers = count($users);
 $activeUsers = count(array_filter($users, fn($u) => ($u['report_count'] ?? 0) > 0));
-$newUsers = count(array_filter($users, fn($u) => strtotime($u['created_at']) > strtotime('-7 days')));
+/* «کاربران جدید» با ساعتِ خودِ دیتابیس سنجیده می‌شود (created_at و اکنون هر دو
+   از یک ساعت) تا ۳:۳۰ جابه‌جاییِ منطقه‌ی زمانی مرزِ هفته را عوض نکند. */
+$weekSeconds = 7 * 86400;
+$newUsers = count(array_filter($users, function ($u) use ($pdo, $weekSeconds) {
+    $age = eplakDbAgeSeconds($u['created_at'] ?? null, $pdo);
+    return $age >= 0 && $age <= $weekSeconds;
+}));
 ?>
 <!doctype html>
 <html lang="fa" dir="rtl">
@@ -131,7 +137,7 @@ $newUsers = count(array_filter($users, fn($u) => strtotime($u['created_at']) > s
                       <i class="fas fa-flag"></i> <?= (int)$user['report_count'] ?>
                     </a>
                   </td>
-                  <td><?= htmlspecialchars($user['created_at']) ?></td>
+                  <td><?= htmlspecialchars(eplakFaDateTimeOf($user['created_at'] ?? null, '—')) ?></td>
                   <td>
                     <div class="action-buttons">
                       <a href="user_view.php?id=<?= (int)$user['id'] ?>" class="btn-action view" title="مشاهده">

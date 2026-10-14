@@ -289,12 +289,12 @@ if (!isset($ticket['code'])) {
                 </span>
                 <span>
                   <i class="fas fa-calendar" style="color: var(--dark-400);"></i>
-                  تاریخ ثبت: <strong><?= htmlspecialchars($ticket['created_at']) ?></strong>
+                  تاریخ ثبت: <strong><?= htmlspecialchars(eplakFaDateTimeOf($ticket['created_at'] ?? null, '—')) ?></strong>
                 </span>
                 <?php if (!empty($ticket['updated_at']) && $ticket['updated_at'] !== $ticket['created_at']): ?>
                   <span>
                     <i class="fas fa-edit" style="color: var(--dark-400);"></i>
-                    آخرین بروزرسانی: <strong><?= htmlspecialchars($ticket['updated_at']) ?></strong>
+                    آخرین بروزرسانی: <strong><?= htmlspecialchars(eplakFaDateTimeOf($ticket['updated_at'] ?? null, '—')) ?></strong>
                   </span>
                 <?php endif; ?>
                 <span>

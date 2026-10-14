@@ -325,12 +325,12 @@ if ($report && !isset($report['code'])) {
                 </span>
                 <span style="font-size: 13px; color: var(--dark-500);">
                   <i class="fas fa-calendar" style="color: var(--dark-400);"></i>
-                  تاریخ ثبت: <strong style="color: var(--dark-900);"><?= htmlspecialchars($report['created_at']) ?></strong>
+                  تاریخ ثبت: <strong style="color: var(--dark-900);"><?= htmlspecialchars(eplakFaDateTimeOf($report['created_at'] ?? null, '—')) ?></strong>
                 </span>
                 <?php if (!empty($report['updated_at']) && $report['updated_at'] !== $report['created_at']): ?>
                   <span style="font-size: 13px; color: var(--dark-500);">
                     <i class="fas fa-edit" style="color: var(--dark-400);"></i>
-                    آخرین بروزرسانی: <strong style="color: var(--dark-900);"><?= htmlspecialchars($report['updated_at']) ?></strong>
+                    آخرین بروزرسانی: <strong style="color: var(--dark-900);"><?= htmlspecialchars(eplakFaDateTimeOf($report['updated_at'] ?? null, '—')) ?></strong>
                   </span>
                 <?php endif; ?>
               </div>

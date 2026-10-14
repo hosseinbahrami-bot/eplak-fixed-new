@@ -57,12 +57,30 @@ $input = static function (string $key, $default = null) use ($json) {
 };
 
 $action = trim((string) $input('action', ''));
-$phone  = preg_replace('/[^0-9+]/', '', trim((string) $input('phone', ''))) ?? '';
+/* شماره با همان قاعده‌ی همه‌ی پروژه یکدست می‌شود (۰۹۱۲… / +۹۸۹۱۲… / ۹۱۲… /
+   رقم فارسی → 09xxxxxxxxx). پیش‌تر فقط نویسه‌های غیررقمی حذف می‌شدند، پس
+   اعلانی که با «+98…» ذخیره شده بود در فهرست اپ پیدا نمی‌شد. */
+$phone  = function_exists('eplakPhoneKey')
+    ? eplakPhoneKey((string) $input('phone', ''))
+    : (preg_replace('/[^0-9+]/', '', trim((string) $input('phone', ''))) ?? '');
 if ($phone === 'all') {
     $phone = '';
 }
 $device   = preg_replace('/[^A-Za-z0-9_-]/', '', trim((string) $input('device', ''))) ?? '';
 $readerKey = eplakNotificationReaderKey($phone, $device);
+
+/* ── ساختار واقعی جدول اعلان‌ها (یک‌بار برای همه‌ی شاخه‌ها) ────────────────
+   دیتابیس قدیمیِ هاست (backend/eplak-db.sql) ستون send_id ندارد. پیش از این،
+   کوئری‌های همین فایل «همیشه» send_id را می‌خواستند و با خطای
+     SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id'
+   پاسخ ۵۰۰ برمی‌گشت؛ در نتیجه اپ «هیچ» اعلانی نمی‌دید — نه اعلان «ثبت
+   درخواست» و نه اعلان‌های پنل. حالا اول ستون ترمیم می‌شود و اگر ترمیم ممکن
+   نبود (کاربر دیتابیس اجازه‌ی ALTER ندارد) کوئری بدون همان ستون ساخته می‌شود. */
+$schema  = function_exists('eplakNotificationsSchema')
+    ? eplakNotificationsSchema($pdo)
+    : ['send_id' => true, 'read_flag' => true, 'emoji' => true, 'fk' => false, 'failed' => []];
+$hasSend = !empty($schema['send_id']);
+$hasRead = !array_key_exists('read_flag', $schema) || !empty($schema['read_flag']);
 
 /* فهرست شناسه‌ها از id / ids / all */
 $wantedIds = static function () use ($input): array {
@@ -149,11 +167,23 @@ try {
         }
 
         /* اگر همان کاربر ردیف اختصاصی دارد، ردیف مشترک «all» هم برای او خوانده‌شده
-           حساب می‌شود؛ پس رسید خواندن برای آن هم ثبت می‌شود. */
+           حساب می‌شود؛ پس رسید خواندن برای آن هم ثبت می‌شود.
+           (بدون ستون send_id این تفکیک ممکن نیست؛ همان ردیف‌های عمومی علامت
+           می‌خورند — وضعیت خوانده‌شدن «برای هر کاربر جدا» در جدول
+           notification_reads نگه داشته می‌شود و به این ستون وابسته نیست.) */
         if ($phone !== '') {
-            $stmt = $pdo->prepare("SELECT id FROM notifications WHERE (user_phone = 'all' OR user_phone = '') AND (send_id IS NULL OR send_id NOT IN (SELECT send_id FROM notifications WHERE user_phone = :phone AND send_id IS NOT NULL))");
-            $stmt->execute([':phone' => $phone]);
-            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $one) {
+            $publicIds = [];
+            if ($hasSend) {
+                $stmt = $pdo->prepare("SELECT id FROM notifications WHERE (user_phone = 'all' OR user_phone = '') AND (send_id IS NULL OR send_id NOT IN (SELECT send_id FROM notifications WHERE user_phone = :phone AND send_id IS NOT NULL))");
+                $stmt->execute([':phone' => $phone]);
+                $publicIds = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+            } else {
+                /* حالت سازگار: همه‌ی ردیف‌های عمومی (رسید خواندن برای همین
+                   کاربر ثبت می‌شود و به بقیه ربطی ندارد) */
+                $stmt = $pdo->query("SELECT id FROM notifications WHERE user_phone = 'all' OR user_phone = ''");
+                $publicIds = $stmt ? ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: []) : [];
+            }
+            foreach ($publicIds as $one) {
                 $ids[] = (int) $one;
             }
             $ids = array_values(array_unique($ids));
@@ -190,18 +220,26 @@ try {
     $onlyUnread = (string) $input('unread', '') === '1';
     $sinceId    = (int) $input('since_id', 0);
 
+    $cols   = 'id, title, body' . ($hasRead ? ', read_flag' : '') . ', created_at' . ($hasSend ? ', send_id' : '');
     $params = [];
     if ($phone !== '') {
         /* اعلان‌های خودِ کاربر + اعلان‌های عمومی‌ای که نسخه‌ی اختصاصی برای او ندارند */
-        $inner = 'SELECT id, title, body, read_flag, created_at, send_id FROM notifications WHERE user_phone = :phone
-                  UNION
-                  SELECT id, title, body, read_flag, created_at, send_id FROM notifications WHERE (user_phone = "all" OR user_phone = "")
-                  AND (send_id IS NULL OR send_id NOT IN (SELECT send_id FROM notifications WHERE user_phone = :phone2 AND send_id IS NOT NULL))';
+        $inner = "SELECT $cols FROM notifications WHERE user_phone = :phone";
+        if ($hasSend) {
+            $inner .= " UNION SELECT $cols FROM notifications WHERE (user_phone = 'all' OR user_phone = '')"
+                   . ' AND (send_id IS NULL OR send_id NOT IN (SELECT send_id FROM notifications WHERE user_phone = :phone2 AND send_id IS NOT NULL))';
+        } else {
+            /* بدون send_id نمی‌شود فهمید کدام اعلان عمومی «نسخه‌ی عمومیِ همان
+               اعلان اختصاصی» است؛ پس ردیف عمومیِ هم‌عنوان و هم‌متنِ اعلان
+               اختصاصیِ همین کاربر نادیده گرفته می‌شود تا اعلان دوبار دیده نشود. */
+            $inner .= " UNION SELECT $cols FROM notifications AS b WHERE (b.user_phone = 'all' OR b.user_phone = '')"
+                   . ' AND NOT EXISTS (SELECT 1 FROM notifications AS p WHERE p.user_phone = :phone2 AND p.title = b.title AND p.body = b.body)';
+        }
         $params[':phone']  = $phone;
         $params[':phone2'] = $phone;
     } else {
         /* کاربر مهمان: فقط اعلان‌های عمومی */
-        $inner = 'SELECT id, title, body, read_flag, created_at, send_id FROM notifications WHERE (user_phone = "all" OR user_phone = "")';
+        $inner = "SELECT $cols FROM notifications WHERE (user_phone = 'all' OR user_phone = '')";
     }
 
     $sql = "SELECT * FROM ($inner) AS eplak_notif";
@@ -211,9 +249,37 @@ try {
     }
     $sql .= ' ORDER BY eplak_notif.id DESC LIMIT 300';
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $rows = $stmt->fetchAll();
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+    } catch (Throwable $queryError) {
+        /* آخرین سنگر: ساده‌ترین کوئری ممکن، بدون هیچ ستون اختیاری.
+           حتی اگر ساختار دیتابیس خراب‌تر از این حرف‌ها باشد، کاربر «فهرست
+           اعلان‌هایش» را می‌بیند و اپ صفحه‌ی خالی نشان نمی‌دهد. */
+        error_log('[eplak-api:notifications] کوئری اصلی ناموفق؛ تلاش با کوئری ساده: ' . $queryError->getMessage());
+        try {
+            $schema  = function_exists('eplakNotificationsSchema') ? eplakNotificationsSchema($pdo, true) : $schema;
+            $hasSend = !empty($schema['send_id']);
+            $hasRead = !array_key_exists('read_flag', $schema) || !empty($schema['read_flag']);
+        } catch (Throwable $e) {
+            $hasSend = false;
+            $hasRead = false;
+        }
+        $cols   = 'id, title, body' . ($hasRead ? ', read_flag' : '') . ', created_at' . ($hasSend ? ', send_id' : '');
+        $simple = $phone !== ''
+            ? "SELECT $cols FROM notifications WHERE user_phone = :phone OR user_phone = 'all' OR user_phone = ''"
+            : "SELECT $cols FROM notifications WHERE user_phone = 'all' OR user_phone = ''";
+        $simpleParams = $phone !== '' ? [':phone' => $phone] : [];
+        if ($sinceId > 0) {
+            $simple .= ' AND id > :since_id';
+            $simpleParams[':since_id'] = $sinceId;
+        }
+        $simple .= ' ORDER BY id DESC LIMIT 300';
+        $stmt = $pdo->prepare($simple);
+        $stmt->execute($simpleParams);
+        $rows = $stmt->fetchAll();
+    }
 
     /* وضعیت خوانده‌شدن و حذف‌شدن مخصوص همین کاربر */
     $ids     = array_map(static fn(array $r) => (int) $r['id'], $rows);
@@ -227,7 +293,7 @@ try {
             /* کاربر این اعلان را حذف کرده است؛ در فهرست او نمایش داده نمی‌شود */
             continue;
         }
-        $isRead = ((int) $r['read_flag'] === 1) || isset($read[$id]);
+        $isRead = ((int) ($r['read_flag'] ?? 0) === 1) || isset($read[$id]);
         $items[] = [
             'id'         => $id,
             'title'      => $r['title'],
@@ -251,14 +317,45 @@ try {
         }
     }
 
+    /* «سازگار شده» یعنی دیتابیس قدیمی است و کد بدون ستون/ایموجیِ نبوده کار
+       کرده. اپ این را در پیام وضعیت اعلان نشان می‌دهد تا مدیر بداند باید
+       ساختار دیتابیس را ترمیم کند (پنل → تنظیمات → ترمیم ساختار دیتابیس). */
+    $degraded = [];
+    if (!$hasSend) {
+        $degraded[] = 'send_id';
+    }
+    if (!$hasRead) {
+        $degraded[] = 'read_flag';
+    }
+    if (!empty($schema['fk'])) {
+        $degraded[] = 'foreign_key';
+    }
+    if (array_key_exists('emoji', $schema) && empty($schema['emoji'])) {
+        $degraded[] = 'utf8mb3';
+    }
+
     echo json_encode([
         'success'       => true,
         'count'         => count($items),
         'unread'        => $unread,
         'notifications' => $items,
         'latest_id'     => !empty($items) ? $items[0]['id'] : 0,
+        'degraded'      => $degraded,
+        'hint'          => $degraded
+            ? 'ساختار جدول اعلان‌ها در دیتابیس قدیمی است؛ اعلان‌ها نمایش داده می‌شوند ولی برای ترمیم کامل، در پنل → تنظیمات → «ترمیم ساختار دیتابیس» را بزنید.'
+            : '',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 } catch (Throwable $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    /* هرگز «۵۰۰ خالی» برنمی‌گردانیم: اپ با پاسخ ناموفق، صفحه‌ی اعلان‌ها را
+       خالی نشان می‌داد و کاربر هیچ سرنخی از علت نداشت. حالا علت و راهنما
+       همراه پاسخ می‌رود و اپ همان را در پیام وضعیت اعلان نمایش می‌دهد. */
+    error_log('[eplak-api:notifications] ' . $e->getMessage());
+    echo json_encode([
+        'success'       => false,
+        'count'         => 0,
+        'unread'        => 0,
+        'notifications' => [],
+        'error'         => $e->getMessage(),
+        'hint'          => 'خواندن فهرست اعلان‌ها از دیتابیس ممکن نشد. در پنل → تنظیمات → «ترمیم ساختار دیتابیس» را بزنید و دوباره امتحان کنید.',
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }

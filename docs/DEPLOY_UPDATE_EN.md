@@ -7,14 +7,20 @@ changes **appear on the real site**.
 
 ## 1) Where to go — download the package
 
-Download the update package (one file):
+Download the update package (one file). The zip is **no longer stored in the
+repository**: every time the code changes, the workflow
+`.github/workflows/build-update-package.yml` rebuilds it from the current code and
+publishes it to the rolling `latest-update` release, so this URL is always the
+newest package (no version number needed):
 
-- **Direct link:**
-  `https://github.com/hosseinbahrami-bot/eplak-fixed/raw/main/eplak-fixed-update.zip`
-- or open the file page and click **Download**:
-  `https://github.com/hosseinbahrami-bot/eplak-fixed/blob/main/eplak-fixed-update.zip`
-- Release page with the same link and notes:
-  `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/tag/v2.0-eplak-update`
+- **Direct link (always fresh):**
+  `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/latest-update/eplak-fixed-update.zip`
+- **Checksum** next to it: `eplak-fixed-update.zip.sha256`
+  (`sha256sum -c eplak-fixed-update.zip.sha256`)
+- Release page with build notes (branch, commit, size, file count):
+  `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/tag/latest-update`
+- Any other branch / pull request: the same zip is attached to that CI run as an
+  **Artifact** (`eplak-fixed-update`).
 
 The package contains **code only**. These are intentionally NOT inside it and
 will not be overwritten: `data/` (database), `uploads/` (citizens' photos and
@@ -69,9 +75,19 @@ click **Pull or Deploy** on that page.
 
 1. **Automatic database repair.** Log in to the panel once:
    `https://eplak.ir/eplak-fixed/admin/login.php`
-   The new code adds the missing columns (e.g. `notifications.send_id`) by itself.
+   The new code adds the missing columns (e.g. `notifications.send_id`) by itself,
+   drops the obstructing foreign key on `notifications.user_phone` and converts the
+   notifications table to `utf8mb4` (so emoji titles/bodies are stored).
    To be sure: **Panel → Settings (تنظیمات) → Database structure
    (ساختار دیتابیس) → the "بررسی و ترمیم ساختار دیتابیس" button**.
+
+   If the database user has no `ALTER` privilege, notifications **still work**: the
+   code stores and serves them in "compatible mode" (without that column and without
+   emoji), and the app shows the reason instead of an empty, unexplained list. For a
+   one-shot definitive repair run `backend/fix-notifications-db.sql` in phpMyAdmin.
+
+   > 🩺 If notifications do not reach the app, or the panel shows "⚠️ خطا در ارسال",
+   > every root cause and its fix is documented in **`docs/NOTIFICATIONS_FA.md`**.
 2. **Browser cache.** Refresh once with `Ctrl+F5` (on a phone: fully close the app
    and reopen it). The new `.htaccess` stops `index.html` and the JS files from
    being cached, so every future change shows up immediately.
@@ -182,7 +198,7 @@ automatically and produces a new APK **with the Firebase code and config baked i
 
 ### 6.1.4) Downloading and installing the fresh APK (no Android Studio)
 **Stable download link:**
-`https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk`
+`https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk`
 
 (or the Releases page → Assets → `eplak-app.apk`). On the phone: download →
 allow “install from unknown sources” → install. If you see “App not installed”,

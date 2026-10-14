@@ -156,11 +156,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'repair_schema') {
         $report = eplakRunSchemaSync($pdo, true);
-        if ($report['failed']) {
-            $message = '⚠️ برخی ستون‌ها اضافه نشد: ' . implode(' | ', array_slice($report['failed'], 0, 4));
+
+        /* ساختار «جدول اعلان‌ها» هم اجباری ترمیم می‌شود: ستون send_id، کلید
+           خارجیِ مزاحمِ user_phone و نویسه‌گان utf8mb4 — ریشه‌ی «اعلان در اپ
+           نمی‌آید» و «Unknown column 'send_id'» در پنل. این ترمیم مستقل از
+           نسخه‌ی اسکیما است، پس حتی وقتی درِ همگام‌سازی بسته است انجام می‌شود. */
+        $notif = function_exists('eplakNotificationsSchema') ? eplakNotificationsSchema($pdo, true) : [];
+
+        /* ساختار «جدول اخبار و دانستنی‌ها» هم ترمیم می‌شود: اگر جدول news در
+           دیتابیس نباشد ساخته می‌شود، ستون‌های نبوده (badge/image_url/…) اضافه
+           می‌شوند و جدول به utf8mb4 می‌رود تا ایموجیِ آیکون‌ها ذخیره شود.
+           ریشه‌ی «اخبار و اطلاعیه‌ها در اپ و پنل خالی است» همین است. */
+        $news = function_exists('eplakNewsSchema') ? eplakNewsSchema($pdo, true) : [];
+        $newsSeeded = 0;
+        if (function_exists('eplakSeedDefaultNews')) {
+            eplakSetAppSetting($pdo, 'news_seeded', '');
+            $newsSeedReport = null;
+            $newsSeeded = eplakSeedDefaultNews($pdo, $newsSeedReport);
+        }
+
+        $problems = array_merge(
+            array_slice((array) ($report['failed'] ?? []), 0, 3),
+            array_slice((array) ($notif['failed'] ?? []), 0, 3),
+            array_slice((array) ($news['failed'] ?? []), 0, 3)
+        );
+        $done = array_merge(
+            (array) ($report['added'] ?? []),
+            (array) ($notif['repaired'] ?? []),
+            (array) ($news['repaired'] ?? [])
+        );
+        if ($newsSeeded > 0) {
+            $done[] = 'درج ' . $newsSeeded . ' مطلب پیش‌فرض در جدول اخبار';
+        }
+
+        if ($problems) {
+            $message = '⚠️ برخی ترمیم‌ها انجام نشد: ' . implode(' | ', $problems)
+                . ' — اعلان‌ها همچنان در «حالت سازگار» ذخیره و نمایش داده می‌شوند؛'
+                . ' برای ترمیم قطعی، backend/fix-notifications-db.sql را یک‌بار در phpMyAdmin اجرا کنید.';
             $messageType = 'danger';
-        } elseif ($report['added']) {
-            $message = '✅ ساختار دیتابیس ترمیم شد. ستون‌های اضافه‌شده: ' . implode('، ', $report['added']);
+        } elseif ($done) {
+            $message = '✅ ساختار دیتابیس ترمیم شد: ' . implode('، ', array_slice($done, 0, 6));
             $messageType = 'success';
         } else {
             $message = '✅ ساختار دیتابیس کامل است؛ چیزی برای ترمیم نبود.';
@@ -181,6 +216,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $schemaReport  = eplakSchemaSyncReport();
 $schemaVersion = (string) eplakAppSetting($pdo, 'schema_version', '');
+/* وضعیت «جدول اعلان‌ها» برای نمایش در همین صفحه (ارزان: یک نشانگر + یک کاوش ستون) */
+$notifSchema = function_exists('eplakNotificationsSchema') ? eplakNotificationsSchema($pdo) : null;
+$newsSchema  = function_exists('eplakNewsSchema') ? eplakNewsSchema($pdo) : null;
 
 $vapid        = eplakVapidKeys($pdo, false);
 $vapidReady   = $vapid['ready'];
@@ -304,7 +342,7 @@ $httpsOn = eplakIsHttpsRequest();
           </div>
           <div class="kv-row">
             <span class="kv-key">تاریخ ایجاد حساب</span>
-            <span class="kv-val"><?= htmlspecialchars((string) ($admin['created_at'] ?? '—')) ?></span>
+            <span class="kv-val"><?= htmlspecialchars(eplakFaDateTimeOf($admin['created_at'] ?? null, '—')) ?></span>
           </div>
         </div>
 
@@ -389,7 +427,7 @@ $httpsOn = eplakIsHttpsRequest();
               <?php else: ?>
                 «<?= htmlspecialchars($pushStats['last_send_title']) ?>» —
                 <?= (int) $pushStats['last_sent'] ?> موفق، <?= (int) $pushStats['last_failed'] ?> ناموفق
-                <span style="color: var(--dark-400); font-size: 12px;">(<?= htmlspecialchars($pushStats['last_send_at']) ?>)</span>
+                <span style="color: var(--dark-400); font-size: 12px;">(<?= htmlspecialchars(eplakFaDateTimeOf($pushStats['last_send_at'] ?? null, '—')) ?>)</span>
               <?php endif; ?>
             </span>
           </div>
@@ -426,7 +464,7 @@ $httpsOn = eplakIsHttpsRequest();
                     <td><?= htmlspecialchars((string) ($err['user_phone'] !== '' ? $err['user_phone'] : 'مهمان')) ?></td>
                     <td><?= (int) $err['fail_count'] ?></td>
                     <td style="font-size: 12px; direction: ltr; text-align: left;"><?= htmlspecialchars(mb_substr((string) $err['last_error'], 0, 160)) ?></td>
-                    <td style="font-size: 12px;"><?= htmlspecialchars((string) $err['updated_at']) ?></td>
+                    <td style="font-size: 12px;"><?= htmlspecialchars(eplakFaDateTimeOf($err['updated_at'] ?? null, '—')) ?></td>
                   </tr>
                 <?php endforeach; ?>
               </tbody>
@@ -584,7 +622,7 @@ $httpsOn = eplakIsHttpsRequest();
                 <tr>
                   <td dir="ltr" style="text-align:right;"><?= htmlspecialchars($maskPhone((string) $d['user_phone'])) ?></td>
                   <td><?= (int) $d['is_active'] === 1 ? '<span class="pill pill-ok">فعال</span>' : '<span class="pill pill-bad">غیرفعال</span>' ?></td>
-                  <td dir="ltr" style="text-align:right;"><?= htmlspecialchars((string) ($d['last_seen_at'] ?? '')) ?></td>
+                  <td dir="rtl" style="text-align:right;"><?= htmlspecialchars(eplakFaDateTimeOf($d['last_seen_at'] ?? null, '—')) ?></td>
                   <td style="color:var(--dark-500); word-break:break-word;"><?= htmlspecialchars((string) ($d['last_error'] ?? '')) ?: '—' ?></td>
                 </tr>
               <?php endforeach; ?>
@@ -604,7 +642,7 @@ $httpsOn = eplakIsHttpsRequest();
               <?php foreach ($fcmLogRows as $r): ?>
                 <?php $lab = $pushOutcomeLabels[(string) $r['outcome']] ?? [(string) $r['outcome'], 'warn']; ?>
                 <tr>
-                  <td dir="ltr" style="text-align:right;"><?= htmlspecialchars((string) ($r['created_at'] ?? '')) ?></td>
+                  <td dir="rtl" style="text-align:right;"><?= htmlspecialchars(eplakFaDateTimeOf($r['created_at'] ?? null, '—')) ?></td>
                   <td dir="ltr" style="text-align:right;"><?= htmlspecialchars($maskPhone((string) $r['user_phone'])) ?></td>
                   <td><?= htmlspecialchars(($r['code'] ?? '') !== '' ? (string) $r['code'] : (string) $r['kind']) ?></td>
                   <td><span class="pill pill-<?= htmlspecialchars($lab[1]) ?>"><?= htmlspecialchars($lab[0]) ?></span>
@@ -642,16 +680,83 @@ $httpsOn = eplakIsHttpsRequest();
           <div class="kv-row"><span class="kv-key">گزارش‌های دارای عکس/فیلم</span><span class="kv-val"><?= (int) getDashboardStats($pdo)['reports_with_media'] ?> مورد</span></div>
         </div>
 
-        <h3 style="margin-top: 22px; font-size: 15px;">ساختار دیتابیس (جدول‌ها و ستون‌ها)</h3>
+        <h3 id="schema" style="margin-top: 22px; font-size: 15px;">ساختار دیتابیس (جدول‌ها و ستون‌ها)</h3>
         <p class="field-hint">
           اگر نسخه‌ی جدید به ستون تازه‌ای نیاز داشته باشد، هنگام باز شدن پنل خودکار به دیتابیس اضافه می‌شود.
-          در صورت دیدن خطای «Unknown column»، دکمه‌ی ترمیم را بزنید.
+          در صورت دیدن خطای «Unknown column» یا «اعلان در اپ نمی‌آید»، دکمه‌ی ترمیم را بزنید:
+          ستون <code>notifications.send_id</code> را اضافه می‌کند، کلید خارجیِ مزاحم را برمی‌دارد و
+          نویسه‌گان جدول اعلان‌ها را به <code>utf8mb4</code> (برای ایموجی) تبدیل می‌کند.
+          همین دکمه جدول <code>news</code> را هم تعمیر می‌کند (ساخت جدول اگر در دامپ قدیمی نبود،
+          افزودن ستون <code>badge</code>/<code>image_url</code> و تبدیل به <code>utf8mb4</code>)؛
+          اگر جدول اخبار خالی باشد، مطالب پیش‌فرض یک‌بار درج می‌شوند.
+          اگر کاربر دیتابیس اجازه‌ی <code>ALTER</code> ندارد، <code>backend/fix-notifications-db.sql</code>
+          را یک‌بار در phpMyAdmin اجرا کنید (جزئیات: <code>docs/NOTIFICATIONS_FA.md</code>).
         </p>
         <div class="kv-list">
           <div class="kv-row">
             <span class="kv-key">نسخه‌ی ساختار دیتابیس</span>
             <span class="kv-val" style="direction:ltr"><?= htmlspecialchars($schemaVersion !== '' ? $schemaVersion : '—') ?></span>
           </div>
+          <?php if ($notifSchema): ?>
+            <div class="kv-row">
+              <span class="kv-key">جدول اعلان‌ها</span>
+              <span class="kv-val">
+                <?php if (!empty($notifSchema['send_id'])): ?>
+                  <span class="pill pill-ok">send_id دارد</span>
+                <?php else: ?>
+                  <span class="pill pill-bad">send_id ندارد (اعلان در حالت سازگار)</span>
+                <?php endif; ?>
+                <?php if (!empty($notifSchema['fk'])): ?>
+                  <span class="pill pill-bad">کلید خارجی مزاحم هست</span>
+                <?php else: ?>
+                  <span class="pill pill-ok">کلید خارجی مزاحم ندارد</span>
+                <?php endif; ?>
+                <?php if (empty($notifSchema['emoji'])): ?>
+                  <span class="pill pill-bad">نویسه‌گان سه‌بایتی (ایموجی حذف می‌شود)</span>
+                <?php else: ?>
+                  <span class="pill pill-ok">utf8mb4 (ایموجی ذخیره می‌شود)</span>
+                <?php endif; ?>
+              </span>
+            </div>
+            <?php if (!empty($notifSchema['failed'])): ?>
+              <div class="kv-row">
+                <span class="kv-key">ترمیمِ ناموفق</span>
+                <span class="kv-val"><?= htmlspecialchars(implode(' | ', (array) $notifSchema['failed'])) ?></span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">راه جایگزین</span>
+                <span class="kv-val" style="direction:ltr; text-align:left;"><code>backend/fix-notifications-db.sql</code></span>
+              </div>
+            <?php endif; ?>
+          <?php endif; ?>
+          <?php if ($newsSchema): ?>
+            <div class="kv-row">
+              <span class="kv-key">جدول اخبار و دانستنی‌ها</span>
+              <span class="kv-val">
+                <?php if (!empty($newsSchema['table'])): ?>
+                  <span class="pill pill-ok">جدول news هست</span>
+                <?php else: ?>
+                  <span class="pill pill-bad">جدول news نیست (فهرست اخبار خالی)</span>
+                <?php endif; ?>
+                <?php if (!empty($newsSchema['columns']['badge']) && !empty($newsSchema['columns']['image_url'])): ?>
+                  <span class="pill pill-ok">badge و image_url دارد</span>
+                <?php else: ?>
+                  <span class="pill pill-bad">ستون badge یا image_url ندارد (مطالب «سازگار» ذخیره می‌شوند)</span>
+                <?php endif; ?>
+                <?php if (empty($newsSchema['emoji'])): ?>
+                  <span class="pill pill-bad">نویسه‌گان سه‌بایتی (ایموجی حذف می‌شود)</span>
+                <?php else: ?>
+                  <span class="pill pill-ok">utf8mb4 (ایموجی ذخیره می‌شود)</span>
+                <?php endif; ?>
+              </span>
+            </div>
+            <?php if (!empty($newsSchema['failed'])): ?>
+              <div class="kv-row">
+                <span class="kv-key">ترمیمِ ناموفق (اخبار)</span>
+                <span class="kv-val"><?= htmlspecialchars(implode(' | ', (array) $newsSchema['failed'])) ?></span>
+              </div>
+            <?php endif; ?>
+          <?php endif; ?>
           <?php if ($schemaReport['ran']): ?>
             <div class="kv-row">
               <span class="kv-key">آخرین همگام‌سازی</span>

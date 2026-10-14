@@ -123,7 +123,7 @@ if (!isset($ticket['code'])) {
             <?php if (!empty($userInfo['address'])): ?>
               <span><i class="fas fa-map-pin"></i> <?= htmlspecialchars($userInfo['address']) ?></span>
             <?php endif; ?>
-            <span><i class="fas fa-calendar-alt"></i> عضو از: <?= htmlspecialchars($userInfo['created_at'] ?? 'نامشخص') ?></span>
+            <span><i class="fas fa-calendar-alt"></i> عضو از: <?= htmlspecialchars(eplakFaDate($userInfo['created_at'] ?? null, 'نامشخص')) ?></span>
           </div>
         </div>
       </div>
@@ -146,7 +146,7 @@ if (!isset($ticket['code'])) {
           </div>
           <div class="meta-info">
             <span class="meta-label">تاریخ ثبت</span>
-            <span class="meta-value"><?= htmlspecialchars($ticket['created_at']) ?></span>
+            <span class="meta-value"><?= htmlspecialchars(eplakFaDateTimeOf($ticket['created_at'] ?? null, '—')) ?></span>
           </div>
         </div>
         <div class="meta-card">
@@ -251,7 +251,7 @@ if (!isset($ticket['code'])) {
           <div class="text-block reply-text">
             <div class="reply-meta">
               <span><i class="fas fa-user-check" style="color: var(--primary-500);"></i> پاسخ ادمین</span>
-              <span><i class="fas fa-clock" style="color: var(--dark-400);"></i> <?= htmlspecialchars($ticket['updated_at'] ?? date('Y-m-d H:i')) ?></span>
+              <span><i class="fas fa-clock" style="color: var(--dark-400);"></i> <?= htmlspecialchars(eplakFaDateTimeOf($ticket['updated_at'] ?? null, eplakFaNow())) ?></span>
             </div>
             <?= nl2br(htmlspecialchars($ticket['reply'])) ?>
           </div>
@@ -441,12 +441,12 @@ if (!isset($ticket['code'])) {
                 </span>
                 <span>
                   <i class="fas fa-calendar" style="color: var(--dark-400);"></i>
-                  تاریخ ثبت: <strong><?= htmlspecialchars($ticket['created_at']) ?></strong>
+                  تاریخ ثبت: <strong><?= htmlspecialchars(eplakFaDateTimeOf($ticket['created_at'] ?? null, '—')) ?></strong>
                 </span>
                 <?php if (!empty($ticket['updated_at']) && $ticket['updated_at'] !== $ticket['created_at']): ?>
                   <span>
                     <i class="fas fa-edit" style="color: var(--dark-400);"></i>
-                    آخرین بروزرسانی: <strong><?= htmlspecialchars($ticket['updated_at']) ?></strong>
+                    آخرین بروزرسانی: <strong><?= htmlspecialchars(eplakFaDateTimeOf($ticket['updated_at'] ?? null, '—')) ?></strong>
                   </span>
                 <?php endif; ?>
               </div>

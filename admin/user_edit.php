@@ -129,7 +129,7 @@ $reportsCount = count(getReportsByUser($pdo, $user['phone']));
               <span><i class="fas fa-envelope"></i> <?= htmlspecialchars($user['email']) ?></span>
             <?php endif; ?>
             <span><i class="fas fa-flag"></i> تعداد گزارش‌ها: <strong><?= $reportsCount ?></strong></span>
-            <span><i class="fas fa-calendar-alt"></i> عضو از: <?= htmlspecialchars($user['created_at'] ?? 'نامشخص') ?></span>
+            <span><i class="fas fa-calendar-alt"></i> عضو از: <?= htmlspecialchars(eplakFaDate($user['created_at'] ?? null, 'نامشخص')) ?></span>
           </div>
         </div>
       </div>
@@ -267,7 +267,7 @@ $reportsCount = count(getReportsByUser($pdo, $user['phone']));
                 </span>
                 <span style="font-size: 13px; color: var(--dark-500);">
                   <i class="fas fa-clock" style="color: var(--dark-400);"></i>
-                  آخرین بروزرسانی: <strong><?= htmlspecialchars($user['updated_at'] ?? $user['created_at'] ?? 'نامشخص') ?></strong>
+                  آخرین بروزرسانی: <strong><?= htmlspecialchars(eplakFaDateTimeOf($user['updated_at'] ?? $user['created_at'] ?? null, 'نامشخص')) ?></strong>
                 </span>
                 <span style="font-size: 13px; color: var(--dark-500);">
                   <i class="fas fa-id-badge" style="color: var(--dark-400);"></i>

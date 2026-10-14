@@ -26,24 +26,32 @@
     'مهر','آبان','آذر','دی','بهمن','اسفند'
   ];
   const JALALI_WEEKDAYS = ['یک‌شنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنج‌شنبه','جمعه','شنبه'];
+  /* تقویمِ اپ در هر دو زبان شمسی است؛ در رابط انگلیسی نام ماه‌های شمسی به
+     انگلیسی و رقم‌ها لاتین نوشته می‌شوند (نه تاریخ میلادی). */
+  const JALALI_MONTHS_EN = [
+    'Farvardin','Ordibehesht','Khordad','Tir','Mordad','Shahrivar',
+    'Mehr','Aban','Azar','Dey','Bahman','Esfand'
+  ];
+  const JALALI_WEEKDAYS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
   function getJalaliDateStr(date) {
     const [jy, jm, jd] = toJalali(date.getFullYear(), date.getMonth() + 1, date.getDate());
     const weekday = JALALI_WEEKDAYS[date.getDay()];
     const short = toPersianDigits(jy) + '/' + toPersianDigits(String(jm).padStart(2,'0')) + '/' + toPersianDigits(String(jd).padStart(2,'0'));
     const full  = toPersianDigits(jd) + ' ' + JALALI_MONTHS[jm - 1] + ' ' + toPersianDigits(jy);
-    return { short, full, weekday };
+    const shortEn = jy + '/' + String(jm).padStart(2,'0') + '/' + String(jd).padStart(2,'0');
+    const fullEn  = jd + ' ' + JALALI_MONTHS_EN[jm - 1] + ' ' + jy;
+    return { short, full, weekday, shortEn, fullEn, weekdayEn: JALALI_WEEKDAYS_EN[date.getDay()] };
   }
 
   /* ساعت زنده — هر ثانیه به‌روز می‌شود */
   let _dashClockTimer = null;
   function startDashClock() {
     if (_dashClockTimer) clearInterval(_dashClockTimer);
-    const EN_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const EN_WEEKDAYS = JALALI_WEEKDAYS_EN;   /* نام روزها انگلیسی، تقویم شمسی */
 
     function tick() {
-      const now  = new Date();
+      const now  = (typeof window.eplakNow === 'function' ? window.eplakNow() : new Date());
       const hh   = String(now.getHours()).padStart(2, '0');
       const mm   = String(now.getMinutes()).padStart(2, '0');
       const ss   = String(now.getSeconds()).padStart(2, '0');
@@ -64,11 +72,11 @@
       const fullEl = document.getElementById('dashFullDate');
       const wdEl = document.getElementById('dashWeekDay');
 
+      const jalali = getJalaliDateStr(now);
       if (isEn) {
-        if (fullEl) fullEl.textContent = `${now.getDate()} ${EN_MONTHS[now.getMonth()]} ${now.getFullYear()}`;
-        if (wdEl) wdEl.textContent = EN_WEEKDAYS[now.getDay()];
+        if (fullEl) fullEl.textContent = jalali.fullEn;
+        if (wdEl) wdEl.textContent = jalali.weekdayEn;
       } else {
-        const jalali = getJalaliDateStr(now);
         if (fullEl) fullEl.textContent = jalali.full;
         if (wdEl) wdEl.textContent = jalali.weekday;
       }
@@ -109,9 +117,11 @@
         <div class="mini-news-card" onclick="openNewsDetail('${n.id}')">
           <div class="mini-news-text" style="text-align:${isEn ? 'left' : 'right'};">
             <h4>${escapeHtml(n.title)}</h4>
-            <p>${n.date}</p>
+            <p>${escapeHtml(n.date || '')}</p>
           </div>
-          <div class="mini-news-icon">${window.EplakIcons ? window.EplakIcons.get(n.icon) : n.icon}</div>
+          ${n.image
+            ? `<div class="mini-news-icon" style="padding:0; overflow:hidden;"><img src="${escapeHtml(n.image)}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:inherit;"></div>`
+            : `<div class="mini-news-icon">${window.EplakIcons ? window.EplakIcons.get(n.icon) : escapeHtml(n.icon)}</div>`}
         </div>
       `).join('');
     }
@@ -135,15 +145,31 @@
       : (window.i18n && window.i18n.currentLang === 'en');
     const list = isEn ? (window.newsData_EN || newsData) : newsData;
 
+    /* فهرست خالی = مدیر هنوز مطلبی ثبت نکرده (یا سرور در دسترس نیست و نمونه‌ی
+       پیش‌فرض هم پاک شده). به‌جای صفحه‌ی سفید، کارتِ راهنما نشان می‌دهیم. */
+    if (!Array.isArray(list) || !list.length) {
+      wrap.innerHTML = (typeof window.eplakEmptyContentCard === 'function')
+        ? window.eplakEmptyContentCard('خبر یا اطلاعیه‌ای ثبت نشده است')
+        : '<div class="glass-card" style="padding:22px 16px; text-align:center;">📭</div>';
+      return;
+    }
+
     wrap.innerHTML = list.map(n => `
       <div class="glass-card" style="padding:14px; display:flex; gap:12px; align-items:center; cursor:pointer;" onclick="openNewsDetail('${n.id}')">
-        <div class="promo-img" style="width:60px; height:60px; flex-shrink:0;">
-          <div class="promo-img-bg">${window.EplakIcons ? window.EplakIcons.get(n.icon) : n.icon}</div>
-        </div>
+        ${n.image
+          ? `<div class="promo-img" style="width:60px; height:60px; flex-shrink:0; overflow:hidden;">
+               <img src="${escapeHtml(n.image)}" alt="" loading="lazy"
+                    style="width:100%; height:100%; object-fit:cover; border-radius:inherit;"
+                    onerror="this.style.display='none'">
+             </div>`
+          : `<div class="promo-img" style="width:60px; height:60px; flex-shrink:0;">
+               <div class="promo-img-bg">${window.EplakIcons ? window.EplakIcons.get(n.icon) : escapeHtml(n.icon)}</div>
+             </div>`}
         <div style="flex:1; text-align:${isEn ? 'left' : 'right'};">
           <h4 style="font-size:13px; font-weight:700; line-height:1.5;">${escapeHtml(n.title)}</h4>
-          <p style="font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.5;">${escapeHtml(n.summary)}</p>
-          <p style="font-size:10px; color:var(--text-muted); margin-top:6px;">${n.date}</p>
+          ${n.badge ? `<span style="font-size:10px; color:var(--teal);">${escapeHtml(n.badge)}</span>` : ''}
+          <p style="font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.5;">${escapeHtml(n.summary || '')}</p>
+          <p style="font-size:10px; color:var(--text-muted); margin-top:6px;">${escapeHtml(n.date || '')}</p>
         </div>
       </div>
     `).join('');
@@ -156,10 +182,27 @@
     const list = isEn ? (window.newsData_EN || newsData) : newsData;
     const n = list.find(x => x.id === id) || newsData.find(x => x.id === id);
     if (!n) return;
-    document.getElementById('newsDetailImg').innerHTML = window.EplakIcons ? window.EplakIcons.get(n.icon) : n.icon;
-    document.getElementById('newsDetailTitle').textContent = n.title;
-    document.getElementById('newsDetailDate').textContent = n.date;
-    document.getElementById('newsDetailBody').textContent = n.body;
+    const imgBox = document.getElementById('newsDetailImg');
+    if (imgBox) {
+      /* اگر مطلب تصویر دارد (از پنل آپلود شده)، تصویر بزرگ نشان داده می‌شود؛
+         وگرنه همان آیکون/ایموجی. تصویرِ آپلودشده در اپ با نشانی مطلق سرور
+         خوانده می‌شود (modules/live.js ← resolveNewsImage). */
+      const src = n.image || (typeof window.eplakResolveNewsImage === 'function' ? window.eplakResolveNewsImage(n) : '');
+      if (src) {
+        imgBox.innerHTML = '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(n.title) + '"'
+          + ' style="width:100%; height:100%; object-fit:cover; border-radius:inherit;"'
+          + ' onerror="this.parentNode.innerHTML=window.EplakIcons ? window.EplakIcons.get(\'' + escapeHtml(n.icon || '📰') + '\') : \'' + escapeHtml(n.icon || '📰') + '\'">';
+      } else {
+        imgBox.innerHTML = window.EplakIcons ? window.EplakIcons.get(n.icon) : escapeHtml(n.icon || '📰');
+      }
+    }
+    const dTitle = document.getElementById('newsDetailTitle');
+    if (dTitle) dTitle.textContent = n.title;
+    const dDate = document.getElementById('newsDetailDate');
+    if (dDate) dDate.textContent = [n.badge, n.date].filter(Boolean).join(' · ');
+    const dBody = document.getElementById('newsDetailBody');
+    /* متن با \n\n پاراگراف می‌شود؛ white-space:pre-line آن را حفظ می‌کند */
+    if (dBody) dBody.textContent = n.body;
     showScreen('screen-news-detail');
   }
 
@@ -260,6 +303,15 @@
     { id: '2', title: 'Urban Waste Management Fee', amount: 180000, due: '2024-09-30', status: 'done', code: 'BILL-9932-11' }
   ];
 
+  /* «مهلت پرداخت» هم شمسی نشان داده می‌شود: مقدارِ سرور/داده‌ی نمونه میلادی است
+     (2024-10-21) و پیش از این خام چاپ می‌شد. */
+  function faDueDate(value) {
+    if (!value) return '—';
+    if (typeof window.eplakFaDate === 'function') return window.eplakFaDate(value, String(value));
+    if (typeof window.eplakFaDateLocal === 'function') return window.eplakFaDateLocal(value, String(value));
+    return String(value);
+  }
+
   function formatToman(n) {
     const isEn = (window.i18n && typeof window.i18n.getLanguage === 'function')
       ? window.i18n.getLanguage() === 'en'
@@ -282,7 +334,7 @@
     wrap.innerHTML = payments.map((p, idx) => {
       const enItem = payments_EN[idx];
       const title = (isEn && enItem) ? enItem.title : p.title;
-      const dueText = isEn ? ('Due: ' + p.due) : ('مهلت: ' + p.due);
+      const dueText = isEn ? ('Due: ' + faDueDate(p.due)) : ('مهلت: ' + faDueDate(p.due));
       const statusText = p.status === 'done' ? (isEn ? 'Paid' : 'پرداخت‌شده') : (isEn ? 'Unpaid' : 'پرداخت‌نشده');
       return `
         <div class="report-item" onclick="openPaymentDetail('${p.id}')">
@@ -309,7 +361,7 @@
 
     document.getElementById('payDetailTitle').textContent = title;
     document.getElementById('payDetailCode').textContent = p.code;
-    document.getElementById('payDetailDue').textContent = p.due;
+    document.getElementById('payDetailDue').textContent = faDueDate(p.due);
     const statusEl = document.getElementById('payDetailStatus');
     statusEl.className = 'report-status ' + (p.status === 'done' ? 'status-done' : 'status-pending');
     statusEl.textContent = p.status === 'done' ? (isEn ? 'Paid' : 'پرداخت‌شده') : (isEn ? 'Unpaid' : 'پرداخت‌نشده');

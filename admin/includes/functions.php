@@ -383,9 +383,12 @@ function createReport(PDO $pdo, array $data): int {
     return (int)$pdo->lastInsertId();
 }
 
-/** کد پیگیری نمایشی گزارش (همان که شهروند در اپ می‌بیند) */
+/** کد پیگیری نمایشی گزارش (همان که شهروند در اپ می‌بیند)
+    تعریف اصلی در shared/bootstrap.php است تا اپ، پنل و متن اعلان «یک» کد بدهند. */
 function reportCodeFor(int $id): string {
-    return 'EP-1403-' . str_pad((string) ($id + 1000), 4, '0', STR_PAD_LEFT);
+    return function_exists('eplakReportCode')
+        ? eplakReportCode($id)
+        : 'EP-1403-' . str_pad((string) ($id + 1000), 4, '0', STR_PAD_LEFT);
 }
 
 /**
@@ -701,91 +704,335 @@ function deleteTicket(PDO $pdo, int $id): void {
    اخبار و دانستنی‌ها
    ============================================================ */
 
-function getAllNews(PDO $pdo, string $type = ''): array {
-    if ($type === 'news' || $type === 'tip') {
-        $stmt = $pdo->prepare('SELECT * FROM news WHERE type = :type ORDER BY sort_order ASC, id DESC');
-        $stmt->execute([':type' => $type]);
-    } else {
-        $stmt = $pdo->query('SELECT * FROM news ORDER BY type ASC, sort_order ASC, id DESC');
+/* ============================================================
+   اخبار و دانستنی‌ها (CRUD سازگار با دیتابیس قدیمی)
+   ------------------------------------------------------------
+   ریشه‌ی باگ «اخبار و اطلاعیه‌ها در اپ و پنل خالی است»:
+   این توابع پیش از این «همیشه» ستون badge (و گاهی summary/image_url) را
+   می‌خواستند. روی دیتابیس قدیمیِ هاست آن ستون‌ها نبودند، پس:
+     • افزودن/ویرایش مطلب در پنل همیشه با «Unknown column 'badge'» شکست می‌خورد
+     • api/news.php خطای ۵۰۰ می‌داد و اپ هیچ خبری نشان نمی‌داد
+   حالا ساختار جدول «همان لحظه» بررسی/ترمیم می‌شود (eplakNewsSchema) و همه‌ی
+   SQLها فقط با ستون‌های موجود ساخته می‌شوند؛ موارد سازگار‌شده در $report
+   برمی‌گردند تا پنل صادقانه بگوید چه چیزی ذخیره نشد.
+   ============================================================ */
+
+/** مقدارهای آماده‌ی درج/به‌روزرسانی (متن‌ها در صورت نیاز بدون ایموجی چهاربایتی) */
+function eplakNewsFieldValues(PDO $pdo, array $data): array {
+    $emoji = eplakNewsSupportsEmoji($pdo);
+    $clean = static function ($value) use ($emoji) {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
+            return null;
+        }
+        return $emoji ? $value : (eplakStripAstralChars($value) ?: $value);
+    };
+
+    $title = trim((string) ($data['title'] ?? ''));
+    if (!$emoji && $title !== '') {
+        $title = eplakStripAstralChars($title) ?: $title;
     }
-    return $stmt->fetchAll();
+
+    return [
+        'type'       => ((string) ($data['type'] ?? 'news')) === 'tip' ? 'tip' : 'news',
+        'title'      => $title,
+        'summary'    => $clean($data['summary'] ?? ''),
+        'body'       => $clean($data['body'] ?? ''),
+        'icon'       => $clean($data['icon'] ?? ''),
+        'badge'      => $clean($data['badge'] ?? ''),
+        'image_url'  => $clean($data['image_url'] ?? ''),
+        'published'  => !empty($data['published']) ? 1 : 0,
+        'sort_order' => (int) ($data['sort_order'] ?? 0),
+    ];
+}
+
+/** ستون‌هایی که «واقعاً» در جدول news وجود دارند (به ترتیب خواسته‌شده) */
+function eplakNewsWritableColumns(PDO $pdo, array $values): array {
+    $columns = eplakNewsAvailableColumns($pdo, array_keys($values));
+    /* title و body ستون‌های حیاتی‌اند؛ بدون آن‌ها درج معنا ندارد */
+    if (!in_array('title', $columns, true) || !in_array('body', $columns, true)) {
+        return [];
+    }
+    return $columns;
+}
+
+/** چه چیزهایی به‌خاطر دیتابیس قدیمی از دست رفت (برای نمایش در پنل) */
+function eplakNewsDegradedNotes(PDO $pdo, array $values): array {
+    $notes = [];
+    foreach (array_keys($values) as $column) {
+        if ($column === 'title' || $column === 'body') {
+            continue;
+        }
+        if (!eplakNewsHasColumn($pdo, $column)) {
+            $notes[] = 'no_' . $column;
+        }
+    }
+    if (!eplakNewsSupportsEmoji($pdo)) {
+        $notes[] = 'no_emoji';
+    }
+    return array_values(array_unique($notes));
+}
+
+/** ساخت INSERT با ستون‌های موجود و اجرای آن؛ شناسه‌ی ردیف برمی‌گردد (۰ = ناموفق) */
+function eplakNewsInsertRow(PDO $pdo, array $values, array $columns): int {
+    if (!$columns) {
+        return 0;
+    }
+    $placeholders = [];
+    $params = [];
+    foreach ($columns as $column) {
+        $placeholders[] = ':' . $column;
+        $params[':' . $column] = $values[$column] ?? null;
+    }
+    $stmt = $pdo->prepare(
+        'INSERT INTO news (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')'
+    );
+    $stmt->execute($params);
+    return (int) $pdo->lastInsertId();
+}
+
+function getAllNews(PDO $pdo, string $type = '', ?array &$report = null): array {
+    $rep = ['ok' => true, 'rows' => 0, 'degraded' => [], 'error' => ''];
+    $schema = eplakNewsSchema($pdo);
+    if (!$schema['table']) {
+        $rep['ok'] = false;
+        $rep['error'] = 'جدول news در دیتابیس وجود ندارد';
+        $rep['degraded'] = $schema['failed'];
+        $report = $rep;
+        return [];
+    }
+
+    /* sort_order هم ممکن است در دیتابیس قدیمی نباشد */
+    $order = eplakNewsHasColumn($pdo, 'sort_order') ? 'sort_order ASC, id DESC' : 'id DESC';
+    if ($type === '') {
+        $order = eplakNewsHasColumn($pdo, 'sort_order') ? 'type ASC, sort_order ASC, id DESC' : 'type ASC, id DESC';
+    }
+
+    $fetch = static function (PDO $pdo, string $type, string $order): array {
+        if ($type === 'news' || $type === 'tip') {
+            $stmt = $pdo->prepare('SELECT * FROM news WHERE type = :type ORDER BY ' . $order);
+            $stmt->execute([':type' => $type]);
+            return $stmt->fetchAll();
+        }
+        return $pdo->query('SELECT * FROM news ORDER BY ' . $order)->fetchAll();
+    };
+
+    try {
+        $rows = $fetch($pdo, $type, $order);
+    } catch (\Throwable $e) {
+        /* یک‌بار ترمیمِ اجباری و تلاش دوباره؛ وگرنه فهرست خالی برمی‌گردد نه صفحه‌ی سفید */
+        try {
+            eplakNewsSchema($pdo, true);
+            $order = eplakNewsHasColumn($pdo, 'sort_order') ? 'sort_order ASC, id DESC' : 'id DESC';
+            $rows = $fetch($pdo, $type, $order);
+            $rep['degraded'][] = 'repaired_on_read';
+        } catch (\Throwable $e2) {
+            $rep['ok'] = false;
+            $rep['error'] = $e2->getMessage();
+            $report = $rep;
+            return [];
+        }
+    }
+
+    $rep['rows'] = count($rows);
+    $rep['degraded'] = array_merge($rep['degraded'], $schema['failed']);
+    $report = $rep;
+    return $rows;
 }
 
 function getNewsById(PDO $pdo, int $id): ?array {
-    $stmt = $pdo->prepare('SELECT * FROM news WHERE id = :id LIMIT 1');
-    $stmt->execute([':id' => $id]);
-    $row = $stmt->fetch();
-    return $row ?: null;
+    try {
+        eplakNewsSchema($pdo);
+        $stmt = $pdo->prepare('SELECT * FROM news WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    } catch (\Throwable $e) {
+        return null;
+    }
 }
 
-function createNews(PDO $pdo, array $data): int {
-    $stmt = $pdo->prepare(
-        'INSERT INTO news (type, title, summary, body, icon, badge, image_url, published, sort_order)
-         VALUES (:type, :title, :summary, :body, :icon, :badge, :image_url, :published, :sort_order)'
-    );
-    $stmt->execute([
-        ':type'      => $data['type'] ?? 'news',
-        ':title'     => $data['title'] ?? '',
-        ':summary'   => $data['summary'] ?? null,
-        ':body'      => $data['body'] ?? '',
-        ':icon'      => $data['icon'] ?? null,
-        ':badge'     => ($data['badge'] ?? '') !== '' ? $data['badge'] : null,
-        ':image_url' => $data['image_url'] ?? null,
-        ':published' => !empty($data['published']) ? 1 : 0,
-        ':sort_order' => (int)($data['sort_order'] ?? 0),
-    ]);
-    return (int)$pdo->lastInsertId();
+/**
+ * افزودن مطلب جدید.
+ * $report (اختیاری): ['ok', 'id', 'degraded' => [...], 'error'] — پنل با آن
+ * صادقانه می‌گوید چه فیلدی به‌خاطر دیتابیس قدیمی ذخیره نشد.
+ */
+function createNews(PDO $pdo, array $data, ?array &$report = null): int {
+    $rep = ['ok' => false, 'id' => 0, 'degraded' => [], 'error' => ''];
+    $schema = eplakNewsSchema($pdo);
+    if (!$schema['table']) {
+        $rep['error'] = 'جدول news در دیتابیس وجود ندارد و ساخته نشد';
+        $rep['degraded'] = $schema['failed'];
+        $report = $rep;
+        return 0;
+    }
+
+    $values  = eplakNewsFieldValues($pdo, $data);
+    $columns = eplakNewsWritableColumns($pdo, $values);
+    if (!$columns) {
+        $rep['error'] = 'ستون‌های title/body در جدول news در دسترس نیستند';
+        $rep['degraded'] = $schema['failed'];
+        $report = $rep;
+        return 0;
+    }
+    $rep['degraded'] = eplakNewsDegradedNotes($pdo, $values);
+
+    try {
+        $rep['id'] = eplakNewsInsertRow($pdo, $values, $columns);
+        $rep['ok'] = $rep['id'] > 0;
+    } catch (\Throwable $e) {
+        /* تلاش دوم: ستون‌های غیرحیاتی کنار گذاشته می‌شوند */
+        try {
+            eplakNewsSchema($pdo, true);
+            $columns = eplakNewsWritableColumns($pdo, $values);
+            $rep['id'] = eplakNewsInsertRow($pdo, $values, $columns);
+            $rep['ok'] = $rep['id'] > 0;
+            if ($rep['ok']) {
+                $rep['degraded'][] = 'retry_after_repair';
+            }
+        } catch (\Throwable $e2) {
+            try {
+                $basic = array_values(array_intersect($columns, ['type', 'title', 'summary', 'body']));
+                $rep['id'] = eplakNewsInsertRow($pdo, $values, $basic);
+                $rep['ok'] = $rep['id'] > 0;
+                if ($rep['ok']) {
+                    $rep['degraded'][] = 'saved_minimal';
+                }
+            } catch (\Throwable $e3) {
+                $rep['ok'] = false;
+                $rep['error'] = $e3->getMessage();
+            }
+        }
+    }
+
+    /* گزارش همیشه به فراخوان برمی‌گردد؛ فراخوان‌ها پیش از صدا زدن $report = null می‌گذارند
+       و شرط «!== null» باعث می‌شد گزارش هرگز نرسد (ذخیره‌ی موفق، ناموفق دیده می‌شد). */
+    $report = $rep;
+    return (int) $rep['id'];
 }
 
-function updateNews(PDO $pdo, int $id, array $data): void {
-    $stmt = $pdo->prepare(
-        'UPDATE news SET
-            type = :type,
-            title = :title,
-            summary = :summary,
-            body = :body,
-            icon = :icon,
-            badge = :badge,
-            image_url = :image_url,
-            published = :published,
-            sort_order = :sort_order
-         WHERE id = :id'
-    );
-    $stmt->execute([
-        ':type'      => $data['type'] ?? 'news',
-        ':title'     => $data['title'] ?? '',
-        ':summary'   => $data['summary'] ?? null,
-        ':body'      => $data['body'] ?? '',
-        ':icon'      => $data['icon'] ?? null,
-        ':badge'     => ($data['badge'] ?? '') !== '' ? $data['badge'] : null,
-        ':image_url' => $data['image_url'] ?? null,
-        ':published' => !empty($data['published']) ? 1 : 0,
-        ':sort_order' => (int)($data['sort_order'] ?? 0),
-        ':id'        => $id,
-    ]);
+/** ویرایش مطلب — سازگار با ستون‌های موجود (بدون «Unknown column») */
+function updateNews(PDO $pdo, int $id, array $data, ?array &$report = null): bool {
+    $rep = ['ok' => false, 'degraded' => [], 'error' => ''];
+    $schema = eplakNewsSchema($pdo);
+    $values  = eplakNewsFieldValues($pdo, $data);
+    $columns = eplakNewsWritableColumns($pdo, $values);
+    if (!$schema['table'] || !$columns) {
+        $rep['error'] = 'جدول یا ستون‌های لازم در دیتابیس در دسترس نیست';
+        $rep['degraded'] = $schema['failed'];
+        $report = $rep;
+        return false;
+    }
+    $rep['degraded'] = eplakNewsDegradedNotes($pdo, $values);
+
+    $run = static function (PDO $pdo, int $id, array $values, array $columns): void {
+        $set = [];
+        $params = [':id' => $id];
+        foreach ($columns as $column) {
+            $set[] = $column . ' = :' . $column;
+            $params[':' . $column] = $values[$column] ?? null;
+        }
+        $stmt = $pdo->prepare('UPDATE news SET ' . implode(', ', $set) . ' WHERE id = :id');
+        $stmt->execute($params);
+    };
+
+    try {
+        $run($pdo, $id, $values, $columns);
+        $rep['ok'] = true;
+    } catch (\Throwable $e) {
+        try {
+            eplakNewsSchema($pdo, true);
+            $columns = eplakNewsWritableColumns($pdo, $values);
+            $run($pdo, $id, $values, $columns);
+            $rep['ok'] = true;
+            $rep['degraded'][] = 'retry_after_repair';
+        } catch (\Throwable $e2) {
+            try {
+                $basic = array_values(array_intersect($columns, ['type', 'title', 'summary', 'body']));
+                $run($pdo, $id, $values, $basic);
+                $rep['ok'] = true;
+                $rep['degraded'][] = 'saved_minimal';
+            } catch (\Throwable $e3) {
+                $rep['error'] = $e3->getMessage();
+            }
+        }
+    }
+
+    $report = $rep;
+    return (bool) $rep['ok'];
 }
 
-function deleteNews(PDO $pdo, int $id): void {
-    $stmt = $pdo->prepare('DELETE FROM news WHERE id = :id');
-    $stmt->bindValue(':id', $id, PDO::PARAM_INT);
-    $stmt->execute();
+function deleteNews(PDO $pdo, int $id): bool {
+    try {
+        eplakNewsSchema($pdo);
+        $stmt = $pdo->prepare('DELETE FROM news WHERE id = :id');
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+        $stmt->execute();
+        return true;
+    } catch (\Throwable $e) {
+        return false;
+    }
 }
 
-function toggleNewsPublished(PDO $pdo, int $id): void {
+function toggleNewsPublished(PDO $pdo, int $id): bool {
     /* پیاده‌سازی سازگار با هر دو درایور (MySQL و SQLite) — تابع IF() در SQLite
        وجود ندارد و قبلاً این عملیات در حالت توسعه خطا می‌داد. */
-    $select = $pdo->prepare('SELECT published FROM news WHERE id = :id');
-    $select->bindValue(':id', $id, PDO::PARAM_INT);
-    $select->execute();
-    $current = $select->fetchColumn();
-    if ($current === false) {
-        return;
+    try {
+        eplakNewsSchema($pdo);
+        if (!eplakNewsHasColumn($pdo, 'published')) {
+            return false;
+        }
+        $select = $pdo->prepare('SELECT published FROM news WHERE id = :id');
+        $select->bindValue(':id', $id, PDO::PARAM_INT);
+        $select->execute();
+        $current = $select->fetchColumn();
+        if ($current === false) {
+            return false;
+        }
+        $newValue = ((int) $current) === 1 ? 0 : 1;
+        $stmt = $pdo->prepare('UPDATE news SET published = :published WHERE id = :id');
+        $stmt->bindValue(':published', $newValue, PDO::PARAM_INT);
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+        $stmt->execute();
+        return true;
+    } catch (\Throwable $e) {
+        return false;
     }
-    $newValue = ((int) $current) === 1 ? 0 : 1;
-    $stmt = $pdo->prepare('UPDATE news SET published = :published WHERE id = :id');
-    $stmt->bindValue(':published', $newValue, PDO::PARAM_INT);
-    $stmt->bindValue(':id', $id, PDO::PARAM_INT);
-    $stmt->execute();
+}
+
+/** وضعیت خلاصه‌ی جدول اخبار برای نمایش در پنل (تعداد + سلامت ساختار) */
+function eplakNewsAdminStatus(PDO $pdo): array {
+    $schema = eplakNewsSchema($pdo);
+    $out = [
+        'table'    => (bool) $schema['table'],
+        'emoji'    => (bool) $schema['emoji'],
+        'badge'    => !empty($schema['columns']['badge']),
+        'image'    => !empty($schema['columns']['image_url']),
+        'repaired' => $schema['repaired'],
+        'failed'   => $schema['failed'],
+        'all'      => 0,
+        'news'     => 0,
+        'tip'      => 0,
+        'published' => 0,
+        'error'    => '',
+    ];
+    try {
+        $out['all']  = (int) $pdo->query('SELECT COUNT(*) FROM news')->fetchColumn();
+        if (eplakNewsHasColumn($pdo, 'type')) {
+            $stmt = $pdo->query("SELECT COUNT(*) FROM news WHERE type = 'news'");
+            $out['news'] = (int) $stmt->fetchColumn();
+            $stmt = $pdo->query("SELECT COUNT(*) FROM news WHERE type = 'tip'");
+            $out['tip'] = (int) $stmt->fetchColumn();
+        }
+        if (eplakNewsHasColumn($pdo, 'published')) {
+            $out['published'] = (int) $pdo->query('SELECT COUNT(*) FROM news WHERE published = 1')->fetchColumn();
+        } else {
+            $out['published'] = $out['all'];
+        }
+    } catch (\Throwable $e) {
+        $out['error'] = $e->getMessage();
+    }
+    return $out;
 }
 
 /* ============================================================
@@ -795,56 +1042,201 @@ function toggleNewsPublished(PDO $pdo, int $id): void {
 /**
  * ارسال اعلان به کاربران.
  * $targetType: 'all' = همه کاربران | 'selected' = شماره‌های مشخص‌شده
+ * $report (اختیاری): گزارش کاملِ «چه شد» برای نمایش در پنل — شمار گیرندگان،
+ *   شناسه‌ی ارسال، موارد «سازگار‌شده» (دیتابیس قدیمی) و خطاها.
  * returns: تعداد گیرندگان
+ *
+ * نکته‌ی مهم (ریشه‌ی باگ «اعلان پنل روی اپ نمی‌آید»):
+ * پیش از این، INSERT اینجا «همیشه» ستون send_id را می‌خواست. روی دیتابیس
+ * قدیمیِ هاست (backend/eplak-db.sql) آن ستون وجود ندارد، پس کل ارسال با خطای
+ *   SQLSTATE[42S22]: Column not found: 1054 Unknown column 'send_id' in 'INSERT INTO'
+ * واگر می‌شد و هیچ اعلانی ساخته نمی‌شد. حالا اول ستون «ترمیم» می‌شود و اگر
+ * ترمیم ممکن نبود (کاربر دیتابیس اجازه‌ی ALTER ندارد) بدون همان ستون ذخیره
+ * می‌شود؛ یعنی اعلان در هر حالتی به اپ کاربر می‌رسد.
  */
-function sendNotification(PDO $pdo, string $title, string $body, string $targetType, array $phones, ?string $createdBy = null): int {
+function sendNotification(PDO $pdo, string $title, string $body, string $targetType, array $phones, ?string $createdBy = null, ?array &$report = null): int {
     /* موتور اعلان پس‌زمینه (مرورگر) و اعلان اپ اندروید (فایربیس) */
     require_once __DIR__ . '/../../shared/webpush.php';
     require_once __DIR__ . '/../../shared/fcm.php';
+    require_once __DIR__ . '/../../shared/bootstrap.php';
 
+    $report = [
+        'recipients' => 0, 'rows' => 0, 'send_id' => 0,
+        'degraded' => [], 'failed' => [], 'errors' => [],
+    ];
+
+    /* ── بررسی/ترمیم ساختار جدول اعلان‌ها «پیش از» تراکنش ─────────────────
+       (در MySQL دستور ALTER تراکنش را می‌شکند؛ پس بیرون از آن انجام می‌شود) */
+    $schema    = eplakNotificationsSchema($pdo);
+    $hasSendId = !empty($schema['send_id']);
+    $hasFk     = !empty($schema['fk']);
+    if (!$hasSendId) {
+        $report['degraded'][] = 'no_send_id';
+    }
+    if ($hasFk) {
+        $report['degraded'][] = 'foreign_key';
+    }
+    if (empty($schema['emoji'])) {
+        $report['degraded'][] = 'no_emoji';
+    }
+    $report['failed'] = array_values($schema['failed'] ?? []);
+
+    /* شماره‌ها یکدست می‌شوند (۰۹۱۲… / +۹۸۹۱۲… / ۹۱۲… / رقم فارسی → یک کلید)؛
+       وگرنه اعلان «انتخابی» زیر شماره‌ای دیگر ذخیره می‌شد و اپ آن را نمی‌دید. */
+    $clean = [];
+    foreach ($phones as $one) {
+        $key = eplakPhoneKey((string) $one);
+        if ($key !== '' && $key !== 'all') {
+            $clean[$key] = true;
+        }
+    }
     if ($targetType === 'all') {
-        $stmt = $pdo->query('SELECT phone FROM users');
-        $phones = array_column($stmt->fetchAll(), 'phone');
-        if (!in_array('all', $phones, true)) {
-            $phones[] = 'all';
+        try {
+            foreach ($pdo->query('SELECT phone FROM users')->fetchAll(PDO::FETCH_COLUMN) ?: [] as $one) {
+                $key = eplakPhoneKey((string) $one);
+                if ($key !== '') {
+                    $clean[$key] = true;
+                }
+            }
+        } catch (Throwable $e) {
+            /* جدول users خوانده نشد؛ همان فهرست داده‌شده کافی است */
+        }
+    }
+    $phones = array_keys($clean);
+
+    /* چه ردیف‌هایی ساخته شود؟
+       • send_id داریم  → برای هر کاربر یک ردیف شخصی + یک ردیف عمومی 'all'
+         (اپ ردیف عمومی را وقتی نسخه‌ی شخصیِ همان ارسال را دارد نشان نمی‌دهد).
+       • send_id نداریم → فقط یک ردیف عمومی 'all'؛ وگرنه کاربر «دو بار» همان
+         اعلان را می‌دید (یکی شخصی و یکی عمومی) و راهی برای تشخیص نبود.
+       ردیف عمومی همیشه «تلاش» می‌شود؛ اگر کلید خارجی قدیمیِ دیتابیس اجازه
+       نداد، پایین‌تر برای هر کاربر ردیف شخصی ساخته می‌شود تا اعلان گم نشود. */
+    $plan = [];
+    if ($targetType === 'all') {
+        if ($hasSendId) {
+            foreach ($phones as $one) {
+                $plan[] = $one;
+            }
+        }
+        $plan[] = 'all';
+    } else {
+        foreach ($phones as $one) {
+            $plan[] = $one;
         }
     }
 
-    $phones = array_values(array_unique(array_filter(array_map('trim', $phones), static fn($p) => $p !== '')));
-    if (!$phones) {
+    if (!$plan) {
         return 0;
+    }
+
+    /* تعداد گیرندگان = تعداد ردیف‌هایی که نوشته می‌شود (شامل ردیف عمومی 'all'
+       برای مهمان‌ها) — همان معنایی که پیش از این هم برگردانده می‌شد. */
+    $recipients = max(count($plan), 1);
+    $report['recipients'] = $recipients;
+
+    /* کلید خارجیِ قدیمیِ دیتابیس، ردیف عمومی 'all' را رد می‌کرد (مهمان‌ها هیچ
+       اعلان پنلی نمی‌دیدند). برای مدت همین تراکنش خاموش می‌شود و در finally
+       برمی‌گردد. اگر ممکن نباشد، پایین‌تر ردیف شخصیِ هر کاربر ساخته می‌شود. */
+    $fkRelaxed = $hasFk && $targetType === 'all' && function_exists('eplakFkRelaxBegin')
+        ? eplakFkRelaxBegin($pdo)
+        : false;
+    if ($fkRelaxed) {
+        $report['degraded'][] = 'fk_bypassed_for_broadcast';
     }
 
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare(
-            'INSERT INTO notification_sends (title, body, target_type, recipients_count, created_by)
-             VALUES (:title, :body, :target, :count, :by)'
-        );
-        $stmt->execute([
-            ':title' => $title,
-            ':body'  => $body,
-            ':target' => $targetType === 'all' ? 'all' : 'selected',
-            ':count' => count($phones),
-            ':by'    => $createdBy,
-        ]);
-        $sendId = (int)$pdo->lastInsertId();
-
-        $ins = $pdo->prepare(
-            'INSERT INTO notifications (user_phone, title, body, send_id) VALUES (:phone, :title, :body, :send)'
-        );
-        foreach ($phones as $phone) {
-            $ins->execute([
-                ':phone' => $phone,
-                ':title' => $title,
-                ':body'  => $body,
-                ':send'  => $sendId,
+        $sendId = 0;
+        try {
+            $stmt = $pdo->prepare(
+                'INSERT INTO notification_sends (title, body, target_type, recipients_count, created_by)
+                 VALUES (:title, :body, :target, :count, :by)'
+            );
+            $stmt->execute([
+                ':title' => eplakNotificationsSupportsEmoji($pdo) ? $title : eplakStripAstralChars($title),
+                ':body'  => eplakNotificationsSupportsEmoji($pdo) ? $body : eplakStripAstralChars($body),
+                ':target' => $targetType === 'all' ? 'all' : 'selected',
+                ':count' => $recipients,
+                ':by'    => $createdBy,
             ]);
+            $sendId = (int) $pdo->lastInsertId();
+        } catch (Throwable $e) {
+            /* جدول notification_sends ساخته نشده (دیتابیس خیلی قدیمی) —
+               اعلان‌ها را بدون «شناسه‌ی ارسال» ثبت می‌کنیم تا پیام گم نشود. */
+            $hasSendId = false;
+            $report['degraded'][] = 'no_notification_sends';
+            $report['errors'][] = $e->getMessage();
         }
+        $report['send_id'] = $sendId;
+
+        $rows = 0;
+        $broadcastBlocked = false;
+        $linkedSendId = $hasSendId && $sendId > 0 ? $sendId : null;
+        foreach ($plan as $target) {
+            $res = eplakNotificationInsert($pdo, (string) $target, $title, $body, $linkedSendId);
+            if (!empty($res['ok'])) {
+                $rows++;
+                if ((string) $target === 'all') {
+                    $report['broadcast_row'] = (int) $res['id'];
+                }
+            } elseif ((string) $target === 'all') {
+                /* ردیف عمومی ذخیره نشد (کلید خارجیِ دیتابیس قدیمی و دسترسی
+                   بسته) — پایین‌تر به‌جایش ردیف شخصیِ هر کاربر ساخته می‌شود. */
+                $broadcastBlocked = true;
+                $report['degraded'][] = 'broadcast_row_blocked';
+            } else {
+                $report['errors'][] = (string) $res['error'];
+            }
+        }
+
+        if ($broadcastBlocked && $targetType === 'all' && $phones) {
+            foreach ($phones as $one) {
+                if (in_array($one, $plan, true)) {
+                    continue;   /* قبلاً تلاش شد */
+                }
+                $res = eplakNotificationInsert($pdo, (string) $one, $title, $body, $linkedSendId);
+                if (!empty($res['ok'])) {
+                    $rows++;
+                } else {
+                    $report['errors'][] = (string) $res['error'];
+                }
+            }
+        }
+        if ($rows === 0) {
+            $pdo->rollBack();
+            $why = implode(' | ', array_slice(array_filter($report['errors']), 0, 2));
+            throw new RuntimeException(
+                'هیچ اعلانی ذخیره نشد. '
+                . ($why !== '' ? 'علت: ' . $why . '. ' : '')
+                . 'اگر علت «Unknown column \'send_id\'» است و خودِ کد نتوانست ستون را اضافه کند، '
+                . 'این دستور را یک‌بار در phpMyAdmin اجرا کنید: '
+                . 'ALTER TABLE `notifications` ADD COLUMN `send_id` INT NULL;'
+            );
+        }
+        /* شمارش واقعیِ گیرندگان (ممکن است با برنامه‌ی اولیه فرق کند: مثلاً ردیف
+           عمومی به‌خاطر کلید خارجی ذخیره نشد و به‌جایش ردیف شخصی ساخته شد) */
+        if ($sendId > 0 && $rows !== $recipients) {
+            try {
+                $fix = $pdo->prepare('UPDATE notification_sends SET recipients_count = :c WHERE id = :id');
+                $fix->execute([':c' => $rows, ':id' => $sendId]);
+            } catch (Throwable $e) {
+                /* ستون/جدول قدیمی؛ شمارش نمایشی مهم‌تر از خود اعلان نیست */
+            }
+        }
+        $recipients = $rows;
+        $report['recipients'] = $rows;
+
         $pdo->commit();
+        $report['rows'] = $rows;
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw $e;
+    } finally {
+        if (function_exists('eplakFkRelaxEnd')) {
+            eplakFkRelaxEnd($pdo, $fkRelaxed);
+        }
     }
 
     /* ── اعلان پس‌زمینه (Web Push) ────────────────────────────────────────
@@ -875,6 +1267,8 @@ function sendNotification(PDO $pdo, string $title, string $body, string $targetT
         } catch (Throwable $e) {
             /* ستون‌های شمارش پوش در نسخه‌های قدیمی دیتابیس ممکن است نباشند */
         }
+        $report['push_sent']   = (int) $pushSummary['sent'];
+        $report['push_failed'] = (int) $pushSummary['failed'];
     } catch (Throwable $e) {
         error_log('[eplak-push] dispatch failed: ' . $e->getMessage());
     }
@@ -906,12 +1300,20 @@ function sendNotification(PDO $pdo, string $title, string $body, string $targetT
             } catch (Throwable $e) {
                 /* ستون‌های شمارش فایربیس در دیتابیس‌های قدیمی ممکن است نباشند */
             }
+            $report['fcm_devices'] = count($devices);
+            $report['fcm_sent']    = (int) $fcmSummary['sent'];
+            $report['fcm_failed']  = (int) $fcmSummary['failed'];
+            $report['fcm_outcome'] = (string) ($fcmSummary['outcome'] ?? '');
+            $report['fcm_hint']    = (string) ($fcmSummary['hint'] ?? '');
+        } else {
+            $report['fcm_devices'] = 0;
+            $report['fcm_outcome'] = 'no_device';
         }
     } catch (Throwable $e) {
         error_log('[eplak-fcm] dispatch failed: ' . $e->getMessage());
     }
 
-    return count($phones);
+    return $recipients;
 }
 
 function getNotificationSends(PDO $pdo, int $limit = 50): array {
@@ -927,10 +1329,34 @@ function getNotificationSendById(PDO $pdo, int $id): ?array {
     return $row ?: null;
 }
 
+/**
+ * گیرندگان یک «ارسال گروهی».
+ *
+ * مسیر اصلی با ستون send_id کار می‌کند. روی دیتابیس قدیمیِ هاست که آن ستون
+ * وجود ندارد (و کد نتوانست اضافه‌اش کند)، ردیف‌های همان ارسال را از روی
+ * عنوان/متن پیدا می‌کنیم تا صفحه‌ی «گیرندگان» خالی نماند.
+ */
 function getNotificationRecipients(PDO $pdo, int $sendId): array {
-    $stmt = $pdo->prepare('SELECT * FROM notifications WHERE send_id = :id ORDER BY id ASC');
-    $stmt->execute([':id' => $sendId]);
-    return $stmt->fetchAll();
+    if (eplakTableHasColumn($pdo, 'notifications', 'send_id')) {
+        try {
+            $stmt = $pdo->prepare('SELECT * FROM notifications WHERE send_id = :id ORDER BY id ASC');
+            $stmt->execute([':id' => $sendId]);
+            return $stmt->fetchAll();
+        } catch (Throwable $e) {
+            /* ستون هست ولی کوئری خطا داد → مسیر جایگزین پایین */
+        }
+    }
+    $send = getNotificationSendById($pdo, $sendId);
+    if (!$send) {
+        return [];
+    }
+    try {
+        $stmt = $pdo->prepare('SELECT * FROM notifications WHERE title = :title AND body = :body ORDER BY id ASC');
+        $stmt->execute([':title' => (string) $send['title'], ':body' => (string) $send['body']]);
+        return $stmt->fetchAll();
+    } catch (Throwable $e) {
+        return [];
+    }
 }
 
 /* ============================================================

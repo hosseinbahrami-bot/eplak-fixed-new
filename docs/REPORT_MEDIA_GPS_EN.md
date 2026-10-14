@@ -142,7 +142,7 @@ Three safeguards were added as well:
 ## 4) Step by step: install the new APK
 
 1. APK link:
-   `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk`
+   `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk`
 2. Download → allow “install from unknown sources” if asked → **Install**.
 3. The first time you tap **“use my current location”**, Android asks for the location permission → choose **While using the app**.
 

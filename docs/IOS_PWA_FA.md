@@ -24,10 +24,10 @@
 |---|---|
 | 🌍 **PWA — لینک مستقیم (GitHub Pages)** | **https://hosseinbahrami-bot.github.io/eplak-fixed/** (پس از یک‌بار روشن کردن Pages؛ بخش ۳-۱) |
 | 🌐 **PWA روی هاست خودتان** | **https://eplak.ir/eplak-fixed/** — همین حالا بالاست و قابل نصب است |
-| 🍎 اپ iOS (IPA بدون امضا) | `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app-unsigned.ipa` (+ فایل `.sha256`) |
-| 🧰 پروژه‌ی Xcode (برای کسی که مک دارد) | `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-ios-project.zip` |
-| 📱 اپ اندروید | `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk` |
-| 🗂️ همه‌ی فایل‌ها | [صفحه‌ی Releases](https://github.com/hosseinbahrami-bot/eplak-fixed/releases/tag/v2.0-eplak-update) |
+| 🍎 اپ iOS (IPA بدون امضا) | `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app-unsigned.ipa` (+ فایل `.sha256`) |
+| 🧰 پروژه‌ی Xcode (برای کسی که مک دارد) | `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-ios-project.zip` |
+| 📱 اپ اندروید | `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk` |
+| 🗂️ همه‌ی فایل‌ها | [صفحه‌ی Releases](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/tag/v2.0-eplak-update) |
 
 PWA هیچ فایلی برای دانلود ندارد؛ فقط یک آدرس است.
 

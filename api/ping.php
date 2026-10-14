@@ -24,6 +24,9 @@ if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'OPTIONS') {
 echo json_encode([
     'success'     => true,
     'online'      => true,
-    'server_time' => gmdate('c'),
+    /* با اختلافِ منطقه نسبت به UTC (مثلاً ‎+03:30) تا برای اپ بی‌ابهام باشد */
+    'server_time' => function_exists('eplakDisplayTimezone')
+        ? (new DateTimeImmutable('now', eplakDisplayTimezone()))->format('c')
+        : gmdate('c'),
     'fa_time'     => function_exists('eplakFaDateTime') ? eplakFaDateTime() : '',
 ], JSON_UNESCAPED_UNICODE);

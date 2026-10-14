@@ -93,7 +93,7 @@ $inProgressReports = count(array_filter($reports, fn($r) => $r['status'] === 'in
             <?php if (!empty($user['address'])): ?>
               <span><i class="fas fa-map-pin"></i> <?= htmlspecialchars($user['address']) ?></span>
             <?php endif; ?>
-            <span><i class="fas fa-calendar-alt"></i> عضو از: <?= htmlspecialchars($user['created_at']) ?></span>
+            <span><i class="fas fa-calendar-alt"></i> عضو از: <?= htmlspecialchars(eplakFaDate($user['created_at'] ?? null, '—')) ?></span>
           </div>
         </div>
       </div>
@@ -188,7 +188,7 @@ $inProgressReports = count(array_filter($reports, fn($r) => $r['status'] === 'in
                         <?= $status['text'] ?>
                       </span>
                     </td>
-                    <td><?= htmlspecialchars($report['created_at']) ?></td>
+                    <td><?= htmlspecialchars(eplakFaDateTimeOf($report['created_at'] ?? null, '—')) ?></td>
                     <td>
                       <div class="action-buttons">
                         <a href="report_detail.php?id=<?= (int)$report['id'] ?>" class="btn-action view" title="مشاهده جزئیات">

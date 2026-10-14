@@ -77,7 +77,7 @@ if ($method === 'GET') {
         foreach ($rows as $row) {
             $id = (int) $row['id'];
             $row['id']   = $id;
-            $row['code'] = 'EP-1403-' . str_pad((string) ($id + 1000), 4, '0', STR_PAD_LEFT);
+            $row['code'] = eplakReportCode((int) $id);
             $row['media'] = $mediaMap[$id] ?? [];
             $row['media_count'] = count($row['media']);
             $row['timeline'] = $eventMap[$id] ?? [];
@@ -324,7 +324,8 @@ if ($existingId === 0 && $clientRef === '') {
             ':phone' => $phone,
             ':title' => $subject,
             ':desc'  => $details,
-            ':since' => date('Y-m-d H:i:s', time() - $windowSeconds),
+            /* پنجره با ساعتِ خودِ دیتابیس سنجیده می‌شود (نه ساعتِ PHP) */
+            ':since' => eplakDbAgoString($windowSeconds, $pdo),
         ]);
         $existingId = (int) ($dupeStmt->fetchColumn() ?: 0);
         if ($existingId > 0) {
@@ -395,7 +396,10 @@ if ($existingId > 0) {
         }
     }
 
-    $dupCode = 'EP-1403-' . str_pad((string) $existingId, 4, '0', STR_PAD_LEFT);
+    /* کد پیگیری «دقیقاً» همان چیزی است که بعداً در فهرست گزارش‌ها و پنل
+       دیده می‌شود (eplakReportCode) — پیش‌تر این‌جا id خالی به‌کار می‌رفت و
+       کدی که در اعلان «ثبت درخواست» به شهروند داده می‌شد با کد واقعی فرق داشت. */
+    $dupCode = eplakReportCode((int) $existingId);
     eplakJson([
         'success'       => true,
         'deduped'       => true,          /* اپ می‌فهمد گزارش تازه ساخته نشده */
@@ -511,7 +515,7 @@ try {
                     'success'       => true,
                     'deduped'       => true,
                     'id'            => $raceId,
-                    'tracking_code' => 'EP-1403-' . str_pad((string) $raceId, 4, '0', STR_PAD_LEFT),
+                    'tracking_code' => eplakReportCode((int) $raceId),
                     'media'         => [],
                     'media_count'   => 0,
                     'timeline'      => eplakReportEvents($pdo, $raceId),
@@ -601,7 +605,7 @@ try {
 /* ── اعلان فوری برای خودِ کاربر: «درخواست شما ثبت شد» ─────────────────
    این اعلان هم در فهرست اعلان‌های اپ/سایت دیده می‌شود و هم (اگر فایربیس فعال
    باشد) بلافاصله روی گوشی می‌رسد؛ حتی وقتی برنامه بسته است. */
-$trackingCode = 'EP-1403-' . str_pad((string) $insertId, 4, '0', STR_PAD_LEFT);
+$trackingCode = eplakReportCode((int) $insertId);
 
 /* گام‌های آغازین روند رسیدگی: «ثبت شد» و «ارجاع به واحد» */
 try {
@@ -636,7 +640,7 @@ try {
 eplakJson([
     'success'       => true,
     'timeline'      => eplakReportEvents($pdo, $insertId),
-    'flow'          => eplakReportFlowStages('pending', eplakReportEvents($pdo, $insertId), gmdate('Y-m-d H:i:s')),
+    'flow'          => eplakReportFlowStages('pending', eplakReportEvents($pdo, $insertId), eplakDbNowString($pdo)),
     'id'            => $insertId,
     'tracking_code' => $trackingCode,
     'lat'           => $hasGeo ? $lat : null,

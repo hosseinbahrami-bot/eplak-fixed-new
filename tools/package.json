@@ -1,0 +1,21 @@
+{
+  "name": "eplak-dev-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ابزار آزمون‌های خودکار پروژه ای‌پلاک (بدون نیاز به هاست یا Android Studio) — PHP در Node با php-wasm و DOM واقعی با jsdom",
+  "type": "module",
+  "scripts": {
+    "regression": "bash dev/run-regression.sh all",
+    "test": "bash dev/run-regression.sh notify && bash dev/run-regression.sh notify-schema",
+    "test:notify": "bash dev/run-regression.sh notify",
+    "test:schema": "bash dev/run-regression.sh notify-schema",
+    "package": "bash build-update-package.sh"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@php-wasm/node": "^3.1.54",
+    "jsdom": "^26.1.0",
+    "php-parser": "^3.7.0",
+    "yaml": "^2.9.1"
+  }
+}

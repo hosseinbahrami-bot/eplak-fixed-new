@@ -127,7 +127,7 @@
 ### راه اول: از خود سایت گیت‌هاب (پیشنهادی — بدون نصب برنامه)
 
 1. به این آدرس بروید:
-   👉 **<https://github.com/hosseinbahrami-bot/eplak-fixed/tree/main/android-app/app>**
+   👉 **<https://github.com/hosseinbahrami-bot/eplak-fixed-new/tree/main/android-app/app>**
 2. بالای لیست فایل‌ها روی **Add file** → **Upload files** کلیک کنید.
 3. فایل `google-services.json` را از پوشه‌ی Downloads بکشید و در همان کادر رها کنید.
 4. پایین صفحه در کادر توضیح بنویسید: `افزودن google-services.json فایربیس`
@@ -154,10 +154,10 @@ git push
 
 ### گام ۳-۱) ساخت خودکار APK تازه
 به‌محض این Commit:
-1. به تب **Actions** مخزن بروید: <https://github.com/hosseinbahrami-bot/eplak-fixed/actions>
+1. به تب **Actions** مخزن بروید: <https://github.com/hosseinbahrami-bot/eplak-fixed-new/actions>
 2. ورک‌فلو **Build Android APK** خودش شروع می‌شود (حدود ۱ تا ۲ دقیقه).
 3. سبز که شد، فایل تازه در صفحه‌ی Releases هست:
-   👉 **<https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk>**
+   👉 **<https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk>**
 
 این APK **همان اپ قبلی است + اعلان فایربیس**. پس آن را روی گوشی نصب کنید:
 اگر نسخه‌ی قبلی نصب است، همین فایل رویش به‌روزرسانی می‌شود؛ اگر پیام

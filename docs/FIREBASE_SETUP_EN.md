@@ -91,7 +91,7 @@ The file must live at **`android-app/app/google-services.json`**.
 **Easiest way (no tools needed):**
 
 1. Open
-   <https://github.com/hosseinbahrami-bot/eplak-fixed/tree/main/android-app/app>
+   <https://github.com/hosseinbahrami-bot/eplak-fixed-new/tree/main/android-app/app>
 2. Click **Add file → Upload files**, drag `google-services.json` in.
 3. Write a short message, e.g. `add firebase google-services.json`, and click **Commit changes**.
 
@@ -108,7 +108,7 @@ git push
 
 **What happens next:** the GitHub Action **Build Android APK** runs automatically
 (1–2 minutes) and publishes a fresh APK **with Firebase enabled**:
-<https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk>
+<https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk>
 
 In the build log you should see:
 `EplakFCM: google-services.json پیدا شد — اعلان فایربیس فعال می‌شود.` ✅

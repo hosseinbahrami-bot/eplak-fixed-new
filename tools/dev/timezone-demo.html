@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دموی ساعتِ تهران — ای‌پلاک</title>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     tools/dev/timezone-demo.html — «یک ساعتِ واحد = تهران» را چشمی نشان می‌دهد.
+
+     • فایلِ واقعیِ اپ (core/state.js) را بار می‌کند (بدون هیچ کپی/بازنویسی).
+     • ستونِ PHP خروجیِ واقعیِ tools/dev/timezone-demo-samples.php است که یک‌بار
+       اجرا و این‌جا ذخیره شده (تا صفحه بدون PHP هم دیده شود).
+     • اجرا: از ریشه‌ی مخزن یک سرورِ ایستا بالا بیاورید، مثلاً
+           node tools/dev/demo-server.mjs      ⇒  http://localhost:4173/
+       یا   python3 -m http.server 8080  ⇒  /tools/dev/timezone-demo.html
+       (باز کردنِ مستقیمِ فایل با file:// هم کار می‌کند چون مسیرِ state.js نسبی است.)
+     ═════════════════════════════════════════════════════════════════════════ -->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 18px; background: #0d1117; color: #e6edf3;
+         font: 15px/1.9 Vazirmatn, Tahoma, "Segoe UI", sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 26px 0 8px; color: #79c0ff; }
+  .sub { color: #8b949e; font-size: 13px; margin-bottom: 14px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+          padding: 14px 16px; margin-bottom: 12px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .big { font-size: 34px; font-weight: 700; letter-spacing: .5px; }
+  .lbl { color: #8b949e; font-size: 12px; margin-bottom: 4px; }
+  .ok  { color: #3fb950; }
+  .bad { color: #f85149; }
+  .warn{ color: #d29922; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { border-bottom: 1px solid #21262d; padding: 8px 6px; text-align: right; vertical-align: top; }
+  th { color: #8b949e; font-weight: 600; font-size: 12.5px; }
+  code, .mono { direction: ltr; unicode-bidi: embed;
+                font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; }
+  .fa-num { font-size: 15px; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px;
+         border: 1px solid #30363d; background: #0d1117; color: #8b949e; }
+  .note { color: #8b949e; font-size: 12.5px; }
+  ul { margin: 6px 0 0; padding-right: 20px; }
+  li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<h1>⏰ دموی «یک ساعتِ واحد = تهران»</h1>
+<div class="sub">
+  <span class="tag">کامیت <code>e1c4c4c</code></span>
+  <span class="tag">کش‌باسترها: state v15 · reports v30 · dashboard v17 · clock-lux v7</span>
+  این صفحه <b>همان فایلِ واقعیِ اپ</b> (<code>core/state.js</code>) را بار می‌کند و خروجیِ آن را با
+  <b>خروجیِ واقعیِ سرور</b> (<code>shared/fa_datetime.php</code> + <code>shared/bootstrap.php</code> روی PHP 8.3)
+  مقایسه می‌کند.
+</div>
+
+<h2>۱) ساعتِ زنده</h2>
+<div class="card">
+  <div class="grid">
+    <div>
+      <div class="lbl">ساعتِ گوشی/مرورگر شما</div>
+      <div class="big" id="devClock">—</div>
+      <div class="note" id="devTz">—</div>
+    </div>
+    <div>
+      <div class="lbl">ساعتِ تهران در اپ (<code>window.eplakNow()</code>)</div>
+      <div class="big ok" id="tehClock">—</div>
+      <div class="note" id="tehDiff">—</div>
+    </div>
+    <div>
+      <div class="lbl">تاریخِ شمسیِ تهران (<code>eplakFaNow()</code>)</div>
+      <div class="big fa-num" id="faNow">—</div>
+      <div class="note" id="faNowEn">—</div>
+    </div>
+  </div>
+</div>
+
+<h2>۲) قبل / بعد — همان مقدارهای دیتابیس</h2>
+<div class="card">
+  <table id="cmp">
+    <thead>
+      <tr>
+        <th>مقدارِ خام در دیتابیس</th>
+        <th>پنل ادمین (PHP)<br><span class="note">پیش‌فرضِ تازه: تهران</span></th>
+        <th>اپ (JS)<br><span class="note">کدِ تازه</span></th>
+        <th>اپ با منطقِ قبلی<br><span class="note">UTC فرض می‌شد ⇒ ۳ ساعت جلو (روی گوشیِ تهران)</span></th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <div class="note" style="margin-top:8px">
+    ستونِ «منطقِ قبلی» دقیقاً همان کاری را می‌کند که پیش از این تعمیر انجام می‌شد
+    (چسباندن <code>Z</code> به مقدارِ بدون منطقه‌ی زمانی و سپس خواندن با ساعتِ دستگاه) و روی
+    <b>گوشیِ تهران</b> همان <span class="fa-num">۱۶:۵۴</span> را می‌داد که گزارش شده بود —
+    برای مقایسه است، نه بخشی از کدِ امروز. ستون‌های «پنل» و «اپ» خروجیِ واقعیِ کدِ امروزند و
+    چون با <code>getUTC*</code> و اختلافِ ثابتِ ۲۱۰ دقیقه حساب می‌شوند، روی هر دستگاهی
+    (حتی با منطقه‌ی زمانیِ UTC) یکی‌اند.
+  </div>
+</div>
+
+<h2>۳) قراردادها</h2>
+<div class="card">
+  <ul>
+    <li>مقدارِ <b>بدون منطقه‌ی زمانی</b> (<code>2026-10-11 13:24:05</code>) = «دیوارِ تهران» ⇒ <b>بدون جابه‌جایی</b> نمایش داده می‌شود.</li>
+    <li>مقدارِ <b>دارای منطقه‌ی زمانی</b> (<code>…Z</code> یا <code>…+03:30</code>) و timestamp عددی = لحظه‌ی مطلق ⇒ به وقت تهران برده می‌شود.</li>
+    <li>اختلافِ ایران با UTC همیشه <code>+03:30</code> است (<code>EPLAK_TEHRAN_OFFSET_MIN = 210</code>) و همه‌ی محاسبه‌ها با <code>getUTC*</code> انجام می‌شود ⇒ <b>منطقه‌ی زمانیِ گوشی نتیجه را عوض نمی‌کند</b>.</li>
+    <li>سرور: <code>date_default_timezone_set(تهران)</code> + <code>SET time_zone = '+03:30'</code> روی نشستِ MySQL ⇒ هم نوشتن و هم خواندنِ <code>TIMESTAMP</code> تهران است.</li>
+    <li>داده‌ی قدیمیِ UTC: <code>EPLAK_DB_TIMEZONE=UTC</code> ⇒ مثل قبل ۳:۳۰ به تهران برده می‌شود.</li>
+  </ul>
+</div>
+
+<div class="card" id="phpInfo">
+  <div class="lbl">اطلاعاتِ سمتِ سرور (از اجرای واقعیِ PHP)</div>
+  <div class="note" id="phpInfoBody">در حال بارگذاری…</div>
+</div>
+
+<div class="card">
+  <div class="lbl">تازه‌سازی داده‌های سمتِ PHP</div>
+  <div class="note">
+    <code>window.PHP_SAMPLES</code> پایین، خروجیِ
+    <code>tools/dev/timezone-demo-samples.php</code> است. برای تازه‌سازی از ریشه‌ی مخزن اجرا کنید:<br>
+    <code>php tools/dev/timezone-demo-samples.php</code> (پیش‌فرض: تهران) و
+    <code>EPLAK_DB_TIMEZONE=UTC php tools/dev/timezone-demo-samples.php</code> (حالتِ داده‌ی قدیمی)،
+    سپس دو خروجی را زیرِ کلیدهای <code>new</code> و <code>legacy_utc</code> در همین فایل بگذارید.<br>
+    اگر PHP محلی ندارید، همان اسکریپت را می‌توان با PHP-WASM هم اجرا کرد
+    (<code>EPLAK_REPO_ROOT</code> را به ریشه‌ی مخزن تنظیم کنید).
+  </div>
+</div>
+
+<script src="../../core/state.js?v=15"></script>
+<script id="php-samples">/* خروجیِ واقعیِ PHP — با tools/dev/timezone-demo-samples.php ساخته شده */
+window.PHP_SAMPLES = {"new": {"php_timezone": "Asia/Tehran", "db_timezone": "Asia/Tehran", "session_offset": "+03:30", "db_now": "2026-10-14 04:29:03", "fa_now": "۱۴۰۵/۰۷/۲۲ - ساعت ۰۴:۲۹", "samples": {"2026-10-11 13:24:05": {"date": "۱۴۰۵/۰۷/۱۹", "datetime": "۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴"}, "2026-10-11T22:00:00Z": {"date": "۱۴۰۵/۰۷/۲۰", "datetime": "۱۴۰۵/۰۷/۲۰ - ساعت ۰۱:۳۰"}, "2026-10-11": {"date": "۱۴۰۵/۰۷/۱۹", "datetime": "۱۴۰۵/۰۷/۱۹ - ساعت ۰۰:۰۰"}, "2026-10-11T13:24:05+03:30": {"date": "۱۴۰۵/۰۷/۱۹", "datetime": "۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴"}, "": {"date": "—", "datetime": "—"}, "0000-00-00 00:00:00": {"date": "—", "datetime": "—"}, "1791458645": {"date": "۱۴۰۵/۰۷/۱۶", "datetime": "۱۴۰۵/۰۷/۱۶ - ساعت ۱۴:۵۴"}}}, "legacy_utc": {"php_timezone": "Asia/Tehran", "db_timezone": "UTC", "session_offset": "+00:00", "db_now": "2026-10-14 00:59:14", "fa_now": "۱۴۰۵/۰۷/۲۲ - ساعت ۰۴:۲۹", "samples": {"2026-10-11 13:24:05": {"date": "۱۴۰۵/۰۷/۱۹", "datetime": "۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴"}, "2026-10-11T22:00:00Z": {"date": "۱۴۰۵/۰۷/۲۰", "datetime": "۱۴۰۵/۰۷/۲۰ - ساعت ۰۱:۳۰"}, "2026-10-11": {"date": "۱۴۰۵/۰۷/۱۹", "datetime": "۱۴۰۵/۰۷/۱۹ - ساعت ۰۳:۳۰"}, "2026-10-11T13:24:05+03:30": {"date": "۱۴۰۵/۰۷/۱۹", "datetime": "۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴"}, "": {"date": "—", "datetime": "—"}, "0000-00-00 00:00:00": {"date": "—", "datetime": "—"}, "1791458645": {"date": "۱۴۰۵/۰۷/۱۶", "datetime": "۱۴۰۵/۰۷/۱۶ - ساعت ۱۴:۵۴"}}}};
+</script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* منطقِ قبلیِ اپ (فقط برای مقایسه): مقدارِ بدون منطقه‌ی زمانی ⇒ UTC ⇒ ساعتِ دستگاهِ تهران */
+  function oldFormat(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (s === '' || s.indexOf('0000-00-00') === 0 || s.indexOf('0001-01-01') === 0) return '—';
+    var d = null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) d = new Date(s + 'T00:00:00Z');
+    else if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
+      var iso = s.replace(' ', 'T');
+      d = /(Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? new Date(iso) : new Date(iso + 'Z');
+    } else if (/^\d+$/.test(s)) {
+      var n = parseInt(s, 10); d = new Date(n > 100000000000 ? n : n * 1000);
+    } else { d = new Date(s.replace(' ', 'T')); }
+    if (!d || isNaN(d.getTime())) return '—';
+    /* کدِ قدیمی با getHours() دستگاه کار می‌کرد؛ روی گوشیِ ایران (تهران) همان نتیجه
+       با «+۲۱۰ دقیقه و getUTC*» بازسازی می‌شود تا این ستون قطعی باشد. */
+    var t = new Date(d.getTime() + 210 * 60000);
+    var j = window.eplakGregorianToJalali(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+    var p2 = function (x) { return String(x).length < 2 ? '0' + x : String(x); };
+    return window.eplakToFaDigits(j.jy + '/' + p2(j.jm) + '/' + p2(j.jd)) + ' - ساعت '
+         + window.eplakToFaDigits(p2(t.getUTCHours()) + ':' + p2(t.getUTCMinutes()));
+  }
+
+  function pad(n) { return String(n).length < 2 ? '0' + n : String(n); }
+
+  function tick() {
+    var dev = new Date();
+    var teh = window.eplakNow();
+    $('devClock').textContent = pad(dev.getHours()) + ':' + pad(dev.getMinutes()) + ':' + pad(dev.getSeconds());
+    $('tehClock').textContent = pad(teh.getHours()) + ':' + pad(teh.getMinutes()) + ':' + pad(teh.getSeconds());
+    var diffMin = -dev.getTimezoneOffset();
+    var tzName = '';
+    try { tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+    $('devTz').textContent = 'منطقه‌ی زمانیِ دستگاه: ' + (tzName || 'نامشخص') + ' (UTC'
+      + (diffMin >= 0 ? '+' : '−') + pad(Math.floor(Math.abs(diffMin) / 60)) + ':' + pad(Math.abs(diffMin) % 60) + ')';
+    var delta = Math.round((teh.getTime() - dev.getTime()) / 60000);
+    $('tehDiff').textContent = delta === 0
+      ? 'دستگاه شما روی تهران است ⇒ هر دو یکی‌اند ✓'
+      : 'دستگاه شما ' + delta + ' دقیقه با تهران فاصله دارد، ولی اپ همان ساعتِ تهران را نشان می‌دهد ✓';
+    $('faNow').textContent = window.eplakFaNow();
+    /* حالتِ انگلیسیِ اپ با window.i18n تشخیص داده می‌شود؛ همان را موقتاً جا می‌زنیم */
+    var savedI18n = window.i18n;
+    window.i18n = { currentLang: 'en' };
+    var enNow = window.eplakFaDateTime(new Date());
+    window.i18n = savedI18n;
+    $('faNowEn').textContent = 'رابط انگلیسی: ' + enNow;
+  }
+
+  (function (data) {
+    var php = data.new, legacy = data.legacy_utc;
+    $('phpInfoBody').innerHTML =
+      'ساعتِ PHP: <code>' + php.php_timezone + '</code> · منطقه‌ی زمانیِ دیتابیس: <code>' + php.db_timezone +
+      '</code> · اختلافِ نشستِ MySQL: <code>' + php.session_offset + '</code><br>' +
+      '<code>eplakDbNow()</code> = <span class="mono">' + php.db_now + '</span> · ' +
+      '<code>eplakFaNow()</code> = <span class="fa-num">' + php.fa_now + '</span><br>' +
+      'حالتِ سازگاری با داده‌ی قدیمی: <code>EPLAK_DB_TIMEZONE=' + legacy.db_timezone + '</code> ⇒ اختلافِ نشست ' +
+      '<code>' + legacy.session_offset + '</code> و همان مقدار <span class="fa-num">' +
+      legacy.samples['2026-10-11 13:24:05'].datetime + '</span>';
+
+    var rows = Object.keys(php.samples).map(function (k) {
+      var empty = (k === '' || k.indexOf('0000-00-00') === 0);
+      var jsNow = empty ? '—' : window.eplakFaDateTime(k);
+      var old = oldFormat(k);
+      var same = jsNow === php.samples[k].datetime;
+      var cls = same ? 'ok' : 'warn';
+      return '<tr>' +
+        '<td class="mono">' + (k === '' ? '(خالی)' : k) + '</td>' +
+        '<td class="fa-num ' + cls + '">' + php.samples[k].datetime + (same ? ' ✓' : ' ⚠') + '</td>' +
+        '<td class="fa-num ' + cls + '">' + jsNow + '</td>' +
+        '<td class="fa-num bad">' + old + '</td>' +
+      '</tr>';
+    }).join('');
+    document.querySelector('#cmp tbody').innerHTML = rows;
+  })(window.PHP_SAMPLES);
+
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

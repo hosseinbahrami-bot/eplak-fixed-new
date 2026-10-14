@@ -26,18 +26,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($message === '') {
-            createNews($pdo, [
-                'type'      => ($_POST['type'] ?? 'news') === 'tip' ? 'tip' : 'news',
-                'title'     => $title,
-                'summary'   => trim($_POST['summary'] ?? '') ?: null,
-                'body'      => $body,
-                'icon'      => trim($_POST['icon'] ?? '') ?: null,
-                'badge'     => trim($_POST['badge'] ?? ''),
-                'image_url' => $imageUrl !== '' ? $imageUrl : null,
-                'published' => isset($_POST['published']) ? 1 : 0,
-                'sort_order' => (int)($_POST['sort_order'] ?? 0),
-            ]);
-            eplakRedirect('news.php?success=1');
+            /* ذخیره با «ستون‌های موجودِ» دیتابیس؛ گزارشِ چه‌چیزی سازگار شد
+               برمی‌گردد تا صادقانه به مدیر بگوییم (مثلاً ایموجی حذف شد) */
+            $saveReport = null;
+            try {
+                $newId = createNews($pdo, [
+                    'type'      => ($_POST['type'] ?? 'news') === 'tip' ? 'tip' : 'news',
+                    'title'     => $title,
+                    'summary'   => trim($_POST['summary'] ?? '') ?: null,
+                    'body'      => $body,
+                    'icon'      => trim($_POST['icon'] ?? '') ?: null,
+                    'badge'     => trim($_POST['badge'] ?? ''),
+                    'image_url' => $imageUrl !== '' ? $imageUrl : null,
+                    'published' => isset($_POST['published']) ? 1 : 0,
+                    'sort_order' => (int)($_POST['sort_order'] ?? 0),
+                ], $saveReport);
+            } catch (Throwable $e) {
+                $newId = 0;
+                $saveReport = ['ok' => false, 'error' => $e->getMessage()];
+            }
+
+            if ($newId > 0 && !empty($saveReport['ok'])) {
+                $query = ['success' => 1];
+                if (!empty($saveReport['degraded'])) {
+                    $query['degraded'] = implode(',', $saveReport['degraded']);
+                }
+                eplakRedirect('news.php?' . http_build_query($query));
+            }
+
+            $message = '⚠️ ذخیره‌ی مطلب ناموفق بود: '
+                . (string) ($saveReport['error'] ?? 'خطای نامشخص')
+                . ' — اگر دیتابیس قدیمی است، در صفحه‌ی «اخبار و دانستنی‌ها» دکمه‌ی'
+                . ' «تعمیر خودکار جدول اخبار» را بزنید و دوباره تلاش کنید.';
         }
     }
 }
@@ -153,7 +173,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <label for="image_file">تصویر شاخص (اختیاری)</label>
               <input class="search-input" style="width:100%;" type="file" id="image_file" name="image_file"
                      accept="image/*">
-              <p class="help-text">حداکثر ۱۲ مگابایت — تصویر روی کارت خبر/دانستنی نمایش داده می‌شود.</p>
+              <p class="help-text">حداکثر ۱۲ مگابایت — تصویر روی کارت خبر/دانستنی نمایش داده می‌شود
+                 (در اپ، هم روی کارت فهرست و هم بالای صفحه‌ی جزئیات).</p>
+              <div id="imagePreviewBox" style="margin-top:10px; display:none;">
+                <img id="imagePreview" alt="پیش‌نمایش تصویر مطلب"
+                     style="max-width:240px; max-height:150px; border-radius:12px; border:2px solid var(--dark-200); object-fit:cover;">
+                <p class="help-text" id="imagePreviewNote"></p>
+              </div>
             </div>
           </div>
 
@@ -181,5 +207,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </section>
     </main>
   </div>
+
+<script>
+/* پیش‌نمایش زنده‌ی تصویر مطلب — همان چیزی که در اپ روی کارت خبر/دانستنی می‌آید */
+(function () {
+  var file = document.getElementById('image_file');
+  var url  = document.getElementById('image_url');
+  var box  = document.getElementById('imagePreviewBox');
+  var img  = document.getElementById('imagePreview');
+  var note = document.getElementById('imagePreviewNote');
+  if (!box || !img) return;
+
+  function resolve(value) {
+    var v = String(value || '').trim();
+    if (v === '') return '';
+    if (/^(https?:)?\/\//i.test(v) || v.indexOf('data:') === 0) return v;
+    /* مسیرهای نسبیِ هاست (uploads/news/…) از پوشه‌ی admin با ../ درست می‌شوند */
+    return '../' + v.replace(/^\/+/, '');
+  }
+  function show(src, text) {
+    if (!src) { box.style.display = 'none'; img.removeAttribute('src'); if (note) note.textContent = ''; return; }
+    box.style.display = 'block';
+    img.src = src;
+    if (note) note.textContent = text || '';
+  }
+  if (file) file.addEventListener('change', function () {
+    var f = file.files && file.files[0];
+    if (!f) { show(resolve(url ? url.value : ''), ''); return; }
+    if (f.size > 12 * 1024 * 1024) { show('', ''); if (note) note.textContent = '⚠️ حجم تصویر بیش از ۱۲ مگابایت است'; box.style.display = 'block'; return; }
+    show(URL.createObjectURL(f), 'پیش‌نمایش «' + f.name + '» — همین تصویر در اپ روی کارت مطلب نمایش داده می‌شود.');
+  });
+  if (url) url.addEventListener('input', function () {
+    if (file && file.files && file.files.length) return;
+    show(resolve(url.value), url.value.trim() ? 'پیش‌نمایش نشانی تصویر' : '');
+  });
+  if (url && url.value.trim()) show(resolve(url.value), 'تصویر فعلی مطلب');
+})();
+</script>
 </body>
 </html>

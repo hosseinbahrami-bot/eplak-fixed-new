@@ -24,10 +24,10 @@ version can do, and what has not yet been tried on a real phone.
 |---|---|
 | 🌍 **PWA — direct link (GitHub Pages)** | **https://hosseinbahrami-bot.github.io/eplak-fixed/** (after Pages is switched on once; section 3.1) |
 | 🌐 **PWA on your own host** | **https://eplak.ir/eplak-fixed/** — up right now and installable |
-| 🍎 iOS app (unsigned IPA) | `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app-unsigned.ipa` (+ the `.sha256` file) |
-| 🧰 Xcode project (for anyone with a Mac) | `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-ios-project.zip` |
-| 📱 Android app | `https://github.com/hosseinbahrami-bot/eplak-fixed/releases/download/v2.0-eplak-update/eplak-app.apk` |
-| 🗂️ Everything | [Releases page](https://github.com/hosseinbahrami-bot/eplak-fixed/releases/tag/v2.0-eplak-update) |
+| 🍎 iOS app (unsigned IPA) | `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app-unsigned.ipa` (+ the `.sha256` file) |
+| 🧰 Xcode project (for anyone with a Mac) | `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-ios-project.zip` |
+| 📱 Android app | `https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk` |
+| 🗂️ Everything | [Releases page](https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/tag/v2.0-eplak-update) |
 
 The PWA has no file to download; it is just an address.
 

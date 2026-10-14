@@ -29,7 +29,9 @@
   /* ────────── حل وضعیت از دادهٔ آنلاین ────────── */
   function resolveState() {
     var isEn = isEnglish();
-    var isDay = weatherData && typeof weatherData.isDay === 'boolean' ? weatherData.isDay : (new Date().getHours() >= 6 && new Date().getHours() < 19);
+    /* روز/شب بر پایه‌ی ساعتِ تهران (نه منطقه‌ی زمانیِ گوشی) */
+    var nowHour = (typeof window.eplakNow === 'function' ? window.eplakNow() : new Date()).getHours();
+    var isDay = weatherData && typeof weatherData.isDay === 'boolean' ? weatherData.isDay : (nowHour >= 6 && nowHour < 19);
     var code = weatherData && typeof weatherData.code === 'number' ? weatherData.code : 2;
 
     var type = 'clear', label;

@@ -47,12 +47,52 @@ for rt, ds in json.load(sys.stdin)["devices"].items():
 echo "شبیه‌ساز: $NAME ($UDID)"
 
 echo "$UDID" > "$OUT/udid.txt"
-xcrun simctl boot "$UDID" 2>/dev/null || true
-xcrun simctl bootstatus "$UDID" -b >/dev/null
+
+# بالا آمدن شبیه‌سار روی رانرهای macOS گاهی موقتاً شکست می‌خورد (CoreSimulator با
+# SIGABRT/کد ۱۳۴ می‌میرد و هیچ لاگی از اپ به جا نمی‌ماند). یک shutdown+erase و تلاش
+# دوباره در عمل مشکل را حل می‌کند؛ پس به‌جای شکستِ بی‌صدا، سه بار تلاش می‌کنیم و در
+# صورت شکست، تشخیص را هم در پوشه‌ی خروجی (که به‌عنوان artifact پیوست می‌شود) می‌گذاریم.
+boot_dump() {
+  {
+    echo "== simctl list devices available =="
+    xcrun simctl list devices available 2>&1
+    echo
+    echo "== simctl list runtimes =="
+    xcrun simctl list runtimes 2>&1
+    echo
+    echo "== log show (۵ دقیقه‌ی اخیر، CoreSimulator) =="
+    log show --last 5m --style compact --predicate 'process CONTAINS "CoreSimulator"' 2>&1 | tail -n 60
+  } > "$OUT/boot-failure.txt" 2>&1 || true
+  echo "❌ تشخیص در $OUT/boot-failure.txt نوشته شد؛ ۴۰ خط آخر:"
+  tail -n 40 "$OUT/boot-failure.txt" 2>/dev/null || true
+}
+BOOTED=0
+for TRY in 1 2 3; do
+  xcrun simctl boot "$UDID" 2>/dev/null || true
+  if xcrun simctl bootstatus "$UDID" -b >/dev/null 2>&1; then
+    BOOTED=1
+    echo "✅ شبیه‌سار بالا آمد (تلاش $TRY)"
+    break
+  fi
+  echo "::warning::شبیه‌سار در تلاش $TRY بالا نیامد؛ shutdown/erase و تلاش دوباره"
+  xcrun simctl shutdown "$UDID" 2>/dev/null || true
+  xcrun simctl erase "$UDID" 2>/dev/null || true
+  sleep 5
+done
+if [ "$BOOTED" != "1" ]; then
+  echo "❌ شبیه‌سار $UDID پس از ۳ تلاش بالا نیامد"
+  boot_dump
+  exit 1
+fi
+
 xcrun simctl install "$UDID" "$APP"
 xcrun simctl privacy "$UDID" grant location "$BUNDLE_ID" || true
 xcrun simctl location "$UDID" set 35.3335,51.6402 || true     # ورامین، میدان امام حسین (ع)
-xcrun simctl launch "$UDID" "$BUNDLE_ID" -eplakSelfTest
+if ! xcrun simctl launch "$UDID" "$BUNDLE_ID" -eplakSelfTest; then
+  echo "::warning::اجرای اپ در تلاش اول ناموفق بود؛ یک بار دیگر تلاش می‌شود"
+  sleep 3
+  xcrun simctl launch "$UDID" "$BUNDLE_ID" -eplakSelfTest
+fi
 DATA="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)"
 echo "پوشه‌ی داده‌ی اپ: $DATA"
 

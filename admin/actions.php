@@ -50,6 +50,28 @@ if ($type === 'news_toggle') {
     exit;
 }
 
+/* ترمیم ساختار جدول اخبار/دانستنی‌ها — همان کاری که برای جدول اعلان‌ها می‌کنیم:
+   • اگر جدول news در دیتابیس نیست (دامپ اصلی DBasli آن را ندارد) ساخته می‌شود
+   • ستون‌های نبوده (badge، image_url، summary، sort_order، published) اضافه می‌شوند
+   • جدول به utf8mb4 تبدیل می‌شود تا ایموجیِ آیکون/عنوان ذخیره شود
+   • اگر جدول خالی است، محتوای پیش‌فرض (۴ خبر + ۲ دانستنی) یک‌بار درج می‌شود
+   بدون این ترمیم، «افزودن مطلب» روی دیتابیس قدیمی همیشه شکست می‌خورد و
+   فهرست اخبار در اپ خالی می‌ماند. */
+if ($type === 'news_repair') {
+    $schema = eplakNewsSchema($pdo, true);
+    /* اجازه‌ی درج دوباره‌ی محتوای پیش‌فرض (فقط وقتی جدول خالی باشد درج می‌شود) */
+    eplakSetAppSetting($pdo, 'news_seeded', '');
+    $seedReport = null;
+    $seeded = eplakSeedDefaultNews($pdo, $seedReport);
+    eplakRedirect('news.php?' . http_build_query([
+        'repaired' => 1,
+        'fixed'    => count($schema['repaired']),
+        'broken'   => count($schema['failed']),
+        'seeded'   => $seeded,
+    ]));
+    exit;
+}
+
 if ($type === 'department_delete') {
     deleteDepartment($pdo, $id);
     eplakRedirect('departments.php');

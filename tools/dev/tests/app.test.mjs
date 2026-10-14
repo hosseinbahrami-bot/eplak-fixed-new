@@ -243,10 +243,10 @@ ok('استایل گالری اپ (کاشی مربعی و لایت‌باکس) ا
   /\.media-tile \{/.test(appCss) && /aspect-ratio: 1 \/ 1/.test(appCss) && /\.media-viewer\.open/.test(appCss));
 const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 ok('صفحه‌ی اپ، نسخه‌ی تازه‌ی فایل‌ها را بار می‌کند',
-  /modules\/reports\.js\?v=27/.test(indexHtml)
+  /modules\/reports\.js\?v=30/.test(indexHtml)
   && /core\/storage\.js\?v=21/.test(indexHtml)
   && /core\/upload-progress\.js\?v=1/.test(indexHtml)
-  && /assets\/js\/ep-camera\.js\?v=2/.test(indexHtml));
+  && /assets\/js\/ep-camera\.js\?v=3/.test(indexHtml));
 
 console.log('\n=== گزارش فنی ارسال پیوست (برای پیگیری) ===');
 ok('نتیجه‌ی هر تلاش ارسال در اپ ثبت می‌شود',

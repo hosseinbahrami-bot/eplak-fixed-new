@@ -99,7 +99,7 @@ $recipientTotal = count($recipientRows);
           <div class="stat-item">نوع ارسال
             <strong><?= $send['target_type'] === 'all' ? 'همه کاربران' : 'کاربران انتخابی' ?></strong>
           </div>
-          <div class="stat-item">زمان <strong><?= htmlspecialchars($send['created_at']) ?></strong></div>
+          <div class="stat-item">زمان <strong><?= htmlspecialchars(eplakFaDateTimeOf($send['created_at'] ?? null, '—')) ?></strong></div>
         </div>
       </section>
 
@@ -138,7 +138,7 @@ $recipientTotal = count($recipientRows);
                       <span class="status-pending" style="padding:3px 10px; border-radius:999px; font-size:12px;">خوانده نشده</span>
                     <?php endif; ?>
                   </td>
-                  <td style="font-size:12px; color:var(--dark-500);"><?= htmlspecialchars($r['created_at']) ?></td>
+                  <td style="font-size:12px; color:var(--dark-500);"><?= htmlspecialchars(eplakFaDateTimeOf($r['created_at'] ?? null, '—')) ?></td>
                 </tr>
               <?php endforeach; ?>
             <?php endif; ?>

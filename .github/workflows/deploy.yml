@@ -1,0 +1,217 @@
+# ============================================================================
+#  آپلود خودکار روی هاست (FTP/SFTP) — فقط شاخه‌ی main
+# ============================================================================
+#  چه کار می‌کند؟ همان «بسته‌ی به‌روزرسانی» (eplak-fixed-update.zip) را، ولی
+#  بدون نیاز به دانلود و Extract دستی، روی هاست می‌گذارد:
+#    ۱) آزمون‌های خودکار را اجرا می‌کند (کد قرمز روی هاست نمی‌رود)
+#    ۲) پوشه‌ی آپلود را می‌سازد: فقط «کد سایت»، دقیقاً مثل بسته‌ی zip
+#    ۳) با lftp روی هاست آینه می‌کند (mirror -R؛ بدون پاک کردنِ چیزی)
+#    ۴) بعد از آپلود، نسخه‌ی زنده‌ی سایت را با مخزن مقایسه می‌کند
+#
+#  امنیت/داده: این ورک‌فلو هیچ‌وقت داده‌ی کاربران را پاک نمی‌کند.
+#    · از «mirror -R» بدون --delete استفاده می‌شود ⇒ فایل‌های فقط-روی-هاست
+#      (data/، uploads/، shared/config.php) سرِ جایشان می‌مانند.
+#    · همان‌طور که در بسته‌ی zip نیستند، این‌ها اصلاً آپلود نمی‌شوند:
+#      data/ · uploads/ · backend/ (dump دیتابیس با داده‌ی شخصی) · shared/config.php
+#      · ios-app/ · android-app/ · pwa-dist/ · tools/ · .github/ · .git/
+#
+#  secret های لازم (در Settings → Secrets and variables → Actions):
+#    FTP_HOST   نام سرور/میزبان FTP        (اجباری)
+#    FTP_USER   نام کاربری                 (اجباری)
+#    FTP_PASS   گذرواژه                    (اجباری)
+#    FTP_PATH   پوشه‌ی مقصد                 (اختیاری؛ پیش‌فرض /public_html/eplak-fixed)
+#    FTP_SCHEME sftp یا ftp                (اختیاری؛ پیش‌فرض sftp)
+#    FTP_URL    آدرس زنده‌ی سایت برای بررسی  (اختیاری؛ پیش‌فرض https://eplak.ir/eplak-fixed/)
+#  اگر FTP_HOST/FTP_USER/FTP_PASS تنظیم نشده باشند، ورک‌فلو «با موفقیت رد می‌شود»
+#  (بدون خطا) و فقط راهنما را در خلاصه می‌نویسد.
+# ============================================================================
+
+name: آپلود خودکار روی هاست (FTP)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-host-main
+  cancel-in-progress: false      # دو آپلود هم‌زمان روی یک هاست = خرابی
+
+env:
+  DEFAULT_REMOTE_PATH: /public_html/eplak-fixed
+  DEFAULT_SITE_URL: 'https://eplak.ir/eplak-fixed/'
+
+jobs:
+  deploy:
+    name: آزمون، آماده‌سازی و آپلود روی هاست
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: آماده‌سازی Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # ── ۱) دروازه‌ی آزمون ────────────────────────────────────────────────────
+      - name: آزمون‌های خودکار (کد قرمز روی هاست نمی‌رود)
+        run: |
+          set -e
+          for t in syntax notify notify-schema news jalali app backend online push pushcrypto fcm security geo upload tiles placesadmin otp places ios pwa; do
+            echo "::group::آزمون $t"
+            bash tools/dev/run-regression.sh "$t"
+            echo "::endgroup::"
+          done
+
+      # ── ۲) secret های هاست ─────────────────────────────────────────────────
+      - name: بررسی تنظیمات هاست (secret ها)
+        id: cfg
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASS: ${{ secrets.FTP_PASS }}
+          FTP_PATH: ${{ secrets.FTP_PATH }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FTP_HOST:-}" ] || [ -z "${FTP_USER:-}" ] || [ -z "${FTP_PASS:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=آپلود رد شد::secret های FTP تنظیم نشده‌اند (FTP_HOST / FTP_USER / FTP_PASS). ورک‌فلو بدون خطا رد می‌شود."
+            {
+              echo "### آپلود روی هاست: انجام نشد (بدون خطا)"
+              echo
+              echo "این ورک‌فلو وقتی کار می‌کند که این secret ها در"
+              echo "**Settings → Secrets and variables → Actions** ساخته شده باشند:"
+              echo
+              echo '| secret | لازم؟ | توضیح |'
+              echo '| --- | --- | --- |'
+              echo '| `FTP_HOST` | بله | میزبان FTP/SFTP هاست |'
+              echo '| `FTP_USER` | بله | نام کاربری |'
+              echo '| `FTP_PASS` | بله | گذرواژه |'
+              echo '| `FTP_PATH` | نه | پوشه‌ی مقصد (پیش‌فرض `/public_html/eplak-fixed`) |'
+              echo '| `FTP_SCHEME` | نه | `sftp` یا `ftp` (پیش‌فرض `sftp`) |'
+              echo '| `FTP_URL` | نه | آدرس زنده‌ی سایت برای بررسیِ بعد از آپلود |'
+              echo
+              echo "بدون این‌ها، بسته‌ی دستی همیشه در دسترس است:"
+              echo "<https://github.com/$GITHUB_REPOSITORY/releases/download/latest-update/eplak-fixed-update.zip>"
+              echo "(راهنمای آپلود دستی: `docs/DEPLOY_UPDATE_FA.md`)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "REMOTE_PATH=${FTP_PATH:-$DEFAULT_REMOTE_PATH}" >> "$GITHUB_OUTPUT"
+          echo "✅ secret ها هستند؛ مقصد: ${FTP_PATH:-$DEFAULT_REMOTE_PATH}"
+
+      # ── ۳) پوشه‌ی آپلود (فقط کد سایت) ────────────────────────────────────────
+      - name: آماده‌سازی پوشه‌ی آپلود
+        run: |
+          set -euo pipefail
+          SITE_ROOT="${RUNNER_TEMP:-/tmp}/eplak-site"
+          rm -rf "$SITE_ROOT"
+          mkdir -p "$SITE_ROOT"
+          cp -a ./. "$SITE_ROOT"/
+          cd "$SITE_ROOT"
+          # پوشه‌های «پروژه/CI/ابزار» روی هاست معنا ندارند (دقیقاً مثل بسته‌ی zip):
+          rm -rf ios-app pwa-dist tools android-app .github
+          rm -rf .git .arena node_modules pwa-evidence pages-evidence ios-evidence apk-check ipa-check
+          # dump های دیتابیس (با داده‌ی شخصی کاربران) و فایل‌های محلیِ داده هرگز آپلود نمی‌شوند:
+          rm -rf backend views test-fixtures .vscode
+          rm -rf data uploads
+          rm -f shared/config.php
+          rm -f .gitignore .gitattributes INSTALL_GUIDE_FA.md
+          rm -f eplak-fixed-update.zip eplak-fixed-update.zip.sha256
+          rm -f eplak-app.apk eplak-app.apk.sha256 eplak-app-unsigned.ipa eplak-ios-project.zip
+          rm -f docs/README.md docs/technical-architecture.md
+          echo "SITE_ROOT=$SITE_ROOT" >> "$GITHUB_ENV"
+          echo "UPLOAD_FILES=$(find . -type f | wc -l | tr -d ' ')" >> "$GITHUB_ENV"
+          echo "UPLOAD_SIZE=$(du -sh . | cut -f1 | tr -d ' ')" >> "$GITHUB_ENV"
+          # چند بررسی که داده‌ی کاربر یا ابزار توسعه روی هاست نرود:
+          for bad in shared/config.php data uploads backend ios-app android-app tools .github .git; do
+            if [ -e "$bad" ]; then echo "❌ $bad نباید داخل پوشه‌ی آپلود باشد"; exit 1; fi
+          done
+          for need in index.html .htaccess api/notifications.php shared/bootstrap.php admin/settings.php modules/live.js core/storage.js; do
+            [ -f "$need" ] || { echo "❌ $need در پوشه‌ی آپلود نیست"; exit 1; }
+          done
+          # نگهبانِ تعمیرِ اعلان‌ها (همان چیزی که روی هاست قدیمی مانده بود):
+          grep -q 'eplakNotificationsSchema' api/notifications.php
+          grep -q 'broadcast_row_blocked' admin/includes/functions.php
+          grep -q 'function eplakFkRelaxBegin' shared/bootstrap.php
+          echo "✅ پوشه‌ی آپلود آماده است: $UPLOAD_FILES فایل ($UPLOAD_SIZE)"
+
+      # ── ۴) آپلود با lftp ───────────────────────────────────────────────────
+      # نکته‌ی مهم: «mirror -R» بدون «--delete». یعنی فایل‌های روی هاست پاک
+      # نمی‌شوند؛ فقط فایل‌های کد بازنویسی/اضافه می‌شوند.
+      - name: آپلود روی هاست با lftp
+        if: steps.cfg.outputs.enabled == 'true'
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASS: ${{ secrets.FTP_PASS }}
+          FTP_SCHEME: ${{ secrets.FTP_SCHEME }}
+          REMOTE_PATH: ${{ steps.cfg.outputs.remote_path }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq lftp >/dev/null
+          SCHEME="${FTP_SCHEME:-sftp}"
+          REMOTE="${REMOTE_PATH:-$DEFAULT_REMOTE_PATH}"
+          echo "→ $SCHEME://$FTP_HOST$REMOTE  ←  $SITE_ROOT"
+          lftp -u "$FTP_USER,$FTP_PASS" "$SCHEME://$FTP_HOST" <<EOF
+          set sftp:auto-confirm yes
+          set net:timeout 30
+          set net:max-retries 3
+          set xfer:clobber on
+          mirror -R --verbose=1 --parallel=4 "$SITE_ROOT" "$REMOTE"
+          bye
+          EOF
+          echo "✅ آپلود تمام شد"
+
+      # ── ۵) بررسیِ نسخه‌ی زنده ───────────────────────────────────────────────
+      # این همان چیزی است که قبلاً نبود: «واقعاً روی هاست نشست یا نه؟»
+      - name: بررسی نسخه‌ی زنده‌ی سایت
+        if: steps.cfg.outputs.enabled == 'true'
+        env:
+          FTP_URL: ${{ secrets.FTP_URL }}
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          URL="${FTP_URL:-$DEFAULT_SITE_URL}"
+          echo "→ بررسی $URL"
+          LIVE="$(curl -fsS --max-time 30 "$URL" 2>/dev/null || true)"
+          if [ -z "$LIVE" ]; then
+            echo "::warning::سایت زنده در دسترس نبود ($URL)؛ بررسیِ بعد از آپلود انجام نشد."
+            exit 0
+          fi
+          WANT=$(grep -oE 'modules/live\.js\?v=[0-9]+' index.html | head -1 || true)
+          GOT=$(printf '%s' "$LIVE" | grep -oE 'modules/live\.js\?v=[0-9]+' | head -1 || true)
+          echo "مخزن: ${WANT:-—}   ·   سایت زنده: ${GOT:-—}"
+          if [ -n "$WANT" ] && [ "$WANT" = "$GOT" ]; then
+            echo "✅ نسخه‌ی زنده با مخزن یکی است"
+            echo "LIVE_CHECK=match ($GOT)" >> "$GITHUB_ENV"
+          else
+            echo "LIVE_CHECK=differ (repo=$WANT live=$GOT)" >> "$GITHUB_ENV"
+            echo "::warning::نسخه‌ی زنده با مخزن یکی نیست (احتمالاً کش CDN/مرورگر یا پوشه‌ی مقصد اشتباه است). repo=$WANT live=$GOT"
+          fi
+          API="$(curl -fsS --max-time 20 "${URL}api/ping.php" 2>/dev/null || true)"
+          echo "پینگ API: ${API:-—}"
+
+      - name: خلاصه‌ی اجرا
+        if: always()
+        run: |
+          {
+            echo "### آپلود خودکار روی هاست"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| secret های FTP | ${{ steps.cfg.outputs.enabled == 'true' && 'تنظیم شده' || 'تنظیم نشده (آپلود رد شد)' }} |"
+            echo "| مقصد | \`${{ steps.cfg.outputs.remote_path || env.DEFAULT_REMOTE_PATH }}\` |"
+            echo "| فایل‌های آپلودشده | \`${UPLOAD_FILES:-0}\` (\`${UPLOAD_SIZE:-?}\`) |"
+            echo "| بررسی نسخه‌ی زنده | \`${LIVE_CHECK:-—}\` |"
+            echo "| شاخه / کامیت | \`${GITHUB_REF_NAME}\` / \`${GITHUB_SHA}\` |"
+            echo
+            echo "داده‌ی کاربران (data/، uploads/، shared/config.php، backend/) هرگز آپلود یا پاک نمی‌شود."
+          } >> "$GITHUB_STEP_SUMMARY"

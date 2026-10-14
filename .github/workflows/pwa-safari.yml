@@ -1,0 +1,133 @@
+# ============================================================================
+#  PWA ای‌پلاک داخل Safari واقعیِ iPhone (شبیه‌ساز، روی macOS)
+# ============================================================================
+#  چرا؟ چون «PWA روی iOS» یعنی WebKit — و WebKit با Chrome/Chromium فرق دارد.
+#  این ورک‌فلو نسخه‌ی زنده‌ی سایت را داخل Safariِ یک شبیه‌سار iPhone باز می‌کند
+#  و در سه لحظه (۳۰/۶۰/۹۰ ثانیه) عکس می‌گیرد؛ Safari در شبیه‌ساز بارِ اول کند
+#  بالا می‌آید، پس یک عکس کافی نیست.
+#
+#  صادقانه: این سنجش فقط نشان می‌دهد «صفحه داخل WebKit درست کشیده می‌شود».
+#  «افزودن به صفحه اصلی» و اعلانِ Web Push را نمی‌شود روی شبیه‌ساز خودکار
+#  امتحان کرد (نیاز به iOS 16.4+ و تعامل دستی دارد) — راهنما: docs/IOS_PWA_FA.md
+#
+#  عمداً فقط با تغییرِ فایل‌های خودش راه می‌افتد (نه با هر تغییر وبی):
+#  اجرای macOS گران و کند است و نباید جلوی ساخت APK/IPA/PWA را بگیرد.
+#  هیچ secret لازم ندارد.
+# ============================================================================
+
+name: آزمون PWA در Safari شبیه‌ساز iPhone
+
+on:
+  push:
+    branches: [ main, 'arena/**' ]
+    paths:
+      - '.github/workflows/pwa-safari.yml'
+      - 'tools/safari-pwa.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pwa-safari-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PWA_LIVE_URL: 'https://eplak.ir/eplak-fixed/'
+  EVIDENCE_DIR: safari-evidence
+
+jobs:
+  safari:
+    name: Safari روی شبیه‌ساز iPhone
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      # «جدیدترین Xcode» به‌تنهایی کافی نیست: باید شبیه‌سار iPhone «در دسترس»
+      # هم داشته باشد. پس جدیدترین Xcode ای انتخاب می‌شود که iPhone دارد.
+      - name: انتخاب Xcode (جدیدترین، با شبیه‌سار iPhone در دسترس)
+        run: |
+          set -euo pipefail
+          CHOSEN=""
+          for X in $(ls -d /Applications/Xcode*.app 2>/dev/null | sort -Vr); do
+            if DEVELOPER_DIR="$X/Contents/Developer" xcrun simctl list devices available 2>/dev/null | grep -q iPhone; then
+              CHOSEN="$X"; break
+            fi
+            echo "ℹ️  $X شبیه‌سار iPhone در دسترس ندارد"
+          done
+          if [ -z "$CHOSEN" ]; then
+            CHOSEN="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
+            [ -n "$CHOSEN" ] || { echo "::error::هیچ Xcode پیدا نشد"; exit 1; }
+          fi
+          sudo xcode-select -s "$CHOSEN/Contents/Developer"
+          echo "✅ Xcode: $CHOSEN"
+          xcodebuild -version
+          xcrun simctl list runtimes 2>&1 | grep -i ios || echo "::warning::رانتایم iOS فهرست نشد"
+
+      # اگر روی این runner هیچ شبیه‌سار iPhone نباشد (محدودیت محیط، نه ایراد کد)،
+      # بقیه‌ی مراحل «بدون خطا» رد می‌شوند و راهنما در خلاصه می‌آید.
+      - name: بررسی وجود شبیه‌سار iPhone
+        id: sim
+        run: |
+          set -uo pipefail
+          if xcrun simctl list devices available 2>/dev/null | grep -q iPhone; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            xcrun simctl list devices available 2>/dev/null | grep -i iphone | head -5
+            echo "✅ شبیه‌سار iPhone در دسترس است"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::روی این runner هیچ شبیه‌سار iPhone در دسترس نیست؛ آزمون Safari رد شد (بدون خطا)."
+            xcrun simctl list runtimes 2>&1 || true
+          fi
+
+      # اگر هاست خاموش باشد، اجرا قرمز نمی‌شود (این یک «گزارش» است، نه دروازه).
+      - name: بررسی در دسترس بودن سایت زنده
+        run: |
+          set -uo pipefail
+          echo "→ $PWA_LIVE_URL"
+          CODE="$(curl -o /dev/null -s -w '%{http_code}' --max-time 25 "$PWA_LIVE_URL" || echo 000)"
+          echo "HTTP $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "::warning::سایت زنده با کد $CODE پاسخ داد؛ عکس‌ها احتمالاً صفحه‌ی خطا را نشان می‌دهند."
+          fi
+
+      - name: اجرای آزمون Safari (tools/safari-pwa.sh)
+        if: steps.sim.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          bash tools/safari-pwa.sh "$PWA_LIVE_URL" "$EVIDENCE_DIR"
+
+      - name: خلاصه‌ی اجرا
+        if: always()
+        run: |
+          {
+            echo "### PWA در Safari شبیه‌ساز iPhone"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| آدرس سنجیده‌شده | \`$PWA_LIVE_URL\` |"
+            echo "| شبیه‌ساز | \`$(cat $EVIDENCE_DIR/simulator.txt 2>/dev/null || echo '—')\` |"
+            echo "| اجرا شد؟ | ${{ steps.sim.outputs.available == 'true' && 'بله — عکس‌ها گرفته شد' || 'نه — بدون خطا رد شد (شبیه‌سار iPhone روی runner نبود)' }} |"
+            echo "| عکس‌ها | \`$EVIDENCE_DIR/safari-30s.png\` · \`safari-60s.png\` · \`safari-90s.png\` |"
+            echo "| شاخه / کامیت | \`${GITHUB_REF_NAME}\` / \`${GITHUB_SHA}\` |"
+            echo
+            echo "**چه چیزی سنجیده می‌شود؟** کشیده‌شدن درست صفحه داخل WebKit."
+            echo
+            echo "**چه چیزی سنجیده نمی‌شود؟** «افزودن به صفحه اصلی» و اعلانِ Web Push"
+            echo "(روی شبیه‌سار خودکارشدنی نیست؛ iOS 16.4+ و تعامل دستی لازم است)."
+            echo
+            echo "عکس‌ها وقتی پیام کامیت \`[evidence]\` داشته باشد، به‌صورت Artifact"
+            echo "به اجرا پیوست می‌شوند (تا برچسب‌های آزمایشی روی هر اجرا جمع نشوند)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # عکس‌ها فقط با پیام کامیت «[evidence]» پیوست می‌شوند.
+      - name: پیوست عکس‌های Safari
+        if: contains(github.event.head_commit.message, '[evidence]')
+        uses: actions/upload-artifact@v4
+        with:
+          name: safari-evidence
+          path: safari-evidence
+          if-no-files-found: ignore
+          retention-days: 30

@@ -204,7 +204,7 @@ if (empty($department['code'])) {
               <span><i class="fas fa-level-up-alt"></i> والد: <strong><?= htmlspecialchars($parent['name'] ?? 'ندارد') ?></strong></span>
             <?php endif; ?>
             <span><i class="fas fa-sitemap"></i> زیرواحدها: <strong><?= count($subDepartments) ?></strong></span>
-            <span><i class="fas fa-calendar-alt"></i> ایجاد: <?= htmlspecialchars($department['created_at'] ?? 'نامشخص') ?></span>
+            <span><i class="fas fa-calendar-alt"></i> ایجاد: <?= htmlspecialchars(eplakFaDateTimeOf($department['created_at'] ?? null, 'نامشخص')) ?></span>
             <span>
               <i class="fas fa-circle" style="color: <?= ($department['is_active'] ?? 1) ? 'var(--success)' : 'var(--danger)' ?>;"></i>
               وضعیت: <strong><?= ($department['is_active'] ?? 1) ? 'فعال' : 'غیرفعال' ?></strong>
@@ -419,7 +419,7 @@ if (empty($department['code'])) {
                 </span>
                 <span style="font-size: 13px; color: var(--dark-500);">
                   <i class="fas fa-clock" style="color: var(--dark-400);"></i>
-                  آخرین بروزرسانی: <strong><?= htmlspecialchars($department['updated_at'] ?? $department['created_at'] ?? 'نامشخص') ?></strong>
+                  آخرین بروزرسانی: <strong><?= htmlspecialchars(eplakFaDateTimeOf($department['updated_at'] ?? $department['created_at'] ?? null, 'نامشخص')) ?></strong>
                 </span>
                 <span style="font-size: 13px; color: var(--dark-500);">
                   <i class="fas fa-id-badge" style="color: var(--dark-400);"></i>

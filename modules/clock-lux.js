@@ -1,7 +1,7 @@
 /* modules/clock-lux.js — ساعت و تقویم لوکس پیشخوان
    ─ ساعت آنالوگ لوکس (SVG زنده با عقربهٔ ثانیهٔ لغزان)
    ─ دیجیتال + برچسب صبح/ظهر/عصر/شب
-   ─ سه‌گانهٔ تاریخ: شمسی + قمری (آوینی → Intl → محاسباتی) + میلادی
+   ─ تاریخ: شمسی (تقویم اصلیِ اپ) + قمری (آوینی → Intl → محاسباتی)
    ─ تقویم ماه شمسی: ناوبری ماه‌ها، جمعه‌ها و تعطیلات رسمی، انتخاب روز
    بدون تغییر در dashboard.js (همان idهای قبلی همچنان دیجیتال/تاریخ را می‌رانند) */
 (function () {
@@ -18,14 +18,23 @@
     return false;
   }
   function el(id) { return document.getElementById(id); }
+  /* «اکنون» به وقت تهران: اگر ساعتِ گوشی روی منطقه‌ی دیگری باشد هم ساعت و
+     تقویمِ اپ تهران را نشان می‌دهند (از core/state.js ← window.eplakNow). */
+  function nowTehran() {
+    try {
+      if (typeof window.eplakNow === 'function') return window.eplakNow();
+    } catch (e) {}
+    return new Date();
+  }
 
   const J_MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
   const J_MONTHS_EN = ['Farvardin', 'Ordibehesht', 'Khordad', 'Tir', 'Mordad', 'Shahrivar', 'Mehr', 'Aban', 'Azar', 'Dey', 'Bahman', 'Esfand'];
   const W_LETTERS = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'];
   const W_FULL = ['یک‌شنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه'];
   const W_FULL_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const G_MONTHS_FA = ['ژانویه', 'فوریه', 'مارس', 'آوریل', 'مه', 'ژوئن', 'ژوئیه', 'اوت', 'سپتامبر', 'اکتبر', 'نوامبر', 'دسامبر'];
-  const G_MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  /* نام ماه‌های میلادی عمداً حذف شد: تقویم اپ در همه‌جا «شمسی» است
+     (خواسته‌ی کارفرما: «هرچی تاریخ داخل اپ هست رو به شمسی تبدیل کن»).
+     سه‌گانه‌ی تاریخ به «شمسی + قمری» کاهش یافت. */
   const H_MONTHS_FA = ['', 'محرم', 'صفر', 'ربیع‌الاول', 'ربیع‌الثانی', 'جمادی‌الاول', 'جمادی‌الثانی', 'رجب', 'شعبان', 'رمضان', 'شوال', 'ذی‌القعده', 'ذی‌الحجه'];
   const H_MONTHS_EN = ['', 'Muharram', 'Safar', 'Rabi al-Awwal', 'Rabi al-Thani', 'Jumada al-Awwal', 'Jumada al-Thani', 'Rajab', 'Shaban', 'Ramadan', 'Shawwal', 'Dhu al-Qadah', 'Dhu al-Hijjah'];
   /* تعطیلات رسمی ثابت شمسی (ماه، روز) — مناسبت‌های قمری هر سال جابه‌جا می‌شوند */
@@ -107,7 +116,7 @@
   }
   /* آوینی فقط «امروز» را می‌دهد؛ برای روزهای دیگر: Intl → الگوریتم */
   function getHijri(date) {
-    const now = new Date();
+    const now = nowTehran();
     const t = date || now;
     const sameDay = now.getFullYear() === t.getFullYear() && now.getMonth() === t.getMonth() && now.getDate() === t.getDate();
     if (sameDay) {
@@ -203,7 +212,7 @@
     if (typeof requestAnimationFrame !== 'function') return;
     function frame() {
       if (!document.hidden && hH.isConnected) {
-        const now = new Date();
+        const now = nowTehran();
         const s = now.getSeconds() + now.getMilliseconds() / 1000;
         const m = now.getMinutes() + s / 60;
         const h = (now.getHours() % 12) + m / 60;
@@ -276,11 +285,9 @@
         hEl.style.display = 'none';
       }
     }
-    if (gEl) {
-      gEl.textContent = en
-        ? now.getDate() + ' ' + G_MONTHS_EN[now.getMonth()] + ' ' + now.getFullYear()
-        : fa(now.getDate()) + ' ' + G_MONTHS_FA[now.getMonth()] + ' ' + fa(now.getFullYear()) + ' میلادی';
-    }
+    /* خطِ «میلادی» دیگر پر نمی‌شود: کارتِ «تاریخ امروز» شمسی و قمری نشان می‌دهد.
+       عنصر (اگر در نسخه‌ی کش‌شده‌ی index.html هنوز باشد) خالی و پنهان می‌ماند. */
+    if (gEl) { gEl.textContent = ''; gEl.hidden = true; }
     /* مناسبت‌های روز — جای خالی زیر دکمهٔ «تقویم» */
     const occEl = el('luxOccasion');
     if (occEl) {
@@ -329,7 +336,7 @@
         ? J_MONTHS_EN[_view.jm - 1] + ' ' + _view.jy
         : J_MONTHS[_view.jm - 1] + ' ' + fa(_view.jy);
     }
-    const now = new Date();
+    const now = nowTehran();
     const tj = toJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
     let html = '';
     for (let i = 0; i < 7; i++) {
@@ -367,13 +374,10 @@
       const s = _sel || { jy: tj[0], jm: tj[1], jd: tj[2] };
       const g = toGregorian(s.jy, s.jm, s.jd);
       const h = getHijri(new Date(g[0], g[1] - 1, g[2]));
-      const gd = new Date(g[0], g[1] - 1, g[2]);
       const parts = [];
       parts.push(fmtFull(s.jy, s.jm, s.jd));
       if (h) parts.push(en ? h.d + ' ' + H_MONTHS_EN[h.m] + ' ' + h.y + ' AH' : fa(h.d) + ' ' + (H_MONTHS_FA[h.m] || '') + ' ' + fa(h.y));
-      parts.push(en
-        ? gd.getDate() + ' ' + G_MONTHS_EN[gd.getMonth()] + ' ' + gd.getFullYear()
-        : fa(gd.getDate()) + ' ' + G_MONTHS_FA[gd.getMonth()] + ' ' + fa(gd.getFullYear()));
+      /* معادلِ میلادیِ روز از پانویس تقویم برداشته شد (تقویم اپ شمسی است) */
       foot.textContent = parts.join('  •  ');
     }
   }
@@ -385,7 +389,7 @@
     renderCalendar();
   }
   function goToday() {
-    const now = new Date();
+    const now = nowTehran();
     const t = toJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
     _view = { jy: t[0], jm: t[1] };
     _sel = { jy: t[0], jm: t[1], jd: t[2] };
@@ -410,14 +414,14 @@
     const holder = el('luxAnalogHolder');
     if (holder && !holder.firstChild) holder.innerHTML = buildAnalog();
 
-    const now = new Date();
+    const now = nowTehran();
     const tj = toJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
     _view = { jy: tj[0], jm: tj[1] };
     _sel = { jy: tj[0], jm: tj[1], jd: tj[2] };
 
     startAnalog();
     updateDates(now);
-    setInterval(function () { updateDates(new Date()); }, 30000);
+    setInterval(function () { updateDates(nowTehran()); }, 30000);
     renderCalendar();
 
     const btn = el('luxCalToggle');
@@ -429,12 +433,12 @@
 
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('languagechange', function () {
-        updateDates(new Date());
+        updateDates(nowTehran());
         renderCalendar();
       });
       /* وقتی دادهٔ زندهٔ آوینی رسید، تاریخ قمری با منبع ایرانی تازه می‌شود */
       window.addEventListener('eplak:citylive-painted', function () {
-        updateDates(new Date());
+        updateDates(nowTehran());
       });
     }
   }
