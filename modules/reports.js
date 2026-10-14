@@ -219,7 +219,27 @@
     else { jm = 7 + Math.trunc((days - 186) / 30); jd = 1 + ((days - 186) % 30); }
     return { jy: jy, jm: jm, jd: jd };
   }
-  /* مقدارِ بدون منطقه‌ی زمانیِ سرور = ساعتِ دیتابیس (UTC) و نمایش = وقتِ دستگاه */
+  /* «یک ساعتِ واحد = تهران»: مقدارِ بدون منطقه‌ی زمانیِ سرور همان «دیوارِ تهران»
+     است (دیتابیس با SET time_zone روی تهران پین شده) و نمایش هم تهران — پس
+     جابه‌جایی در کار نیست. همه‌ی محاسبه‌ها با getUTC* انجام می‌شود تا ساعتِ
+     گوشی (اگر روی منطقه‌ی دیگری باشد) نتیجه را عوض نکند. */
+  const REPORT_TEHRAN_OFFSET_MIN = 210;   /* ایران از ۱۴۰۱ ساعت تابستانی ندارد */
+  function reportTehranParts(d) {
+    const shifted = new Date(d.getTime() + REPORT_TEHRAN_OFFSET_MIN * 60000);
+    return {
+      y: shifted.getUTCFullYear(), m: shifted.getUTCMonth() + 1, d: shifted.getUTCDate(),
+      h: shifted.getUTCHours(), mi: shifted.getUTCMinutes()
+    };
+  }
+  function reportTehranWallToDate(text) {
+    const m = String(text).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (!m) return null;
+    const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+      Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0)) - REPORT_TEHRAN_OFFSET_MIN * 60000;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
   function reportParseDate(dateValue) {
     if (dateValue instanceof Date) return isNaN(dateValue.getTime()) ? null : dateValue;
     const s = String(dateValue == null ? '' : dateValue).trim();
@@ -232,10 +252,10 @@
     if (s.indexOf('0000-00-00') === 0 || s.indexOf('0001-01-01') === 0) return null;
     let d = null;
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-      d = new Date(s + 'T00:00:00Z');
+      d = reportTehranWallToDate(s);
     } else if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
       const iso = s.replace(' ', 'T');
-      d = /(Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? new Date(iso) : new Date(iso + 'Z');
+      d = /(Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? new Date(iso) : reportTehranWallToDate(iso);
     }
     if (!d || isNaN(d.getTime())) {
       d = new Date(s.replace(' ', 'T'));
@@ -251,14 +271,16 @@
   function eplakFaDateLocal(value, fallback) {
     const d = reportParseDate(value);
     if (!d) return fallback === undefined ? String(value == null ? '' : value) : String(fallback);
-    const j = reportJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    const p = reportTehranParts(d);
+    const j = reportJalali(p.y, p.m, p.d);
     const text = j.jy + '/' + reportPad2(j.jm) + '/' + reportPad2(j.jd);
     return reportIsEnglishUi() ? text : reportToFaDigits(text);
   }
   function eplakFaTimeLocal(value) {
     const d = reportParseDate(value);
     if (!d) return '';
-    const t = reportPad2(d.getHours()) + ':' + reportPad2(d.getMinutes());
+    const p = reportTehranParts(d);
+    const t = reportPad2(p.h) + ':' + reportPad2(p.mi);
     return reportIsEnglishUi() ? t : reportToFaDigits(t);
   }
   function eplakFaNowLocal() {

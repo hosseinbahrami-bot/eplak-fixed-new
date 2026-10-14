@@ -193,6 +193,16 @@
     return h * 60 + m;
   }
 
+  /* «اکنونِ تهران» — برای هر محاسبه‌ای که با getHours()/getDate() کار می‌کند، تا
+     منطقه‌ی زمانیِ گوشی (مثلاً گوشیِ مسافر) اوقات شرعی و ساعت را عوض نکند.
+     از core/state.js ← window.eplakNow() */
+  function nowTehran() {
+    try {
+      if (typeof window.eplakNow === 'function') return window.eplakNow();
+    } catch (e) { /* بی‌اهمیت */ }
+    return new Date();
+  }
+
     function nowMinutes() {
     try {
       const tf = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tehran', hour: 'numeric', minute: 'numeric', hour12: false });
@@ -205,7 +215,7 @@
       if (h === 24) h = 0;
       return h * 60 + m;
     } catch (e) {
-      const d = new Date();
+      const d = nowTehran();
       return d.getHours() * 60 + d.getMinutes();
     }
   }
@@ -248,7 +258,7 @@
   const HIJRI_MONTHS_AR = ['', 'محرم', 'صفر', 'ربیع‌الاول', 'ربیع‌الثانی', 'جمادی‌الاول', 'جمادی‌الثانی', 'رجب', 'شعبان', 'رمضان', 'شوال', 'ذی‌القعده', 'ذی‌الحجه'];
 
   function computePrayerTimes(lat, lon, tzHours, date) {
-    const d = date || new Date();
+    const d = date || nowTehran();
     function julian(y, m, dd) {
       if (m <= 2) { y -= 1; m += 12; }
       const A = Math.floor(y / 100), B = 2 - A + Math.floor(A / 4);
@@ -416,7 +426,7 @@
        پشتیبان: اگر آوینی در دسترس نبود، محاسبهٔ ۱۰۰٪ محلی (بدون نیاز به اینترنت) */
     return fetchJson('https://prayer.aviny.com/api/prayertimes/243').then(function (t) {
       if (!t || !t.Noon || !t.Maghreb) throw new Error('bad aviny payload');
-      const loc = computePrayerTimes(VARAMIN.lat, VARAMIN.lon, 3.5, new Date());
+      const loc = computePrayerTimes(VARAMIN.lat, VARAMIN.lon, 3.5, nowTehran());
       function pick(src, fb) {
         const v = String(src || '').trim().slice(0, 5);
         return /^\d{1,2}:\d{2}/.test(v) ? v : fb;
@@ -447,7 +457,7 @@
         updatedAt: new Date().toISOString()
       };
     }).catch(function () {
-      const timings = computePrayerTimes(VARAMIN.lat, VARAMIN.lon, 3.5, new Date());
+      const timings = computePrayerTimes(VARAMIN.lat, VARAMIN.lon, 3.5, nowTehran());
       return {
         timings: timings,
         hijriFa: '',

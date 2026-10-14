@@ -59,7 +59,8 @@
   }
 
   function stampName(ext) {
-    const d = new Date();
+    /* نام فایل با ساعتِ تهران ساخته می‌شود (نه منطقه‌ی زمانیِ گوشی) */
+    const d = (typeof window.eplakNow === 'function' ? window.eplakNow() : new Date());
     const pad = n => String(n).padStart(2, '0');
     return 'eplak-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
       + '-' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '.' + ext;

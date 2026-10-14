@@ -233,11 +233,16 @@
      این‌جا همان الگوریتم `shared/fa_datetime.php` پیاده شده (همان اعداد مرجع:
      ۳۵۵۶۶۶ / ۱۲۰۵۳ / ۱۴۶۱ / ۱۸۶) تا تاریخ در همه‌ی دستگاه‌ها «شمسی» باشد.
 
-     قرارداد ساعت: مقدارهای سرور بدون منطقه‌ی زمانی («2026-10-11 13:24:05»)
-     همان ساعتِ دیتابیس (UTC) هستند و به وقتِ دستگاه (تهران) نشان داده
-     می‌شوند — دقیقاً مثل پنل ادمین (`eplakFaDateTimeOf`).
+     قرارداد ساعت («یک ساعتِ واحد = تهران»): دیتابیس با `SET time_zone` روی
+     تهران پین شده (shared/bootstrap.php)، پس مقدارهای سرور بدون منطقه‌ی زمانی
+     («2026-10-11 13:24:05») همان «دیوارِ تهران»‌اند و باید بدون جابه‌جایی
+     نشان داده شوند — دقیقاً مثل پنل ادمین (`eplakFaDateTimeOf`). پیش از این
+     مقدارها UTC فرض می‌شدند و ۳:۳۰ ساعت جلو می‌افتادند («ساعت ۳ ساعت جلوتره»).
+     مقدارهایی که منطقه‌ی زمانی دارند (Z یا ‎+03:30) و timestampها به وقتِ تهران
+     برده می‌شوند، و همه‌ی محاسبه‌ها با getUTC* انجام می‌شود تا ساعتِ گوشی
+     (اگر روی منطقه‌ی دیگری باشد) نتیجه را عوض نکند.
      تقویم در «هر دو زبان» شمسی است؛ فقط رقم‌ها به زبانِ رابط کاربری‌اند
-     (فارسی: ۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴ · انگلیسی: 1405/07/19 16:54).
+     (فارسی: ۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴ · انگلیسی: 1405/07/19 13:24).
   ========================================================= */
   function eplakGregorianToJalali(gy, gm, gd) {
     const gDays = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
@@ -272,7 +277,40 @@
     return s.indexOf('ساعت') !== -1 || /[۰-۹]{4}\/[۰-۹]{1,2}\/[۰-۹]{1,2}/.test(s);
   }
 
-  /* خواندن مقدار تاریخ از سرور/حافظه: رشته‌ی بدون منطقه‌ی زمانی = UTC دیتابیس */
+  /* ── ساعتِ تهران، مستقل از منطقه‌ی زمانیِ گوشی ────────────────────────────
+     ایران از ۱۴۰۱ ساعتِ تابستانی ندارد ⇒ اختلاف با UTC همیشه ‎+03:30 است. */
+  const EPLAK_TEHRAN_OFFSET_MIN = 210;
+
+  /* اجزای یک «لحظه» در وقتِ تهران (getUTC* ⇒ بدون وابستگی به ساعتِ دستگاه) */
+  function eplakTehranParts(d) {
+    const shifted = new Date(d.getTime() + EPLAK_TEHRAN_OFFSET_MIN * 60000);
+    return {
+      y: shifted.getUTCFullYear(), m: shifted.getUTCMonth() + 1, d: shifted.getUTCDate(),
+      h: shifted.getUTCHours(), mi: shifted.getUTCMinutes(), s: shifted.getUTCSeconds(),
+      weekday: shifted.getUTCDay()
+    };
+  }
+
+  /* رشته‌ی «دیوارِ تهران» (بدون منطقه‌ی زمانی) ← لحظه‌ی مطلق */
+  function eplakTehranWallToDate(text) {
+    const m = String(text).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (!m) return null;
+    const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+      Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0)) - EPLAK_TEHRAN_OFFSET_MIN * 60000;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  /* «اکنون» به وقت تهران — برای ماژول‌هایی که ساعت/تقویم می‌سازند؛ اگر ساعتِ
+     گوشی روی منطقه‌ی دیگری باشد هم اپ ساعت تهران را نشان می‌دهد. (برای گوشیِ
+     داخل ایران اختلاف صفر است و همان Date قبلی برگردانده می‌شود.) */
+  function eplakNow() {
+    const now = new Date();
+    const diff = EPLAK_TEHRAN_OFFSET_MIN + now.getTimezoneOffset();
+    return diff === 0 ? now : new Date(now.getTime() + diff * 60000);
+  }
+
+  /* خواندن مقدار تاریخ از سرور/حافظه: رشته‌ی بدون منطقه‌ی زمانی = وقتِ تهران */
   function eplakParseDateValue(value) {
     if (value === null || value === undefined || value === '') return null;
     if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
@@ -287,10 +325,11 @@
     if (s.indexOf('0000-00-00') === 0 || s.indexOf('0001-01-01') === 0) return null;
     let d = null;
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-      d = new Date(s + 'T00:00:00Z');                       /* فقط تاریخ → UTC */
+      d = eplakTehranWallToDate(s);                         /* فقط تاریخ → همان روز در تهران */
     } else if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
       const iso = s.replace(' ', 'T');
-      d = /(Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? new Date(iso) : new Date(iso + 'Z');
+      /* منطقه‌ی زمانیِ صریح (Z یا ‎+03:30) ملاک است؛ وگرنه مقدار «دیوارِ تهران» است */
+      d = /(Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? new Date(iso) : eplakTehranWallToDate(iso);
     }
     if (!d || isNaN(d.getTime())) {
       d = new Date(s.replace(' ', 'T'));                     /* هر شکل دیگری: خودِ مرورگر */
@@ -306,21 +345,23 @@
     if (eplakIsFormattedFa(value)) return String(value);
     const d = eplakParseDateValue(value);
     if (!d) return fb;
-    const j = eplakGregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    const p = eplakTehranParts(d);
+    const j = eplakGregorianToJalali(p.y, p.m, p.d);
     const text = j.jy + '/' + eplakPad2(j.jm) + '/' + eplakPad2(j.jd);
     return eplakIsEnglishUi() ? text : eplakToFaDigits(text);
   }
 
-  /* ساعت: «۱۶:۵۴» */
+  /* ساعت: «۱۳:۲۴» */
   function eplakFaTime(value, fallback) {
     const fb = fallback === undefined ? '' : String(fallback);
     const d = eplakParseDateValue(value);
     if (!d) return fb;
-    const t = eplakPad2(d.getHours()) + ':' + eplakPad2(d.getMinutes());
+    const p = eplakTehranParts(d);
+    const t = eplakPad2(p.h) + ':' + eplakPad2(p.mi);
     return eplakIsEnglishUi() ? t : eplakToFaDigits(t);
   }
 
-  /* تاریخ و ساعت: «۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴» (همان شکل قبلیِ اپ) */
+  /* تاریخ و ساعت: «۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴» (همان شکل قبلیِ اپ) */
   function eplakFaDateTime(value, fallback) {
     const fb = fallback === undefined ? '' : String(fallback);
     if (eplakIsFormattedFa(value)) return String(value);
@@ -334,6 +375,9 @@
   window.eplakGregorianToJalali = eplakGregorianToJalali;
   window.eplakToFaDigits = eplakToFaDigits;
   window.eplakParseDateValue = eplakParseDateValue;
+  window.eplakTehranParts = eplakTehranParts;
+  window.eplakTehranWallToDate = eplakTehranWallToDate;
+  window.eplakNow = eplakNow;
   window.eplakFaDate = eplakFaDate;
   window.eplakFaTime = eplakFaTime;
   window.eplakFaDateTime = eplakFaDateTime;

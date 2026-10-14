@@ -6,6 +6,9 @@ require_once __DIR__ . '/paths.php';
 /* تاریخ و ساعت شمسی: هم برای متن اعلان‌ها و هم برای نمایش تاریخ‌ها در پنل
    مدیریت (پیش از این، تاریخ گزارش‌ها/کاربران/تیکت‌ها میلادی چاپ می‌شد). */
 require_once __DIR__ . '/fa_datetime.php';
+/* ساعتِ PHP هم روی منطقه‌ی زمانیِ نمایش (پیش‌فرض: تهران) تا date()/strtotime() در
+   کلِ پروژه یکسان باشند و به php.ini هاست بستگی نداشته باشند. */
+date_default_timezone_set(eplakDisplayTimezone()->getName());
 
 function eplakIsHttpsRequest(): bool {
     if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
@@ -1998,6 +2001,20 @@ function eplakGetPdo(): PDO {
                 $e2
             );
         }
+    }
+
+    /* ── ساعتِ دیتابیس روی تهران پین می‌شود ─────────────────────────────────
+       ستون‌های created_at از نوع TIMESTAMP‌اند و MySQL مقدارشان را با time_zoneِ
+       نشست جابه‌جا می‌کند. بدون این خط، همان رویداد بسته به ساعتِ هاست ۳ ساعت
+       جلو/عقب خوانده می‌شد (شکایت کارفرما: «ساعت ۳ ساعت جلوتره»). با پین کردن
+       نشست روی db_timezone (پیش‌فرض +03:30)، هم NOW()/CURRENT_TIMESTAMP تهران
+       می‌نویسند و هم خوانده‌های TIMESTAMP تهران‌اند ⇒ یک ساعتِ واحد در دیتابیس،
+       پنل و اپ. شکلِ عددیِ منطقه استفاده می‌شود چون جدولِ نام‌های زمانیِ MySQL
+       روی هاست‌های اشتراکی معمولاً بارگذاری نشده است. */
+    try {
+        $pdo->exec("SET time_zone = '" . eplakTimezoneOffsetString(eplakDbTimezone()) . "'");
+    } catch (\Throwable $e) {
+        /* بعضی هاست‌ها این دستور را نمی‌پذیرند؛ نمایش همچنان با db_timezone درست است */
     }
 
     eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS admin_users (

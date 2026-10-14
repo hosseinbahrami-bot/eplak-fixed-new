@@ -22,9 +22,14 @@
      • JS: همان الگوریتم در core/state.js (`window.eplakFaDate/eplakFaTime/
        eplakFaDateTime`) — بدون وابستگی به Intl مرورگر؛ `formatReportDate()` و
        `formatReportDateTime()` و `faDate()`/`faTime()` از آن استفاده می‌کنند.
-     • قرارداد ساعت: مقدارِ بدون منطقه‌ی زمانیِ دیتابیس = UTC و نمایش = وقت
-       تهران (در اپ: وقت دستگاه). با `EPLAK_DB_TIMEZONE=Asia/Tehran` قابل
-       تنظیم برای هاست‌هایی که ساعت دیتابیسشان تهران است.
+     • قرارداد ساعت («یک ساعتِ واحد = تهران»): ستون‌های created_at از نوع
+       TIMESTAMP‌اند و MySQL آن‌ها را با time_zoneِ نشست جابه‌جا می‌کند؛ به همین
+       دلیل تاریخ‌ها ۳ ساعت جلو دیده می‌شدند. حالا bootstrap ساعتِ PHP و نشستِ
+       MySQL را روی تهران پین می‌کند (`SET time_zone = '+03:30'`)، پس مقدارهای
+       دیتابیس «دیوارِ تهران»‌اند و بدون جابه‌جایی نمایش داده می‌شوند
+       (db_timezone = Asia/Tehran). در اپ هم همه‌ی محاسبه‌ها با getUTC* و
+       اختلافِ ثابتِ ‎+03:30 انجام می‌شود تا منطقه‌ی زمانیِ گوشی نتیجه را عوض
+       نکند. برای داده‌ی قدیمیِ UTC: `EPLAK_DB_TIMEZONE=UTC`.
    ============================================================================ */
 process.env.TZ = 'Asia/Tehran';   /* آزمون در CI هم همان وقت تهران بسنجد */
 
@@ -123,8 +128,8 @@ const samples = await fn("["
   + "'garbage' => eplakFaDateTimeOf('not-a-date', '—'),"
   + "'digits' => eplakFaDigits('1405/07/19')"
   + "]");
-ok('تاریخ و ساعتِ دیتابیس به شمسیِ وقت تهران تبدیل می‌شود',
-  samples && samples.datetime === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴', JSON.stringify(samples && samples.datetime));
+ok('تاریخ و ساعتِ دیتابیس به شمسیِ وقت تهران تبدیل می‌شود (بدون جابه‌جایی: ۱۳:۲۴)',
+  samples && samples.datetime === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴', JSON.stringify(samples && samples.datetime));
 ok('فقط تاریخ (بدون ساعت) هم شمسی است',
   samples && samples.date === '۱۴۰۵/۰۷/۱۹', JSON.stringify(samples && samples.date));
 ok('مقدارِ ISO با منطقه‌ی زمانی (Z) درست جابه‌جا می‌شود و روز عوض می‌شود',
@@ -137,10 +142,28 @@ ok('مقدارِ خالی/صفر/خراب ⇒ همان جایگزینِ خوان
   JSON.stringify(samples && { n: samples.null, e: samples.empty, z: samples.zero, g: samples.garbage }));
 ok('رقم‌ها فارسی نوشته می‌شوند', samples && samples.digits === '۱۴۰۵/۰۷/۱۹', JSON.stringify(samples && samples.digits));
 
-const tzOverride = await fn("['as_utc' => eplakFaDateTimeOf('2026-10-11 13:24:05'), 'as_tehran' => eplakFaDateTimeOf('2026-10-11 13:24:05')]",
-  { EPLAK_DB_TIMEZONE: 'Asia/Tehran' });
-ok('با EPLAK_DB_TIMEZONE=Asia/Tehran ساعتِ دیتابیس جابه‌جا نمی‌شود (هاست‌های ایرانی)',
-  tzOverride && tzOverride.as_tehran === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴', JSON.stringify(tzOverride));
+/* پیش‌فرضِ تازه: دیتابیس تهران است ⇒ مقدارها جابه‌جا نمی‌شوند و اختلافِ نشستِ
+   MySQL که در bootstrap فرستاده می‌شود ‎+03:30 است. */
+const tzDefault = await fn("['v' => eplakFaDateTimeOf('2026-10-11 13:24:05'),"
+  + " 'off' => eplakTimezoneOffsetString(eplakDbTimezone()),"
+  + " 'disp' => eplakTimezoneOffsetString(eplakDisplayTimezone())]");
+ok('پیش‌فرض: مقدارِ دیتابیس «وقت تهران» است (۱۳:۲۴) و نشستِ MySQL روی ‎+03:30 پین می‌شود',
+  tzDefault && tzDefault.v === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴' && tzDefault.off === '+03:30' && tzDefault.disp === '+03:30',
+  JSON.stringify(tzDefault));
+const tzLegacy = await fn("['v' => eplakFaDateTimeOf('2026-10-11 13:24:05'),"
+  + " 'off' => eplakTimezoneOffsetString(eplakDbTimezone())]", { EPLAK_DB_TIMEZONE: 'UTC' });
+ok('سازگاری با داده‌ی قدیمی: EPLAK_DB_TIMEZONE=UTC ⇒ مثل قبل ۳:۳۰ به تهران برده می‌شود (۱۶:۵۴)',
+  tzLegacy && tzLegacy.v === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴' && tzLegacy.off === '+00:00', JSON.stringify(tzLegacy));
+
+/* ساعتِ خودِ PHP هم روی تهران است (وگرنه به php.ini هاست بستگی داشت) */
+const phpNow = String(await run("require '" + APP + "/shared/bootstrap.php';"
+  + " echo date_default_timezone_get() . '|' . eplakDbNow();")).split('|');
+const jsTehranNow = new Date(Date.now() + 210 * 60000).toISOString().slice(0, 19).replace('T', ' ');
+const skewMs = Math.abs(Date.parse(String(phpNow[1] || '').replace(' ', 'T') + 'Z')
+  - Date.parse(jsTehranNow.replace(' ', 'T') + 'Z'));
+ok('ساعتِ PHP روی تهران تنظیم شده و eplakDbNow() همان «اکنونِ تهران» است',
+  phpNow[0] === 'Asia/Tehran' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(phpNow[1] || '')) && skewMs <= 120000,
+  JSON.stringify({ php_tz: phpNow[0], db_now: phpNow[1], js_tehran_now: jsTehranNow, skew_ms: skewMs }));
 const tsValue = await fn("['ts' => eplakFaDateTimeOf('" + TS + "'), 'ms' => eplakFaDate(" + TS + "000), 'now' => eplakFaNow()]");
 ok('timestamp عددی (ثانیه و میلی‌ثانیه) هم شمسی می‌شود',
   tsValue && String(tsValue.ts).indexOf(tsExpected) === 0 && tsValue.ms === tsExpected,
@@ -235,8 +258,8 @@ ok('هیچ تاریخ میلادیِ خامی (2026-10-11) در متنِ دید�
   'صفحه‌ها: ' + shownGregorian);
 
 const rp = rendered['فهرست گزارش‌ها'];
-ok('دقیقاً همان تاریخِ گزارش به شمسی و وقت تهران است (۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴)',
-  rp && /۱۴۰۵\/۰۷\/۱۹ - ساعت ۱۶:۵۴/.test(visibleText(rp.html)), '');
+ok('دقیقاً همان تاریخِ گزارش به شمسی و وقت تهران است (۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴)',
+  rp && /۱۴۰۵\/۰۷\/۱۹ - ساعت ۱۳:۲۴/.test(visibleText(rp.html)), '');
 const rd = rendered['جزئیات گزارش'];
 ok('روند رسیدگی و رویدادهای گزارش هم شمسی‌اند', rd && (visibleText(rd.html).match(/۱۴۰۵\/۰۷\/۱۹/g) || []).length >= 2,
   String(rd && (visibleText(rd.html).match(/۱۴۰۵\/۰۷\/۱۹/g) || []).length));
@@ -310,8 +333,14 @@ ok('ماژول تاریخ شمسی در اپ بارگذاری شد',
   appLogs.slice(0, 2).join(' | '));
 ok('تاریخِ «درخواست ثبت‌شده» در اپ شمسی است (نه 2026-10-11)',
   w.formatReportDate('2026-10-11 13:24:05') === '۱۴۰۵/۰۷/۱۹', String(w.formatReportDate('2026-10-11 13:24:05')));
-ok('تاریخ و ساعتِ درخواست در اپ شمسی و به وقت تهران است',
-  w.formatReportDateTime('2026-10-11 13:24:05') === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴', String(w.formatReportDateTime('2026-10-11 13:24:05')));
+ok('تاریخ و ساعتِ درخواست در اپ شمسی و به وقت تهران است (۱۳:۲۴ — بدون ۳ ساعت جابه‌جایی)',
+  w.formatReportDateTime('2026-10-11 13:24:05') === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴', String(w.formatReportDateTime('2026-10-11 13:24:05')));
+ok('مقداری که منطقه‌ی زمانیِ صریح دارد (Z) به وقت تهران برده می‌شود (۱۳:۲۴Z ⇒ ۱۶:۵۴)',
+  w.formatReportDateTime('2026-10-11T13:24:05Z') === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴',
+  String(w.formatReportDateTime('2026-10-11T13:24:05Z')));
+ok('اپ هم «اکنونِ تهران» را دارد (window.eplakNow) و با ساعتِ گوشیِ ایران یکی است',
+  typeof w.eplakNow === 'function' && Math.abs(w.eplakNow().getTime() - Date.now()) < 5000,
+  typeof w.eplakNow);
 ok('مقدارِ خامِ دارای ساعت دیگر «قالب‌گرفته» فرض نمی‌شود (ریشه‌ی باگ)',
   !/2026-10-11/.test(String(w.formatReportDateTime('2026-10-11 13:24:05')))
     && !/2026/.test(String(w.formatReportDate('2026-10-11T13:24:05'))), String(w.formatReportDate('2026-10-11T13:24:05')));
@@ -353,8 +382,8 @@ if (firstReport) {
   const detailEl = w.document.getElementById('screen-report-detail');
   const detailText = visibleText(detailEl ? detailEl.innerHTML : '');
   const detailDate = (w.document.getElementById('detailDate') || {}).textContent || '';
-  ok('«جزئیات گزارش»: تاریخِ زیرِ عنوان شمسی است (۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴)',
-    detailDate === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴', JSON.stringify(detailDate));
+  ok('«جزئیات گزارش»: تاریخِ زیرِ عنوان شمسی و ساعتِ درستِ تهران است (۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴)',
+    detailDate === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴', JSON.stringify(detailDate));
   ok('«جزئیات گزارش»: تاریخِ گام‌های «روند رسیدگی» هم شمسی است',
     (detailText.match(/۱۴۰۵\/۰۷\/۱۹/g) || []).length >= 2,
     String((detailText.match(/۱۴۰۵\/۰۷\/۱۹/g) || []).length));
@@ -372,7 +401,7 @@ if (Array.isArray(loadedTickets) && loadedTickets[0] && typeof w.openTicketDetai
   await new Promise((r) => setTimeout(r, 300));
   const ticketDate = (w.document.getElementById('ticketDetailDate') || {}).textContent || '';
   ok('«جزئیات تیکت»: تاریخ و ساعتِ ثبت شمسی است',
-    ticketDate === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴', JSON.stringify(ticketDate));
+    ticketDate === '۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴', JSON.stringify(ticketDate));
 }
 
 /* پیشخوان: کارت «تاریخ امروز» و ساعت لوکس — خطِ میلادی برداشته شده است */
@@ -391,9 +420,9 @@ ok('در «کلِ» صفحه‌ی اپ هیچ تاریخ میلادیِ دیده
 
 /* حالت انگلیسی: تقویم همان شمسی می‌ماند، فقط رقم‌ها لاتین می‌شوند */
 w.eval("window.i18n = { currentLang: 'en', getLanguage: function () { return 'en'; } };");
-ok('در رابط انگلیسی هم تقویم شمسی است (فقط رقم لاتین: 1405/07/19)',
+ok('در رابط انگلیسی هم تقویم شمسی است (فقط رقم لاتین: 1405/07/19 13:24)',
   w.formatReportDate('2026-10-11 13:24:05') === '1405/07/19'
-    && w.formatReportDateTime('2026-10-11 13:24:05') === '1405/07/19 16:54',
+    && w.formatReportDateTime('2026-10-11 13:24:05') === '1405/07/19 13:24',
   JSON.stringify([w.formatReportDate('2026-10-11 13:24:05'), w.formatReportDateTime('2026-10-11 13:24:05')]));
 ok('در رابط انگلیسی هم تاریخ میلادی چاپ نمی‌شود',
   !/2026-10-11/.test(String(w.formatReportDateTime('2026-10-11 13:24:05'))), '');
@@ -477,11 +506,38 @@ for (const f of adminFiles) {
 }
 ok('در پنل ادمین هیچ تاریخِ خامی چاپ نمی‌شود (همه با eplakFaDate…)', rawSites.length === 0, rawSites.join(', '));
 ok('کش‌باسترها بالا رفتند تا گوشی‌ها کد تازه را بگیرند',
-  /core\/state\.js\?v=14/.test(indexHtml) && /modules\/reports\.js\?v=29/.test(indexHtml)
-  && /modules\/live\.js\?v=18/.test(indexHtml) && /modules\/dashboard\.js\?v=16/.test(indexHtml)
-  && /modules\/city-live\.js\?v=14/.test(indexHtml) && /modules\/clock-lux\.js\?v=6/.test(indexHtml));
+  /core\/state\.js\?v=15/.test(indexHtml) && /modules\/reports\.js\?v=30/.test(indexHtml)
+  && /modules\/live\.js\?v=18/.test(indexHtml) && /modules\/dashboard\.js\?v=17/.test(indexHtml)
+  && /modules\/city-live\.js\?v=15/.test(indexHtml) && /modules\/clock-lux\.js\?v=7/.test(indexHtml));
 ok('تنظیم منطقه‌ی زمانیِ دیتابیس مستند و قابل تغییر است',
   /EPLAK_DB_TIMEZONE/.test(faPhp) && /EPLAK_DISPLAY_TIMEZONE/.test(faPhp));
+
+const bootPhpSrc = read('shared/bootstrap.php');
+const cfgExample = read('shared/config.example.php');
+ok('پیش‌فرضِ db_timezone «تهران» است (نه UTC) — ریشه‌ی ۳ ساعت جابه‌جایی',
+  /eplakTimezoneSetting\('EPLAK_DB_TIMEZONE', 'db_timezone', 'Asia\/Tehran'\)/.test(faPhp)
+    && /'db_timezone'\s+=> 'Asia\/Tehran'/.test(cfgExample));
+ok('نشستِ MySQL روی ساعتِ تهران پین می‌شود (SET time_zone) و ساعتِ PHP هم تهران است',
+  /SET time_zone = '\" \. eplakTimezoneOffsetString\(eplakDbTimezone\(\)\)/.test(bootPhpSrc)
+    && /date_default_timezone_set\(eplakDisplayTimezone\(\)->getName\(\)\);/.test(bootPhpSrc));
+ok('ابزارهای ساعتِ تهران در سرور هست (eplakTimezoneOffsetString/eplakDbNow)',
+  /function eplakTimezoneOffsetString/.test(faPhp) && /function eplakDbNow/.test(faPhp));
+ok('پاسخِ «ثبت گزارش» ساعتِ دیتابیس را برمی‌گرداند (نه gmdate/UTC)',
+  read('api/reports.php').indexOf("eplakReportEvents($pdo, $insertId), eplakDbNowString($pdo))") !== -1
+    && read('api/reports.php').indexOf("gmdate('Y-m-d H:i:s')") === -1);
+ok('مقایسه‌ی زمان با «ساعتِ خودِ دیتابیس» است (پنجره‌ی تکراری‌یابی و سقفِ اعلان آزمایشی)',
+  /function eplakDbNowString/.test(faPhp) && /function eplakDbAgoString/.test(faPhp)
+    && /function eplakDbAgeSeconds/.test(faPhp)
+    && read('api/reports.php').indexOf("eplakDbAgoString($windowSeconds, $pdo)") !== -1
+    && read('api/push.php').indexOf("eplakDbAgeSeconds($recent[0]['created_at'] ?? null, $pdo)") !== -1
+    && read('admin/users.php').indexOf('eplakDbAgeSeconds') !== -1);
+ok('اپ ساعتِ تهران را مستقل از منطقه‌ی زمانیِ گوشی حساب می‌کند (اختلافِ ثابتِ ۲۱۰ دقیقه و getUTC*)',
+  /EPLAK_TEHRAN_OFFSET_MIN = 210/.test(stateJs) && /function eplakTehranParts/.test(stateJs)
+    && /shifted\.getUTCFullYear\(\)/.test(stateJs) && /shifted\.getUTCHours\(\)/.test(stateJs));
+ok('مسیرِ جایگزینِ reports.js هم همان قراردادِ تهران را دارد',
+  /REPORT_TEHRAN_OFFSET_MIN = 210/.test(reportsJs) && /reportTehranWallToDate/.test(reportsJs));
+ok('ساعت و تقویمِ پیشخوان از «اکنونِ تهران» می‌آیند (نه ساعتِ گوشی)',
+  /window\.eplakNow/.test(read('modules/clock-lux.js')) && /window\.eplakNow/.test(dashJs));
 
 console.log('\n' + '='.repeat(52));
 console.log(`JALALI: ${pass} passed, ${fail} failed`);

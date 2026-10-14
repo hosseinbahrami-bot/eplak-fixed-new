@@ -174,7 +174,7 @@ try {
             $limitKey = $token !== '' ? 'tok:' . substr(hash('sha256', $token), 0, 16) : $phone;
             $recent = eplakPushLogRecent($pdo, ['phone' => $limitKey], 1);
             if ($recent && (string) ($recent[0]['kind'] ?? '') === 'test') {
-                $ageSec = time() - (int) (strtotime((string) ($recent[0]['created_at'] ?? '')) ?: 0);
+                $ageSec = eplakDbAgeSeconds($recent[0]['created_at'] ?? null, $pdo);
                 if ($ageSec >= 0 && $ageSec < 15) {
                     eplakJson([
                         'success' => false,

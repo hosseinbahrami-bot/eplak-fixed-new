@@ -18,6 +18,14 @@
     return false;
   }
   function el(id) { return document.getElementById(id); }
+  /* «اکنون» به وقت تهران: اگر ساعتِ گوشی روی منطقه‌ی دیگری باشد هم ساعت و
+     تقویمِ اپ تهران را نشان می‌دهند (از core/state.js ← window.eplakNow). */
+  function nowTehran() {
+    try {
+      if (typeof window.eplakNow === 'function') return window.eplakNow();
+    } catch (e) {}
+    return new Date();
+  }
 
   const J_MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
   const J_MONTHS_EN = ['Farvardin', 'Ordibehesht', 'Khordad', 'Tir', 'Mordad', 'Shahrivar', 'Mehr', 'Aban', 'Azar', 'Dey', 'Bahman', 'Esfand'];
@@ -108,7 +116,7 @@
   }
   /* آوینی فقط «امروز» را می‌دهد؛ برای روزهای دیگر: Intl → الگوریتم */
   function getHijri(date) {
-    const now = new Date();
+    const now = nowTehran();
     const t = date || now;
     const sameDay = now.getFullYear() === t.getFullYear() && now.getMonth() === t.getMonth() && now.getDate() === t.getDate();
     if (sameDay) {
@@ -204,7 +212,7 @@
     if (typeof requestAnimationFrame !== 'function') return;
     function frame() {
       if (!document.hidden && hH.isConnected) {
-        const now = new Date();
+        const now = nowTehran();
         const s = now.getSeconds() + now.getMilliseconds() / 1000;
         const m = now.getMinutes() + s / 60;
         const h = (now.getHours() % 12) + m / 60;
@@ -328,7 +336,7 @@
         ? J_MONTHS_EN[_view.jm - 1] + ' ' + _view.jy
         : J_MONTHS[_view.jm - 1] + ' ' + fa(_view.jy);
     }
-    const now = new Date();
+    const now = nowTehran();
     const tj = toJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
     let html = '';
     for (let i = 0; i < 7; i++) {
@@ -381,7 +389,7 @@
     renderCalendar();
   }
   function goToday() {
-    const now = new Date();
+    const now = nowTehran();
     const t = toJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
     _view = { jy: t[0], jm: t[1] };
     _sel = { jy: t[0], jm: t[1], jd: t[2] };
@@ -406,14 +414,14 @@
     const holder = el('luxAnalogHolder');
     if (holder && !holder.firstChild) holder.innerHTML = buildAnalog();
 
-    const now = new Date();
+    const now = nowTehran();
     const tj = toJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
     _view = { jy: tj[0], jm: tj[1] };
     _sel = { jy: tj[0], jm: tj[1], jd: tj[2] };
 
     startAnalog();
     updateDates(now);
-    setInterval(function () { updateDates(new Date()); }, 30000);
+    setInterval(function () { updateDates(nowTehran()); }, 30000);
     renderCalendar();
 
     const btn = el('luxCalToggle');
@@ -425,12 +433,12 @@
 
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('languagechange', function () {
-        updateDates(new Date());
+        updateDates(nowTehran());
         renderCalendar();
       });
       /* وقتی دادهٔ زندهٔ آوینی رسید، تاریخ قمری با منبع ایرانی تازه می‌شود */
       window.addEventListener('eplak:citylive-painted', function () {
-        updateDates(new Date());
+        updateDates(nowTehran());
       });
     }
   }

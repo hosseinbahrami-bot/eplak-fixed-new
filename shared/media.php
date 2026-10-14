@@ -235,7 +235,7 @@ function eplakMediaCleanupStaged(PDO $pdo, int $maxAgeSeconds = 86400): int {
     }
     $removed = 0;
     try {
-        $cutoff = date('Y-m-d H:i:s', time() - max(3600, $maxAgeSeconds));
+        $cutoff = eplakDbAgoString(max(3600, $maxAgeSeconds), $pdo);
         $rows = $pdo->prepare('SELECT id, file_path FROM report_media WHERE report_id = 0 AND client_ref <> :empty AND created_at < :cutoff');
         $rows->execute([':empty' => '', ':cutoff' => $cutoff]);
         foreach ($rows->fetchAll(PDO::FETCH_ASSOC) as $row) {

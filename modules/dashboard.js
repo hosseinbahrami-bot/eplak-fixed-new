@@ -51,7 +51,7 @@
     const EN_WEEKDAYS = JALALI_WEEKDAYS_EN;   /* نام روزها انگلیسی، تقویم شمسی */
 
     function tick() {
-      const now  = new Date();
+      const now  = (typeof window.eplakNow === 'function' ? window.eplakNow() : new Date());
       const hh   = String(now.getHours()).padStart(2, '0');
       const mm   = String(now.getMinutes()).padStart(2, '0');
       const ss   = String(now.getSeconds()).padStart(2, '0');

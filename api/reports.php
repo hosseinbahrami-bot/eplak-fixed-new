@@ -324,7 +324,8 @@ if ($existingId === 0 && $clientRef === '') {
             ':phone' => $phone,
             ':title' => $subject,
             ':desc'  => $details,
-            ':since' => date('Y-m-d H:i:s', time() - $windowSeconds),
+            /* پنجره با ساعتِ خودِ دیتابیس سنجیده می‌شود (نه ساعتِ PHP) */
+            ':since' => eplakDbAgoString($windowSeconds, $pdo),
         ]);
         $existingId = (int) ($dupeStmt->fetchColumn() ?: 0);
         if ($existingId > 0) {
@@ -639,7 +640,7 @@ try {
 eplakJson([
     'success'       => true,
     'timeline'      => eplakReportEvents($pdo, $insertId),
-    'flow'          => eplakReportFlowStages('pending', eplakReportEvents($pdo, $insertId), gmdate('Y-m-d H:i:s')),
+    'flow'          => eplakReportFlowStages('pending', eplakReportEvents($pdo, $insertId), eplakDbNowString($pdo)),
     'id'            => $insertId,
     'tracking_code' => $trackingCode,
     'lat'           => $hasGeo ? $lat : null,

@@ -88,12 +88,19 @@ function eplakFaDateTime(?string $timezone = 'Asia/Tehran', ?int $timestamp = nu
    persian-digits.js فقط رقم‌ها را فارسی می‌کرد و تقویم همان میلادی می‌ماند.
    حالا همه‌جا با این توابع به شمسی (و وقت تهران) نمایش داده می‌شود.
 
-   قرارداد منطقه‌ی زمانی: مقدارهای دیتابیس با NOW()/CURRENT_TIMESTAMP نوشته
-   می‌شوند و ساعت هاست معمولاً UTC است؛ همان قراردادی که متن اعلان‌ها
-   (eplakFaDateTime) دارد. اگر هاست شما ساعت دیتابیس را روی تهران گذاشته است،
-   یک‌بار در shared/config.php یا متغیر محیطی تنظیم کنید:
-       EPLAK_DB_TIMEZONE=Asia/Tehran
-   تا زمان‌ها ۳:۳۰ ساعت جابه‌جا نشوند.
+   قرارداد منطقه‌ی زمانی (از این نسخه: «یک ساعتِ واحد = تهران»):
+   ستون‌های created_at از نوع TIMESTAMP هستند و MySQL آن‌ها را با time_zoneِ
+   نشست جابه‌جا می‌کند؛ به همین دلیل پیش از این، بسته به ساعتِ هاست، همان رویداد
+   در پنل و اپ ۳ ساعت جلو یا عقب دیده می‌شد. حالا:
+     • shared/bootstrap.php ساعت PHP را روی display_timezone (تهران) می‌گذارد،
+     • نشست MySQL با «SET time_zone = '+03:30'» پین می‌شود ⇒ NOW()/CURRENT_TIMESTAMP
+       تهران می‌نویسند و خوانده‌های TIMESTAMP هم تهران‌اند،
+     • پس مقدارهای دیتابیس «وقت تهران» هستند و هنگام نمایش جابه‌جا نمی‌شوند
+       (db_timezone = Asia/Tehran).
+   اگر دیتابیسِ قدیمی‌تان با ساعت UTC پر شده و نمی‌خواهید نشست عوض شود، یک‌بار
+   در shared/config.php یا متغیر محیطی بگذارید:
+       EPLAK_DB_TIMEZONE=UTC
+   تا مثل قبل ۳:۳۰ ساعت به وقت تهران برده شوند.
    ──────────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -125,10 +132,104 @@ function eplakTimezoneSetting(string $envKey, string $configKey, string $fallbac
     return $cache[$envKey];
 }
 
-/** منطقه‌ی زمانیِ مقدارهای ذخیره‌شده در دیتابیس (پیش‌فرض: UTC = ساعت هاست) */
+/** منطقه‌ی زمانیِ مقدارهای ذخیره‌شده در دیتابیس (پیش‌فرض: تهران — همان که
+ *   نشست MySQL روی آن پین می‌شود، پس مقدارها بدون جابه‌جایی نمایش داده می‌شوند) */
 function eplakDbTimezone(): DateTimeZone
 {
-    return eplakTimezoneSetting('EPLAK_DB_TIMEZONE', 'db_timezone', 'UTC');
+    return eplakTimezoneSetting('EPLAK_DB_TIMEZONE', 'db_timezone', 'Asia/Tehran');
+}
+
+/**
+ * اختلافِ یک منطقه‌ی زمانی با UTC به شکلِ «+03:30» — برای «SET time_zone» در
+ * MySQL. شکلِ عددی استفاده می‌شود چون جدولِ نام‌های زمانیِ MySQL روی هاست‌های
+ * اشتراکی معمولاً بارگذاری نشده و «Asia/Tehran» خطا می‌دهد.
+ */
+function eplakTimezoneOffsetString(DateTimeZone $zone): string
+{
+    try {
+        $seconds = $zone->getOffset(new DateTimeImmutable('@' . time()));
+    } catch (Throwable $e) {
+        $seconds = 0;
+    }
+    $sign    = ($seconds < 0) ? '-' : '+';
+    $seconds = abs((int) $seconds);
+    return sprintf('%s%02d:%02d', $sign, intdiv($seconds, 3600), intdiv($seconds % 3600, 60));
+}
+
+/**
+ * «اکنون» به شکلِ مقدارِ دیتابیس (منطقه‌ی زمانیِ db_timezone) — برای جاهایی که
+ * همان لحظه در پاسخِ API به اپ برمی‌گردد و باید با آنچه دیتابیس می‌نویسد یکی
+ * باشد (وگرنه رکوردِ تازه‌ساخته ۳ ساعت جابه‌جا دیده می‌شد).
+ */
+function eplakDbNow(): string
+{
+    try {
+        return (new DateTimeImmutable('now', eplakDbTimezone()))->format('Y-m-d H:i:s');
+    } catch (Throwable $e) {
+        return date('Y-m-d H:i:s');
+    }
+}
+
+/**
+ * «اکنون» با ساعتِ خودِ دیتابیس.
+ * هر جا مقدارِ نوشته‌شده در دیتابیس با زمانِ حال مقایسه یا نوشته می‌شود
+ * (پنجره‌ی تکراری‌یابی، سقفِ درخواست، پاک‌سازی، آمارِ «۷ روز اخیر») باید از
+ * همین استفاده کرد: ساعتِ PHP روی تهران پین شده اما ساعتِ دیتابیس می‌تواند
+ * چیزِ دیگری باشد (SQLite ستون CURRENT_TIMESTAMP را همیشه UTC می‌نویسد و
+ * time_zone ندارد) و آمیختنِ این دو، رکوردها را ۳:۳۰ پیرتر/جوان‌تر نشان می‌دهد.
+ */
+function eplakDbNowString(?PDO $pdo = null): string
+{
+    if ($pdo !== null) {
+        try {
+            $sqlite = function_exists('eplakIsSqlite') ? eplakIsSqlite($pdo) : false;
+            $value  = $pdo->query($sqlite ? "SELECT datetime('now')" : 'SELECT NOW()')->fetchColumn();
+            if (is_string($value) && trim($value) !== '') {
+                return substr(trim($value), 0, 19);
+            }
+        } catch (Throwable $e) {
+            /* پرس‌وجو نشد ⇒ ساعتِ PHP (همان منطقه‌ی زمانیِ db_timezone) */
+        }
+    }
+    return eplakDbNow();
+}
+
+/** «چند ثانیه پیش» با ساعتِ دیتابیس — برای مقایسه با ستون‌های created_at. */
+function eplakDbAgoString(int $seconds, ?PDO $pdo = null): string
+{
+    $seconds = max(0, $seconds);
+    $ts      = strtotime(eplakDbNowString($pdo));
+    if ($ts === false) {
+        return date('Y-m-d H:i:s', time() - $seconds);
+    }
+    return date('Y-m-d H:i:s', $ts - $seconds);
+}
+
+/**
+ * فاصله‌ی یک مقدارِ دیتابیس تا «اکنون» به ثانیه (−۱ ⇒ مقدار نامعتبر).
+ * مقدارهای بدون منطقه‌ی زمانی با ساعتِ خودِ دیتابیس سنجیده می‌شوند و مقدارهایی
+ * که منطقه‌ی زمانیِ صریح دارند (Z یا ‎+03:30) یا عددی‌اند، مطلق‌اند.
+ */
+function eplakDbAgeSeconds($value, ?PDO $pdo = null): int
+{
+    $raw = is_scalar($value) ? trim((string) $value) : '';
+    if ($raw === '') {
+        return -1;
+    }
+    if (preg_match('/(Z|[+-]\d{2}:?\d{2})$/i', $raw)) {
+        $ts = strtotime($raw);
+        return $ts === false ? -1 : time() - $ts;
+    }
+    if (ctype_digit($raw)) {
+        $ts = (int) $raw;
+        return time() - ($ts > 100000000000 ? intdiv($ts, 1000) : $ts);
+    }
+    $ts = strtotime(substr($raw, 0, 19));
+    if ($ts === false) {
+        return -1;
+    }
+    $nowTs = strtotime(eplakDbNowString($pdo));
+    return $nowTs === false ? time() - $ts : $nowTs - $ts;
 }
 
 /** منطقه‌ی زمانیِ نمایش (وقت تهران — همان که کاربر انتظار دارد) */

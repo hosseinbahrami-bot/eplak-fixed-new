@@ -25,13 +25,17 @@
 | تابع | کار | نمونه |
 |---|---|---|
 | `eplakFaDate($value, $fallback)` | فقط تاریخِ شمسی | `۱۴۰۵/۰۷/۱۹` |
-| `eplakFaDateTimeOf($value, $fallback)` | تاریخ و ساعتِ شمسی (هم‌شکلِ اپ) | `۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴` |
+| `eplakFaDateTimeOf($value, $fallback)` | تاریخ و ساعتِ شمسی (هم‌شکلِ اپ) | `۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴` |
 | `eplakFaNow()` | «همین لحظه» به شمسی (برای مقدارِ خالی) | `۱۴۰۵/۰۷/۲۲ - ساعت ۱۳:۰۰` |
 | `eplakParseDbDateTime()` | خواندن مقدار دیتابیس: `2026-10-11 13:24:05` · `…T…Z` · `2026-10-11` · timestamp عددی (ثانیه/میلی‌ثانیه) · `0000-00-00` ⇒ `null` | — |
-| `eplakDbTimezone()` / `eplakDisplayTimezone()` | منطقه‌ی زمانیِ دیتابیس و نمایش (از متغیر محیطی یا `shared/config.php`) | — |
+| `eplakDbTimezone()` / `eplakDisplayTimezone()` | منطقه‌ی زمانیِ دیتابیس و نمایش (پیش‌فرضِ هر دو **تهران**؛ از متغیر محیطی یا `shared/config.php`) | — |
+| `eplakTimezoneOffsetString($zone)` | اختلاف به شکلِ عددی برای `SET time_zone` (جدولِ نام‌های زمانیِ MySQL روی هاست اشتراکی نیست) | `+03:30` |
+| `eplakDbNow()` / `eplakDbNowString($pdo)` | «اکنون» با ساعتِ دیتابیس (دومی از خودِ MySQL/SQLite می‌پرسد) | `2026-10-11 13:24:05` |
+| `eplakDbAgoString($sec, $pdo)` / `eplakDbAgeSeconds($value, $pdo)` | «چند ثانیه پیش» و «سنِ» یک رکورد با ساعتِ دیتابیس — برای پنجره‌های زمانی و آمار | — |
 
 `shared/bootstrap.php` این فایل را `require_once` می‌کند، پس توابع در **همه‌ی**
-صفحه‌های پنل و API در دسترس‌اند.
+صفحه‌های پنل و API در دسترس‌اند؛ همان‌جا ساعتِ PHP و نشستِ MySQL هم روی تهران
+پین می‌شود (بخش ۳).
 
 **۴۱ جای نمایش تاریخ در پنل** با این توابع جایگزین شد:
 `index.php` (داشبورد) · `reports.php` · `report_detail.php` (شامل روند رسیدگی،
@@ -61,18 +65,24 @@ iOS، اندروید قدیمی، PWA و مرورگر دسکتاپ یکسان ش
 * `modules/dashboard.js`: کارت «تاریخ امروز» (و در رابط انگلیسی)، «مهلت پرداخت»
   قبض‌ها.
 * `modules/clock-lux.js`: خطِ «میلادی» از کارت تاریخ و پانویس تقویم برداشته شد
-  (تقویم اپ: شمسی + قمری).
+  (تقویم اپ: شمسی + قمری) و هر ۸ جای «اکنون» (ساعت عقربه‌ای/رقمی، تاریخ، تقویم،
+  `goToday`) از `nowTehran()` ⇒ `window.eplakNow()` می‌آید.
+* `modules/dashboard.js`: تیکِ ساعتِ پیشخوان هم از `window.eplakNow()` است.
 * `modules/city-live.js`: ساعتِ «به‌روزرسانی» از ماژول شمسی می‌آید تا رقم‌ها روی
   همه‌ی WebViewها فارسی بمانند.
+* **ساعتِ تهران، مستقل از ساعتِ گوشی**: مقدارِ بدون منطقه‌ی زمانیِ سرور همان
+  «دیوارِ تهران» است (بدون جابه‌جایی) و مقدارهای دارای `Z`/offset به تهران برده
+  می‌شوند؛ همه با اختلافِ ثابتِ `EPLAK_TEHRAN_OFFSET_MIN = 210` و `getUTC*`.
+  `window.eplakNow()` هم «اکنونِ تهران» را می‌دهد.
 * حالت **انگلیسی**: تقویم همان **شمسی** است و فقط رقم‌ها لاتین می‌شوند
-  (`1405/07/19 16:54`) — چون خواسته‌ی کارفرما «هر تاریخِ اپ شمسی باشد» است.
+  (`1405/07/19 13:24`) — چون خواسته‌ی کارفرما «هر تاریخِ اپ شمسی باشد» است.
 * **مسیرِ جایگزین هم شمسی است**: اگر به هر دلیل `core/state.js` بار نشود،
   `modules/reports.js` همان الگوریتم را به‌صورت محلی دارد
   (`eplakFaDateLocal/eplakFaTimeLocal/eplakFaNowLocal`)؛ یعنی هیچ مسیری در اپ
   به `Intl` مرورگر (که روی iOS میلادی با رقم فارسی می‌دهد) نمی‌رسد.
-* کش‌باسترها بالا رفتند: `core/state.js?v=14` · `modules/reports.js?v=29` ·
-  `modules/live.js?v=18` · `modules/dashboard.js?v=16` · `modules/city-live.js?v=14` ·
-  `modules/clock-lux.js?v=6` (وگرنه گوشی‌ها کد قدیمی را از کش نشان می‌دادند).
+* کش‌باسترها بالا رفتند: `core/state.js?v=15` · `modules/reports.js?v=30` ·
+  `modules/live.js?v=18` · `modules/dashboard.js?v=17` · `modules/city-live.js?v=14` ·
+  `modules/clock-lux.js?v=7` (وگرنه گوشی‌ها کد قدیمی را از کش نشان می‌دادند).
 
 ---
 
@@ -103,56 +113,101 @@ iOS، اندروید قدیمی، PWA و مرورگر دسکتاپ یکسان ش
 
 ---
 
-## ۳) منطقه‌ی زمانی (مهم برای هاست)
+## ۳) منطقه‌ی زمانی: «یک ساعتِ واحد = تهران»
 
-مقدارهای دیتابیس با `NOW()`/`CURRENT_TIMESTAMP` نوشته می‌شوند و ساعتِ بیشتر
-هاست‌ها **UTC** است. کد هم همین را فرض می‌کند و برای نمایش به **وقت تهران**
-(+۳:۳۰) می‌برد؛ پس `2026-10-11 13:24:05` در دیتابیس ⇒ `۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴`.
+پیش از این، مقدارهای دیتابیس **UTC** فرض می‌شدند و برای نمایش به وقت تهران
+(+۳:۳۰) برده می‌شدند؛ اما ساعتِ خودِ MySQL روی بیشتر هاست‌های ایرانی تهران است.
+نتیجه: `2026-10-11 13:24:05` که در دیتابیس **تهران** بود، `۱۶:۵۴` نشان داده
+می‌شد — همان شکایتِ «ساعت ۳ ساعت جلوتره».
 
-اگر ساعت دیتابیس هاست شما تهران است، زمان‌ها ۳:۳۰ ساعت جلو می‌افتند. یک‌بار در
-phpMyAdmin بررسی کنید (`SELECT NOW();` را با ساعت دیواری مقایسه کنید) و در صورت
-نیاز، در `shared/config.php` بگذارید:
+حالا یک قراردادِ واحد برقرار است (هم پنل، هم اپ، هم متنِ اعلان‌ها):
+
+1. **ساعتِ PHP روی تهران پین شد** — `shared/bootstrap.php` بلافاصله بعد از
+   `require_once fa_datetime.php` این را اجرا می‌کند:
+   `date_default_timezone_set(eplakDisplayTimezone()->getName());` ⇒ `date()` و
+   `strtotime()` دیگر به `php.ini` هاست بستگی ندارند.
+2. **نشستِ MySQL هم روی تهران پین شد** — بعد از اتصال:
+   `SET time_zone = '+03:30'` (مقدار از `eplakTimezoneOffsetString(eplakDbTimezone())`).
+   شکلِ **عددی** استفاده می‌شود چون جدولِ نام‌های زمانیِ MySQL روی هاست‌های
+   اشتراکی معمولاً بارگذاری نشده و `Asia/Tehran` خطا می‌دهد. چون ستون‌های
+   `created_at` از نوع `TIMESTAMP DEFAULT CURRENT_TIMESTAMP`‌اند، همین یک دستور
+   هم **نوشتن** و هم **خواندن** را روی تهران قفل می‌کند.
+3. **پیش‌فرضِ `db_timezone` شد `Asia/Tehran`** ⇒ مقدارِ بدون منطقه‌ی زمانیِ
+   دیتابیس «دیوارِ تهران» است و **بدون جابه‌جایی** نمایش داده می‌شود:
+   `2026-10-11 13:24:05` ⇒ `۱۴۰۵-۰۷-۱۹ - ساعت ۱۳:۲۴` (در پنل و در اپ مو‌به‌مو یکی).
+4. **مقدارهای دارای منطقه‌ی زمانیِ صریح** (`…Z` یا `…+03:30`) و timestampهای عددی
+   مطلق‌اند و مثل قبل به وقت تهران برده می‌شوند:
+   `2026-10-11T22:00:00Z` ⇒ `۱۴۰۵-۰۷-۲۰ - ساعت ۰۱:۳۰`.
+5. **اپ ساعتِ گوشی را قاطی نمی‌کند**: همه‌ی محاسبه‌ها در `core/state.js` با اختلافِ
+   ثابتِ ۲۱۰ دقیقه و `getUTC*` انجام می‌شود (ایران از ۱۴۰۱ ساعتِ تابستانی ندارد)،
+   پس اگر گوشی روی منطقه‌ی زمانیِ دیگری باشد هم تاریخ/ساعتِ گزارش‌ها تهران
+   می‌ماند. ساعت و تقویمِ پیشخوان از `window.eplakNow()` («اکنونِ تهران») می‌آیند.
+6. **مقایسه‌ی زمان با «ساعتِ خودِ دیتابیس»**: پنجره‌ی تکراری‌یابی گزارش
+   (`api/reports.php`)، سقفِ ۱۵ ثانیه‌ای اعلان آزمایشی (`api/push.php`)، پاک‌سازی
+   پیوست‌های جامانده (`shared/media.php`) و آمارِ «کاربران جدید»
+   (`admin/users.php`) دیگر ساعتِ PHP را با مقدارهای دیتابیس قاطی نمی‌کنند؛
+   `eplakDbNowString()`/`eplakDbAgoString()`/`eplakDbAgeSeconds()` «اکنون» را از
+   خودِ دیتابیس می‌گیرند (`SELECT NOW()` در MySQL و `datetime('now')` در SQLite که
+   `CURRENT_TIMESTAMP` را UTC می‌نویسد و `time_zone` ندارد).
+
+### اگر داده‌ی قدیمیِ شما UTC است
+
+معمولاً نیازی به تغییر نیست: دستورِ `SET time_zone` نشست را روی تهران پین می‌کند
+و ستون‌های `TIMESTAMP` خودکار درست خوانده می‌شوند. فقط اگر ستون‌های شما از نوع
+`DATETIME`‌اند و مقدارهای قدیمی UTC نوشته شده‌اند (یعنی `SELECT NOW();` در
+phpMyAdmin با ساعتِ دیواری یکی نیست و `SET time_zone` هم مقدارهای نوشته‌شده را
+جابه‌جا نمی‌کند)، در `shared/config.php` بگذارید:
 
 ```php
-'db_timezone'      => 'Asia/Tehran',   // مقدارهای دیتابیس تهران‌اند
+'db_timezone'      => 'UTC',           // مقدارهای دیتابیس UTC‌اند ⇒ ۳:۳۰ به تهران برده می‌شوند
 'display_timezone' => 'Asia/Tehran',   // پیش‌فرض هم همین است
 ```
 
 معادل متغیر محیطی (برای هاست‌هایی که `SetEnv` دارند):
-`EPLAK_DB_TIMEZONE=Asia/Tehran` و `EPLAK_DISPLAY_TIMEZONE=Asia/Tehran`.
+`EPLAK_DB_TIMEZONE=UTC` و `EPLAK_DISPLAY_TIMEZONE=Asia/Tehran`.
 
-> در اپ، ساعت به **وقت خودِ گوشی** نشان داده می‌شود (برای کاربر ایرانی همان تهران)
-> و متن اعلان‌ها (`shared/notify_events.php`) از قبل شمسی و به وقت تهران بود و
+> ⚠️ اگر `shared/config.php` شما از نسخه‌های قبلی `'db_timezone' => 'UTC'` دارد،
+> همان کلید را به `'Asia/Tehran'` تغییر دهید یا حذف کنید — کلیدِ صریح بر
+> پیش‌فرض اولویت دارد و همان ۳ ساعت جابه‌جایی را برمی‌گرداند.
+
+> متن اعلان‌ها (`shared/notify_events.php`) از قبل شمسی و به وقت تهران بود و
 > دست‌نخورده ماند.
 
 ---
 
 ## ۴) چطور امتحان شد
 
-`tools/dev/tests/jalali.test.mjs` — **۵۲ بررسی** (هدف `jalali` در
+`tools/dev/tests/jalali.test.mjs` — **۶۴ بررسی** (هدف `jalali` در
 `tools/dev/run-regression.sh` و در CI):
 
-1. **توابع سرور**: `2026-10-11 13:24:05` ⇒ `۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴`؛ مقدار ISO با
-   `Z` (تغییر روز)؛ تاریخ‌های مرجع (نوروز ۱۴۰۵/۱۴۰۳ و سال کبیسه‌ی ۱۴۰۲/۱۲/۲۹)؛
-   مقدار خالی/`0000-00-00`/خراب ⇒ همان جایگزینِ خوانا (نه خطا)؛ timestamp عددی؛
-   `EPLAK_DB_TIMEZONE=Asia/Tehran` ⇒ بدون جابه‌جایی ساعت.
-2. **۱۶ صفحه‌ی پنل** با داده‌ی واقعی رندر می‌شوند: هیچ‌کدام خطای PHP ندارند،
+1. **توابع سرور**: `2026-10-11 13:24:05` ⇒ `۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴` (بدون
+   جابه‌جایی)؛ مقدار ISO با `Z` (تغییر روز)؛ تاریخ‌های مرجع (نوروز ۱۴۰۵/۱۴۰۳ و سال
+   کبیسه‌ی ۱۴۰۲/۱۲/۲۹)؛ مقدار خالی/`0000-00-00`/خراب ⇒ همان جایگزینِ خوانا (نه
+   خطا)؛ timestamp عددی.
+2. **منطقه‌ی زمانی**: پیش‌فرضِ `db_timezone` تهران و اختلافِ نشستِ MySQL `+03:30`؛
+   `EPLAK_DB_TIMEZONE=UTC` ⇒ مثلِ قبل `۱۶:۵۴`؛ `date_default_timezone_get()` بعد از
+   bootstrap برابر `Asia/Tehran` و `eplakDbNow()` همان «اکنونِ تهران» (اختلافِ کمتر
+   از ۲ دقیقه با ساعتِ واقعی)؛ بودنِ `SET time_zone` در bootstrap؛ نماندنِ `gmdate` در
+   `api/reports.php`؛ و سنجیده‌شدنِ پنجره‌های زمانی با ساعتِ خودِ دیتابیس.
+3. **۱۶ صفحه‌ی پنل** با داده‌ی واقعی رندر می‌شوند: هیچ‌کدام خطای PHP ندارند،
    تاریخ شمسی دارند، و **هیچ تاریخ میلادیِ خامی در متنِ دیده‌شده نمانده**
    (تگ‌ها و اسکریپت‌ها کنار گذاشته می‌شوند تا `data-created` خام، مثبتِ کاذب نشود).
-3. **اپ واقعی (jsdom)**: `formatReportDate/formatReportDateTime` شمسی می‌دهند،
+4. **اپ واقعی (jsdom)**: `formatReportDate/formatReportDateTime` شمسی می‌دهند،
    مقدارِ خامِ دارای ساعت دیگر رد نمی‌شود، ISO/timestamp درست‌اند، متنِ ازقبل‌فارسیِ
    سرور دست‌نخورده می‌ماند، تاریخ اعلان‌ها و خبرها در DOM شمسی است، و
    **خروجی اپ با خروجی پنل ادمین مو‌به‌مو یکی است**.
-4. **صفحه‌ی «جزئیات گزارش»** (همان شکایت کارفرما): اپ با داده‌ی واقعی از
+5. **صفحه‌ی «جزئیات گزارش»** (همان شکایت کارفرما): اپ با داده‌ی واقعی از
    `api/reports.php` بالا می‌آید، `openReportDetail()` صدا زده می‌شود و متنِ
-   دیده‌شده‌ی صفحه سنجیده می‌شود ⇒ `۱۴۰۵/۰۷/۱۹ - ساعت ۱۶:۵۴` زیرِ عنوان، همان
+   دیده‌شده‌ی صفحه سنجیده می‌شود ⇒ `۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴` زیرِ عنوان، همان
    تاریخ در گام‌های «روند رسیدگی»، و **هیچ** `2026-10-11`/«اکتبر»/«میلادی» در
    صفحه نیست. همین بررسی برای «جزئیات تیکت»، کارت «تاریخ امروز» و **جاروی کلِ
    `document.body`** تکرار می‌شود.
-5. **قراردادها**: الگوریتم JS و PHP یکی است، هیچ صفحه‌ی پنلی تاریخ خام چاپ
+6. **قراردادها**: الگوریتم JS و PHP یکی است، هیچ صفحه‌ی پنلی تاریخ خام چاپ
    نمی‌کند، هیچ ماژولِ اپ با `Intl` تاریخ نمی‌سازد (کامنت‌ها کنار گذاشته
    می‌شوند تا مثبتِ کاذب نشود)، `G_MONTHS`/`EN_MONTHS` حذف شده‌اند،
-   «مهلت پرداخت» شمسی است، و کش‌باسترها بالا رفته‌اند.
+   «مهلت پرداخت» شمسی است، ساعتِ تهران با `getUTC*` و اختلافِ ۲۱۰ دقیقه حساب
+   می‌شود، مسیرِ جایگزینِ `reports.js` همان قرارداد را دارد، و کش‌باسترها بالا
+   رفته‌اند.
 
 نتیجه‌ی کل مجموعه در این نسخه: **همه‌ی ۲۰ هدف موفق** (syntax · notify ·
 notify-schema · news · **jalali** · app · pushcrypto · fcm · backend · security ·
@@ -164,15 +219,16 @@ online · geo · upload · tiles · push · places · placesadmin · otp · ios 
 
 | فایل | چه شد |
 |---|---|
-| `shared/fa_datetime.php` | توابع `eplakFaDate` · `eplakFaDateTimeOf` · `eplakFaNow` · `eplakParseDbDateTime` · `eplakTimezoneSetting` (+ یکسان‌سازی جداکننده با اپ: `- ساعت`) |
-| `shared/bootstrap.php` | `require_once fa_datetime.php` تا توابع در همه‌ی صفحه‌ها/APIها باشند |
+| `shared/fa_datetime.php` | توابع `eplakFaDate` · `eplakFaDateTimeOf` · `eplakFaNow` · `eplakParseDbDateTime` · `eplakTimezoneSetting` (+ یکسان‌سازی جداکننده با اپ: `- ساعت`)؛ **پیش‌فرضِ تهران** و ابزارهای ساعت: `eplakTimezoneOffsetString` · `eplakDbNow` · `eplakDbNowString` · `eplakDbAgoString` · `eplakDbAgeSeconds` |
+| `shared/bootstrap.php` | `require_once fa_datetime.php` تا توابع در همه‌ی صفحه‌ها/APIها باشند + `date_default_timezone_set(تهران)` + `SET time_zone = '+03:30'` روی نشستِ MySQL |
 | ۱۷ فایل در `admin/` | ۴۱ جای نمایش تاریخ ⇒ شمسی (و دو سلول `dir="ltr"` ⇒ `dir="rtl"`) |
-| `core/state.js` | ماژول تاریخ شمسیِ اپ (`window.eplakFaDate/eplakFaTime/eplakFaDateTime/eplakFaNow`)؛ در رابط انگلیسی هم شمسی (رقم لاتین) |
-| `modules/reports.js` | `formatReportDate`/`formatReportDateTime` شمسی + برداشتن میان‌بُرِ مخرب + لاگ‌های آپلود + مسیرِ جایگزینِ شمسی (`eplakFa*Local`) |
+| `core/state.js` | ماژول تاریخ شمسیِ اپ (`window.eplakFaDate/eplakFaTime/eplakFaDateTime/eplakFaNow`)؛ در رابط انگلیسی هم شمسی (رقم لاتین)؛ ساعتِ تهران مستقل از ساعتِ گوشی (`eplakTehranParts` · `eplakTehranWallToDate` · `window.eplakNow`) |
+| `modules/reports.js` | `formatReportDate`/`formatReportDateTime` شمسی + برداشتن میان‌بُرِ مخرب + لاگ‌های آپلود + مسیرِ جایگزینِ شمسی (`eplakFa*Local`) با همان قراردادِ تهران |
 | `modules/live.js` | `faDate`/`faTime` شمسی (خبرها، دانستنی‌ها، اعلان‌ها) |
-| `modules/dashboard.js` | «تاریخ امروز» (فارسی و انگلیسی) و «مهلت پرداخت» قبض‌ها شمسی |
-| `modules/clock-lux.js` | حذف خطِ میلادی از کارت تاریخ و پانویس تقویم (شمسی + قمری) |
+| `modules/dashboard.js` | «تاریخ امروز» (فارسی و انگلیسی) و «مهلت پرداخت» قبض‌ها شمسی؛ تیکِ ساعت از `window.eplakNow()` |
+| `modules/clock-lux.js` | حذف خطِ میلادی از کارت تاریخ و پانویس تقویم (شمسی + قمری)؛ هر ۸ «اکنون» ⇒ `nowTehran()` |
 | `modules/city-live.js` | ساعتِ «به‌روزرسانی» از ماژول شمسی |
-| `index.html` | کش‌باسترها: `state.js?v=14` · `reports.js?v=29` · `live.js?v=18` · `dashboard.js?v=16` · `city-live.js?v=14` · `clock-lux.js?v=6` + حذف `<span id="luxGregDate">` |
-| `shared/config.example.php` | کلیدهای مستند `db_timezone` و `display_timezone` |
-| `tools/dev/tests/jalali.test.mjs` · `run-regression.sh` · `.github/workflows/*` | آزمون تازه (۵۲ بررسی) و ثبت هدف `jalali` در اجراهای محلی و CI |
+| `index.html` | کش‌باسترها: `state.js?v=15` · `reports.js?v=30` · `live.js?v=18` · `dashboard.js?v=17` · `city-live.js?v=14` · `clock-lux.js?v=7` + حذف `<span id="luxGregDate">` |
+| `shared/config.example.php` | کلیدهای مستند `db_timezone` (**پیش‌فرض: تهران**) و `display_timezone` + راهنمای داده‌ی قدیمیِ UTC |
+| `api/reports.php` · `api/push.php` · `api/ping.php` · `shared/media.php` · `admin/users.php` | ساعتِ پاسخ‌ها و پنجره‌های زمانی با «ساعتِ دیتابیس»؛ `server_time` در `ping.php` به وقت تهران |
+| `tools/dev/tests/jalali.test.mjs` · `run-regression.sh` · `.github/workflows/*` | آزمون تازه (۶۴ بررسی، از جمله قراردادِ منطقه‌ی زمانی) و ثبت هدف `jalali` در اجراهای محلی و CI |
