@@ -2808,9 +2808,9 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
     </div>
 
     <div class="screen-content" style="position:relative;z-index:10; gap:10px; padding:0 16px 20px;">
-      <!-- وضعیت اعلان روی همین دستگاه (با جاوااسکریپت پر می‌شود) -->
-      <div id="notifDeviceNotice" style="display:none; background:#fff7ed; border:1px solid #fed7aa; border-radius:14px; padding:12px 14px; font-size:12.5px; line-height:1.9; color:#7c2d12;">
-      </div>
+      <!-- کادر «وضعیت اعلان روی همین دستگاه» (با دکمه‌های اعلان آزمایشی و تنظیمات
+           اعلان گوشی) به درخواست مالک حذف شد؛ صفحه فقط فهرست اعلان‌هاست. اجازه‌ی
+           اعلان همچنان با اولین لمس کاربر خودکار پرسیده می‌شود (modules/live.js ← promptPerm). -->
       <div class="reports-list" id="notifListWrap"></div>
       <div class="bottom-pad"></div>
     </div>
@@ -3116,7 +3116,7 @@ title="شماره موبایل هویت حساب شماست و قابل تغیی
 <script src="modules/city-map.js?v=2"></script>
 <script src="modules/profile.js?v=12"></script>
 <script src="modules/services.js?v=13"></script>
-<script src="modules/live.js?v=19"></script>
+<script src="modules/live.js?v=20"></script>
 <script src="modules/weather-3d.js?v=48"></script>
 <script src="modules/city-live.js?v=15"></script>
 <script src="modules/clock-lux.js?v=7"></script>

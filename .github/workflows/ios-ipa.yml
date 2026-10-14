@@ -236,10 +236,18 @@ jobs:
           else bad "$MISSING منبع محلیِ index.html داخل بسته نیست (صفحه سفید/خراب می‌شود)"; fi
 
           # نگهبانِ تعمیرِ اعلان‌ها: همان چیزی که قبلاً روی هاست/اپ قدیمی مانده بود
-          if grep -q 'notifServerNotice' "$APP/Web/modules/live.js" 2>/dev/null; then
-            ok "کدِ نمایش وضعیت اعلان‌ها (notifServerNotice) داخل بسته هست"
+          # (ثبت گوشی برای اعلان + نگه‌داشتن پیام وضعیت سرور). کادر نمایشی
+          # notifDeviceNotice به درخواست مالک حذف شده و نباید در بسته برگردد.
+          if grep -q 'setServerNotificationNotice' "$APP/Web/modules/live.js" 2>/dev/null \
+             && grep -q 'registerAppDevice' "$APP/Web/modules/live.js" 2>/dev/null; then
+            ok "کدِ اعلان‌های اپ (registerAppDevice / setServerNotificationNotice) داخل بسته هست"
           else
-            bad "modules/live.js داخل بسته کدِ نمایش اعلان‌ها را ندارد (بسته قدیمی است)"
+            bad "modules/live.js داخل بسته کدِ اعلان‌ها را ندارد (بسته قدیمی است)"
+          fi
+          if grep -q 'notifDeviceNotice' "$APP/Web/index.html" "$APP/Web/modules/live.js" 2>/dev/null; then
+            bad "کادر حذف‌شده‌ی «وضعیت اعلان» (notifDeviceNotice) دوباره داخل بسته است"
+          else
+            ok "کادر حذف‌شده‌ی «وضعیت اعلان» (تست اعلان/تنظیمات اعلان گوشی) داخل بسته نیست"
           fi
 
           WEB_FILES=$(find "$APP/Web" -type f | wc -l | tr -d ' ')

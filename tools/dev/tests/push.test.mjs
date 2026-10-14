@@ -15,7 +15,8 @@
      ۴) شکست‌ها: گوشی ثبت‌نشده، سرور بدون دسترسی به گوگل (و قطع‌کن)، توکن باطل،
         ۴۰۱ و تازه‌سازی توکن دسترسی.
      ۵) لایه‌ی وب اپ (modules/live.js در vm): ثبت مستقل از Service Worker، تلاش مجدد
-        پله‌ای، تازه‌سازی هر ۶ ساعت، جداسازی در خروج، دکمه‌ی «تست اعلان».
+        پله‌ای، تازه‌سازی هر ۶ ساعت، جداسازی در خروج؛ و اینکه کادر «وضعیت اعلان»
+        (با «تست اعلان»/«تنظیمات اعلان گوشی») که به درخواست مالک حذف شد، برنگردد.
    اجرا:  bash tools/dev/run-regression.sh push
 */
 import { PHP, PHPRequestHandler, setPhpIniEntries } from '@php-wasm/universal';
@@ -416,7 +417,7 @@ g0 = gMsgs();
 post = await admin.post(`/admin/report_detail.php?id=${RA}`, { _token: tokenD, form_action: 'push_test' });
 ok('«اعلان آزمایشی» به گوشی همین کاربر می‌رود', gMsgs() === g0 + 1 && /آزمایشی/.test(G.messages.at(-1)?.message?.notification?.title || '') && G.messages.at(-1)?.message?.token === 'TOK-PANEL-1');
 
-console.log('\n=== ۱۳) «تست اعلان» داخل اپ (api/push.php?action=test با توکن) ===');
+console.log('\n=== ۱۳) نقطه‌ی سرور api/push.php?action=test (برای عیب‌یابی؛ دکمه‌اش از اپ حذف شده) ===');
 g0 = gMsgs();
 r = await appPost({ action: 'test', token: 'TOK-PANEL-1' });
 ok('اعلان آزمایشی فقط به «همین گوشی» می‌رود', r.json?.success === true && r.json?.sent === 1 && r.json?.devices === 1 && gMsgs() === g0 + 1 && G.messages.at(-1)?.message?.token === 'TOK-PANEL-1', r.text.slice(0, 160));
@@ -488,7 +489,9 @@ function buildLive(opts = {}) {
   const server = { mode: opts.mode || 'ok', testReply: null, hold: false, release: null };
   const state = { phone: opts.phone ?? '' };
   const nodes = new Map();
-  ['notifDeviceNotice', 'notifListWrap', 'homeNotifDot', 'dashNotifDot'].forEach((id) => nodes.set(id, { id, innerHTML: '', style: { display: '' }, appendChild() {}, addEventListener() {} }));
+  /* مثل index.html واقعی: کادر notifDeviceNotice دیگر وجود ندارد (به درخواست مالک حذف شد) */
+  ['notifListWrap', 'homeNotifDot', 'dashNotifDot'].forEach((id) => nodes.set(id, { id, innerHTML: '', style: { display: '' }, appendChild() {}, addEventListener() {} }));
+  const askedIds = new Set();
   const FakeDate = class extends Date { static now() { return clock.now; } };
   const sb = {
     console, URLSearchParams, Date: FakeDate, Promise, JSON, Math, parseInt, String, Object, Array, Number, isNaN, encodeURIComponent, AbortController,
@@ -535,7 +538,7 @@ function buildLive(opts = {}) {
     navigator: opts.serviceWorkerHangs ? { serviceWorker: { getRegistration: () => new Promise(() => {}), register: () => new Promise(() => {}) } } : {},
     document: {
       readyState: opts.start ? 'complete' : 'loading',
-      getElementById: (id) => nodes.get(id) || null,
+      getElementById: (id) => { askedIds.add(String(id)); return nodes.get(id) || null; },
       createElement: () => ({ style: {}, appendChild() {}, addEventListener() {}, set innerHTML(v) {}, get innerHTML() { return ''; } }),
       addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); }, removeEventListener() {},
       body: { appendChild() {} }, hidden: false,
@@ -558,7 +561,7 @@ function buildLive(opts = {}) {
   const fireNext = async () => { const t = timers.find((x) => !x.done); if (!t) return null; t.done = true; t.fn(); await settle(); return t.ms; };
   const pending = () => timers.filter((x) => !x.done).map((x) => x.ms);
   const registerCalls = () => calls.filter((c) => c.url?.includes('push.php') && c.method === 'POST' && fieldsOf(c.body).action === 'register_fcm');
-  return { sb, calls, store, clock, listeners, bridge, server, state, settle, fireNext, pending, registerCalls, nodes };
+  return { sb, calls, store, clock, listeners, bridge, server, state, settle, fireNext, pending, registerCalls, nodes, askedIds };
 }
 
 /* ۱) مستقل از Service Worker */
@@ -576,13 +579,14 @@ await L.settle();
 ok('توکن هنوز نرسیده ← ثبتی نمی‌رود ولی تلاش مجدد ۲ ثانیه‌ای زمان‌بندی می‌شود', L.registerCalls().length === 0 && L.pending().includes(2000), JSON.stringify(L.pending()));
 let st = L.sb.eplakPushState();
 ok('وضعیت: توکن ندارد، ثبت نشده، دلیل no_fcm_token', st.token === false && st.registered === false && st.reason === 'no_fcm_token');
-ok('پیام کاربر «در حال دریافت شناسه‌ی اعلان…» است', /در حال دریافت شناسه/.test(L.nodes.get('notifDeviceNotice').innerHTML) && /data-state="no_token"/.test(L.nodes.get('notifDeviceNotice').innerHTML));
+ok('کادر وضعیت حذف شده: اپ در این حالت هم سراغ notifDeviceNotice نمی‌رود', !L.askedIds.has('notifDeviceNotice'), [...L.askedIds].join(','));
 L.bridge.token = 'TOK-LIVE-2';
 await L.fireNext();
 ok('وقتی توکن رسید، تلاش مجدد ثبت را انجام می‌دهد (با شماره‌ی کاربر)', L.registerCalls().length === 1 && new URLSearchParams(L.registerCalls()[0].body).get('phone') === '09120001111', `${L.registerCalls().length}`);
 ok('پس از ثبت موفق تایمر دیگری باقی نمی‌ماند', L.pending().length === 0, JSON.stringify(L.pending()));
-ok('پیام کاربر «این گوشی برای اعلان ثبت شده است» و دکمه‌ی «تست اعلان» دارد',
-  /data-state="registered"/.test(L.nodes.get('notifDeviceNotice').innerHTML) && /تست اعلان/.test(L.nodes.get('notifDeviceNotice').innerHTML));
+st = L.sb.eplakPushState();
+ok('وضعیت عیب‌یابی پس از ثبت: registered=true با شماره‌ی کاربر (بدون هیچ کادری در صفحه)',
+  st.registered === true && st.phone === '09120001111' && !L.askedIds.has('notifDeviceNotice'), JSON.stringify(st));
 
 /* ۳) خطای سرور (۴۰۰، HTML فایروال، قطع شبکه) ← تلاش پله‌ای */
 for (const mode of ['http400', 'html', 'network']) {
@@ -593,7 +597,7 @@ for (const mode of ['http400', 'html', 'network']) {
   const expected = [2000, 4000, 8000, 16000, 30000, 30000];
   ok(`خطای «${mode}» ← تلاش‌های پله‌ای ۲/۴/۸/۱۶/۳۰ ثانیه و بی‌صدا نمی‌میرد`, JSON.stringify(delays) === JSON.stringify(expected), JSON.stringify(delays));
   ok(`خطای «${mode}» ← چیزی به‌عنوان «ثبت‌شده» ذخیره نمی‌شود`, !('eplak_fcm_registered' in L.store));
-  ok(`خطای «${mode}» ← کاربر پیام «ثبت نشد؛ دوباره تلاش می‌شود» می‌بیند`, /data-state="error"/.test(L.nodes.get('notifDeviceNotice').innerHTML));
+  ok(`خطای «${mode}» ← دلیل در وضعیت عیب‌یابی ثبت می‌شود (server/network/exception)`, ['server', 'network', 'exception'].includes(L.sb.eplakPushState().reason), L.sb.eplakPushState().reason);
   L.server.mode = 'ok';
   await L.fireNext();
   ok(`پس از برگشتن سرور (${mode}) ثبت موفق می‌شود و تلاش‌ها پایان می‌یابد`, 'eplak_fcm_registered' in L.store && L.pending().length === 0, JSON.stringify(L.pending()));
@@ -671,30 +675,27 @@ ok('ورود بعدی دوباره ثبت می‌کند', L.registerCalls().leng
 ok('modules/auth.js هنگام خروج صریح، گوشی را جدا می‌کند', /logoutUser\(\)[\s\S]{0,900}eplakDetachDevice/.test(read('modules/auth.js')));
 ok('modules/auth.js پس از ورود (کد تایید) گوشی را با شماره ثبت می‌کند', /registerAppDevice\(true\)/.test(read('modules/auth.js')));
 
-/* ۸) دکمه‌ی «تست اعلان» */
-L = buildLive({ token: 'TOK-LIVE-8', phone: '09120001111' });
-await L.sb.registerAppDevice(false);
-let t = await L.sb.eplakTestPushClick(null);
-let tb = new URLSearchParams(L.calls.filter((c) => c.method === 'POST').at(-1).body);
-ok('«تست اعلان» با توکن همین گوشی به سرور می‌رود (action=test)', tb.get('action') === 'test' && tb.get('token') === 'TOK-LIVE-8');
-ok('موفق: پیام «اعلان آزمایشی ارسال شد» در کادر وضعیت می‌ماند (با هر بازنویسی پاک نمی‌شود)', t.ok === true && /ارسال شد/.test(L.nodes.get('notifDeviceNotice').innerHTML) && /data-code="sent"/.test(L.nodes.get('notifDeviceNotice').innerHTML));
-L.server.testReply = { status: 200, body: { success: false, outcome: 'google_error', error: 'x', hint: 'h' } };
-t = await L.sb.eplakTestPushClick(null);
-ok('سرور به گوگل نمی‌رسد ← پیام «مشکل از سمت هاست» (نه تقصیر کاربر)', t.ok === false && /هاست/.test(t.message), t.message);
-L.server.testReply = { status: 200, body: { success: false, outcome: 'no_device', error: 'این گوشی هنوز در سرور ثبت نشده است.' } };
-t = await L.sb.eplakTestPushClick(null);
-ok('گوشی ثبت نیست ← پیام روشن', t.ok === false && /ثبت نشده/.test(t.message), t.message);
-L.server.testReply = { status: 429, body: { success: false, error: 'چند ثانیه صبر کنید و دوباره امتحان کنید.' } };
-t = await L.sb.eplakTestPushClick(null);
-ok('محدودیت (۴۲۹) ← پیام «چند ثانیه صبر کنید»', /صبر/.test(t.message), t.message);
-L = buildLive({ token: '', phone: '09120001111' });
-t = await L.sb.eplakTestPushClick(null);
-ok('بدون توکن ← پیام «شناسه‌ی اعلان از گوگل نرسیده» (Google Play Services/اینترنت)', t.ok === false && t.code === 'no_fcm_token' && /Google Play/.test(t.message), t.message);
-ok('دکمه‌ی «تنظیمات اعلان گوشی» به پل اندروید وصل است', L.sb.eplakOpenNotificationSettings() === true && L.calls.includes('openSettings'));
+/* ۸) کادر «وضعیت اعلان» (با «تست اعلان» و «تنظیمات اعلان گوشی») به درخواست مالک حذف شد */
+const liveSrc = read('modules/live.js');
+ok('live.js دیگر دکمه‌ی «تست اعلان» (eplakTestPushClick / action=test از اپ) را ندارد',
+  !liveSrc.includes('eplakTestPushClick') && !liveSrc.includes('>تست اعلان<') && !/action:\s*'test'/.test(liveSrc));
+ok('live.js دیگر دکمه‌ی «تنظیمات اعلان گوشی» (eplakOpenNotificationSettings) را ندارد',
+  !liveSrc.includes('eplakOpenNotificationSettings') && !liveSrc.includes('>تنظیمات اعلان گوشی<'));
+ok('live.js دیگر کادر را رندر نمی‌کند و متن «اعلان‌های داخل برنامه فعال است» را ندارد',
+  !liveSrc.includes('renderDeviceNotice') && !liveSrc.includes('notifDeviceNotice') && !liveSrc.includes('اعلان‌های داخل برنامه فعال است'));
+L = buildLive({ token: 'TOK-LIVE-8', phone: '09120001111', start: true });
+await L.settle();
+ok('با شروع اپ هیچ تماسی با عنصر notifDeviceNotice نمی‌شود و توابع کادر روی window نیستند',
+  !L.askedIds.has('notifDeviceNotice') && typeof L.sb.renderDeviceNotice === 'undefined'
+  && typeof L.sb.eplakTestPushClick === 'undefined' && typeof L.sb.eplakOpenNotificationSettings === 'undefined');
 L = buildLive({ token: 'TOK-LIVE-9', phone: '09120001111' });
 L.sb.AndroidApp.notificationsEnabled = () => false;
-L.sb.renderDeviceNotice();
-ok('اجازه‌ی اعلان رد شده ← «فعال‌سازی اعلان» و «تنظیمات اعلان گوشی» هر دو هست', /فعال‌سازی اعلان/.test(L.nodes.get('notifDeviceNotice').innerHTML) && /eplakOpenNotificationSettings/.test(L.nodes.get('notifDeviceNotice').innerHTML));
+let askedNative = 0; L.sb.AndroidApp.requestNotificationPermission = () => { askedNative++; };
+await L.sb.requestPushPermission();
+ok('اجازه‌ی اعلان رد/داده‌نشده ← هنوز با requestPushPermission (اولین لمس کاربر) از خود اندروید پرسیده می‌شود',
+  askedNative === 1 && !L.askedIds.has('notifDeviceNotice'));
+L.sb.eplakNativePermissionResult(true);
+ok('پاسخ اندروید به اجازه‌ی اعلان (eplakNativePermissionResult) همچنان بی‌خطا پذیرفته می‌شود', true);
 L = buildLive({});
 L.sb.AndroidApp = undefined;
 const web = await L.sb.registerAppDevice(false);
@@ -741,15 +742,13 @@ ok('با کلیدِ فایربیس، همان صفحه بنرِ «فعال اس�
 const LO = buildLive({ token: 'TOK-LIVE-FCMOFF', phone: '09120009999', start: true, mode: 'fcm_off' });
 await LO.settle();
 await LO.settle();
-const noticeOff = LO.nodes.get('notifDeviceNotice').innerHTML;
-ok('اپ: حتی وقتی ثبت توکن موفق است، «آماده نبودنِ سرور» صریح گفته می‌شود',
-  noticeOff.includes('data-state="server_fcm_off"') && /کلید سرویس فایربیس/.test(noticeOff),
-  noticeOff.slice(0, 180));
-ok('اپ: در این حالت ادعای «اعلان وقتی اپ بسته است می‌رسد» نمی‌کند',
-  !noticeOff.includes('✅ این گوشی برای اعلان گزارش‌های شما ثبت شده است.'));
-ok('اپ: دلیلِ سرور در وضعیتِ ثبت هم دیده می‌شود (fcm_reason)',
-  /fcm_reason|کلید سرویس فایربیس/.test(noticeOff) && /server_fcm_off/.test(noticeOff));
+/* کادر وضعیت در صفحه حذف شده؛ «آماده نبودنِ سرور» فقط در وضعیت عیب‌یابی (eplakPushState)
+   و در پنل ادمین (بنر قرمز بالا) دیده می‌شود — نه در صفحه‌ی اعلان‌های کاربر. */
 const stOff = LO.sb.eplakPushState();
+ok('اپ: حتی وقتی ثبت توکن موفق است، «آماده نبودنِ سرور» در وضعیت عیب‌یابی ثبت می‌شود (نه ادعای «می‌رسد»)',
+  stOff.registered === true && stOff.serverReady === false && /کلید سرویس فایربیس/.test(String(stOff.serverReason || '')),
+  JSON.stringify(stOff));
+ok('اپ: در صفحه‌ی اعلان‌ها هیچ کادری برای این وضعیت ساخته نمی‌شود', !LO.askedIds.has('notifDeviceNotice'));
 ok('وضعیتِ اپ: serverReady=false با دلیلِ سرور ذخیره می‌شود',
   stOff.registered === true && stOff.serverReady === false && /کلید/.test(String(stOff.serverReason || '')),
   JSON.stringify(stOff));
@@ -758,11 +757,8 @@ ok('وضعیتِ اپ: serverReady=false با دلیلِ سرور ذخیره م�
 const LOK = buildLive({ token: 'TOK-LIVE-FCMOK', phone: '09120009998', start: true });
 await LOK.settle();
 await LOK.settle();
-const noticeOk = LOK.nodes.get('notifDeviceNotice').innerHTML;
-ok('اپ: با سرورِ آماده، همان «✅ این گوشی برای اعلان گزارش‌های شما ثبت شده است.» می‌ماند',
-  noticeOk.includes('✅ این گوشی برای اعلان گزارش‌های شما ثبت شده است.') && !noticeOk.includes('server_fcm_off'),
-  noticeOk.slice(0, 160));
 const stOk = LOK.sb.eplakPushState();
+ok('اپ: با سرورِ آماده هم هیچ کادری در صفحه ساخته نمی‌شود', !LOK.askedIds.has('notifDeviceNotice'));
 ok('وضعیتِ اپ: serverReady=true ثبت می‌شود', stOk.registered === true && stOk.serverReady === true, JSON.stringify(stOk));
 
 /* ۴) ورک‌فلوی APK باید «سیم‌کشی FCM» را سخت‌گیرانه بررسی کند */
@@ -778,8 +774,8 @@ ok('CI: نبودِ سیم‌کشی FCM ساخت را متوقف می‌کند (e
 ok('مستندات: بخش «چرا اعلان روی APK نمی‌آید» با راهِ فعال‌سازی هست',
   read('docs/NOTIFICATIONS_FA.md').includes('چرا اعلان روی **APK** نمی‌آید')
     && read('docs/NOTIFICATIONS_FA.md').includes('Generate new private key'));
-ok('کش‌باسترِ live.js بالا رفت (v=19) تا گوشی‌ها کد تازه را بگیرند',
-  read('index.html').includes('modules/live.js?v=19'));
+ok('کش‌باسترِ live.js بالا رفت (v=20 — حذف کادر وضعیت اعلان) تا گوشی‌ها کد تازه را بگیرند',
+  read('index.html').includes('modules/live.js?v=20'));
 
 fakeGoogle.close();
 console.log('\n' + '='.repeat(52));

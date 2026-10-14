@@ -42,7 +42,7 @@ $markers = [
     'registerAppDevice'              => 'ثبت خودکار گوشی در سرور',
     'register_fcm'                   => 'ارسال توکن فایربیس به سرور',
     'pushCapability'                 => 'تشخیص نوع اعلان دستگاه',
-    'renderDeviceNotice'             => 'پیام وضعیت اعلان به کاربر',
+    'eplakPushState'                 => 'وضعیت عیب‌یابی اعلان گوشی (eplakPushState)',
 ];
 $codeMarkers = [];
 foreach ($markers as $needle => $label) {

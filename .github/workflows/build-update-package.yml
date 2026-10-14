@@ -117,7 +117,7 @@ jobs:
           check shared/bootstrap.php       'function eplakReportCode'       'کد پیگیری یکدست در بسته هست'
           check admin/includes/functions.php 'broadcast_row_blocked'        'ارسال گروهی با حالت سازگار در بسته هست'
           check shared/notify_events.php   'eplakNotificationInsert'       'اعلان «ثبت درخواست» از مسیر مشترک می‌آید'
-          check modules/live.js            'setServerNotificationNotice'   'اپ پیام وضعیت سرور را نشان می‌دهد'
+          check modules/live.js            'setServerNotificationNotice'   'اپ پیام وضعیت سرور را (برای عیب‌یابی) نگه می‌دارد'
           check shared/config.example.php  "'driver' => 'mysql'"           'الگوی فایل تنظیمات داخل بسته هست'
 
       - name: اثر انگشت و مشخصات بسته
