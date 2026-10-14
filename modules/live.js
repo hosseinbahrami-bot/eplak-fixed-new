@@ -823,7 +823,11 @@
   var FCM_REGISTER_TTL = 6 * 60 * 60 * 1000;
   var FCM_RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000];
   var FCM_RETRY_MAX = 14;
-  var fcmState = { token: false, registered: false, attached: false, phone: '', reason: '', attempts: 0, at: 0 };
+  /* serverReady/serverReason = وضعیتِ «کلید سرویس فایربیس» سمت سرور (از پاسخِ
+     register_fcm و push.php?action=config). بدون این، اپ حتی وقتی سرور کلید نداشت
+     «✅ ثبت شده است» می‌گفت و کاربر دلیل نرسیدن اعلان را نمی‌فهمید. */
+  var fcmState = { token: false, registered: false, attached: false, phone: '', reason: '',
+                   attempts: 0, at: 0, serverReady: null, serverReason: '' };
   /* پیام سرور درباره‌ی وضعیت جدول اعلان‌ها (دیتابیس قدیمی/خطای خواندن).
      در renderDeviceNotice زیر وضعیت اعلان گوشی نمایش داده می‌شود. */
   var serverNoticeLine = '';
@@ -936,6 +940,9 @@
       fcmState.attached = phone !== '';
       fcmState.phone = phone;
       fcmState.reason = '';
+      /* «قبلاً ثبت شده» یعنی توکن روی سرور هست، نه اینکه سرور بتواند بفرستد.
+         سبک‌بار: فقط از کشِ پاسخِ config می‌خوانیم و درخواستِ تازه نمی‌زنیم. */
+      refreshServerFcmState(true);
       return { ok: true, reason: 'already_registered' };
     }
 
@@ -953,6 +960,8 @@
         fcmState.phone = phone;
         fcmState.reason = '';
         fcmState.at = Date.now();
+        if (typeof data.fcm_ready === 'boolean') fcmState.serverReady = data.fcm_ready;
+        fcmState.serverReason = String(data.fcm_reason || '');
         console.log('[fcm] دستگاه اپ ثبت شد');
         try { renderDeviceNotice(); } catch (e) {}
         return { ok: true, devices: data.devices, fcm_ready: data.fcm_ready, attached: data.attached };
@@ -1115,6 +1124,8 @@
     return {
       token: fcmState.token, registered: fcmState.registered, attached: fcmState.attached,
       phone: fcmState.phone, reason: fcmState.reason, attempts: fcmState.attempts,
+      /* وضعیتِ سمتِ سرور: آیا «کلید سرویس فایربیس» هست و اعلانِ حالتِ بسته می‌رسد؟ */
+      serverReady: fcmState.serverReady, serverReason: fcmState.serverReason,
       at: fcmState.at, native: diag
     };
   };
@@ -1303,9 +1314,31 @@
     return 'pending';
   }
 
+  /* پرس‌وجوی «آماده بودنِ فایربیس روی سرور» — مستقل از ثبت توکن، تا حتی اگر
+     ثبت ناموفق بود هم دلیلِ واقعی (نبودِ کلید سرویس) به کاربر نشان داده شود. */
+  function refreshServerFcmState(cachedOnly) {
+    if (!nativeBridge()) return Promise.resolve(null);
+    /* در حالتِ سبک‌بار (ثبتِ تکراری) هیچ درخواستِ تازه‌ای زده نمی‌شود */
+    if (cachedOnly === true && !pushConfigCache) return Promise.resolve(null);
+    return fetchPushConfig().then(function (cfg) {
+      if (!cfg) return null;
+      if (typeof cfg.fcm_ready === 'boolean') fcmState.serverReady = cfg.fcm_ready;
+      fcmState.serverReason = String(cfg.fcm_reason || '');
+      try { renderDeviceNotice(); } catch (e) {}
+      return cfg;
+    }).catch(function () { return null; });
+  }
+
   function fcmStatusText() {
     switch (fcmStateKey()) {
-      case 'registered': return '✅ این گوشی برای اعلان گزارش‌های شما ثبت شده است.';
+      case 'registered':
+        if (fcmState.serverReady === false) {
+          return '⚠️ این گوشی ثبت شده است، اما سمتِ سرور برای اعلانِ فایربیس آماده نیست'
+               + (fcmState.serverReason ? ' (' + fcmState.serverReason + ')' : '')
+               + '. تا مدیر «کلید سرویس فایربیس» را در پنل → تنظیمات وارد کند، اعلان فقط '
+               + 'داخل برنامه و تا وقتی اپ باز است می‌رسد.';
+        }
+        return '✅ این گوشی برای اعلان گزارش‌های شما ثبت شده است.';
       case 'guest': return 'ℹ️ برای دریافت اعلان گزارش‌هایتان، وارد حساب خود شوید.';
       case 'no_token': return '⏳ در حال دریافت شناسه‌ی اعلان از گوگل… اگر این پیام می‌ماند، اینترنت و Google Play Services گوشی را بررسی کنید.';
       case 'error': return '⚠️ ثبت گوشی در سرور انجام نشد؛ چند لحظه بعد خودکار دوباره تلاش می‌شود.';
@@ -1351,6 +1384,14 @@
         text = '🔕 برای دریافت اعلان روی گوشی، اجازه‌ی اعلان را به این برنامه بدهید. '
              + '<button type="button" onclick="requestPushPermission()" style="' + btn + '">فعال‌سازی اعلان</button>'
              + settingsBtn;
+      }
+      /* اگر سرور کلیدِ فایربیس نداشته باشد، اعلان در حالت «بسته بودن اپ» هرگز
+         نمی‌رسد — صریح گفته می‌شود (پیش از این بی‌صدا بود). */
+      if (fcmState.serverReady === false) {
+        text += '<div id="notifFcmServer" data-state="server_fcm_off" style="margin-top:8px;font-weight:700;color:#b91c1c;">'
+              + '⚠️ اعلان در حالت بسته بودن اپ غیرفعال است: سمتِ سرور «کلید سرویس فایربیس» ندارد'
+              + (fcmState.serverReason ? ' — ' + escapeText(fcmState.serverReason) : '')
+              + '. این مورد با تنظیمات گوشی درست نمی‌شود؛ مدیر باید کلید را در پنل → تنظیمات وارد کند.</div>';
       }
     } else if (cap.kind === 'unsupported') {
       text = '📵 این دستگاه امکان اعلان پس‌زمینه ندارد؛ اعلان‌های تازه در فهرست اعلان‌های همین برنامه نمایش داده می‌شوند.';
@@ -1433,6 +1474,9 @@
        Service Worker یا اصلاً ساخته نمی‌شود یا دیر آماده می‌شود، و وقتی ثبت گوشی
        پشت آن می‌ماند هیچ گوشی‌ای ثبت نمی‌شد و هیچ اعلان پنلی نمی‌رسید. */
     registerAppDevice(false);
+    /* در اپ اندروید، آماده بودنِ «کلید سرویس فایربیس» روی سرور هم پرسیده می‌شود تا
+       دلیلِ نرسیدن اعلان (نبودِ کلید) روی خودِ گوشی دیده شود. */
+    refreshServerFcmState();
     /* هر ۱۰ دقیقه: اگر ثبت قبلی بیش از ۶ ساعت پیش بوده یا ناموفق مانده، تازه می‌شود */
     setInterval(function () { registerAppDevice(false); }, 10 * 60 * 1000);
 

@@ -132,6 +132,42 @@ jobs:
             exit 1
           fi
           echo "✅ کش‌باستر داخل APK: $CACHE"
+
+          # ── اعلانِ گوشی (FCM) باید واقعاً داخل APK سیم‌کشی شده باشد ────────────
+          # اگر پلاگین google-services اعمال نشود یا firebase-messaging وابستگی
+          # نباشد، اپ «بی‌صدا» بدون اعلانِ حالتِ بسته می‌ماند (هیچ خطایی هم نمی‌دهد).
+          # مانیفستِ ادغام‌شده بهترین شاهد است: سرویس FirebaseMessagingService از
+          # مانیفستِ خودِ کتابخانه می‌آید، پس بودنش یعنی کتابخانه داخل APK است.
+          MERGED_MANIFEST="$(find android-app/app/build/intermediates -name 'AndroidManifest.xml' -path '*merged_manifest*' 2>/dev/null | head -1 || true)"
+          if [ -z "$MERGED_MANIFEST" ]; then
+            MERGED_MANIFEST="$(find android-app/app/build/intermediates -name 'AndroidManifest.xml' 2>/dev/null | head -1 || true)"
+          fi
+          test -n "$MERGED_MANIFEST" || { echo "::error::مانیفستِ ادغام‌شده پیدا نشد (بررسی FCM ممکن نیست)"; exit 1; }
+          for NEED in "com.google.firebase.messaging.FirebaseMessagingService" \
+                      "com.google.firebase.MESSAGING_EVENT" \
+                      "android.permission.POST_NOTIFICATIONS" \
+                      "com.example.eplakfixed.EplakMessagingService"; do
+            if grep -q "$NEED" "$MERGED_MANIFEST"; then
+              echo "✅ در مانیفستِ APK هست: $NEED"
+            else
+              echo "::error::$NEED در مانیفستِ ادغام‌شده نیست ⇒ اعلانِ گوشی کار نمی‌کند"
+              exit 1
+            fi
+          done
+          # پلاگین google-services منابعِ پروژه‌ی فایربیس را تولید و داخل APK
+          # می‌گذارد؛ بودنِ «google_app_id» در resources.arsc یعنی کلیدها واقعاً
+          # داخلِ خودِ APK‌اند (نه فقط در پوشه‌ی build) و توکن FCM ساخته می‌شود.
+          if unzip -p "$APK_NAME" resources.arsc 2>/dev/null | grep -qa 'google_app_id'; then
+            echo "✅ منابعِ google-services.json داخل APK است (google_app_id در resources.arsc)"
+          else
+            echo "::error::google_app_id داخل resources.arscِ APK نیست ⇒ پلاگین google-services اعمال نشده و توکن FCM ساخته نمی‌شود"
+            exit 1
+          fi
+          FCM_PROJECT="$(grep -o 'eplak-[A-Za-z0-9_-]*' android-app/app/google-services.json | head -1 || true)"
+          GS_APP_ID="$(grep -o '1:[0-9]\+:android:[a-f0-9]\+' android-app/app/google-services.json | head -1 || true)"
+          echo "FCM_PROJECT=${FCM_PROJECT:-unknown}" >> "$GITHUB_ENV"
+          echo "✅ اعلانِ فایربیس داخل APK سیم‌کشی شده است (پروژه: ${FCM_PROJECT:-?} · ${GS_APP_ID:-app-id?})"
+          echo "::notice title=اعلان گوشی (FCM)::سیم‌کشی FCM داخل APK تأیید شد · پروژه=${FCM_PROJECT:-?} · FirebaseMessagingService + POST_NOTIFICATIONS در مانیفست"
           if [ "$MISSING" -ne 0 ] || [ "$DIFF" -ne 0 ]; then
             echo "::error::بازرسی APK رد شد: $MISSING فایل داخل APK نیست و $DIFF فایل با مخزن فرق دارد (APK قدیمی/ناقص است)"
             exit 1
@@ -190,6 +226,7 @@ jobs:
             echo "| فایل‌های وبِ داخل APK | \`${APK_WEB_FILES:-?}\` |"
             echo "| sha256 | \`${APK_SHA:-?}\` |"
             echo "| شاخص همگام‌سازی اماکن (PLACES_SYNC_CODE) | \`${PLACES_SYNC_CODE:-?}\` |"
+            echo "| اعلانِ گوشی (FCM) داخلِ APK | پروژه‌ی \`${FCM_PROJECT:-?}\` · سیم‌کشی تأیید شد |"
             echo "| شاخه / کامیت | \`${GITHUB_REF_NAME}\` / \`${GITHUB_SHA}\` |"
             echo
             echo "دانلود پس از انتشار: <https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$APK_NAME>"
