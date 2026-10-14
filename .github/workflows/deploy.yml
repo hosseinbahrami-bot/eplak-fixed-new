@@ -126,9 +126,19 @@ jobs:
           rm -f eplak-fixed-update.zip eplak-fixed-update.zip.sha256
           rm -f eplak-app.apk eplak-app.apk.sha256 eplak-app-unsigned.ipa eplak-ios-project.zip
           rm -f docs/README.md docs/technical-architecture.md
-          echo "SITE_ROOT=$SITE_ROOT" >> "$GITHUB_ENV"
-          echo "UPLOAD_FILES=$(find . -type f | wc -l | tr -d ' ')" >> "$GITHUB_ENV"
-          echo "UPLOAD_SIZE=$(du -sh . | cut -f1 | tr -d ' ')" >> "$GITHUB_ENV"
+          # نکته: آنچه در $GITHUB_ENV نوشته می‌شود فقط برای «گام‌های بعدی» است؛ در
+          # همین گام باید از متغیرهای محلی خواند. پیش‌تر UPLOAD_FILES/UPLOAD_SIZE
+          # مستقیم داخل $GITHUB_ENV نوشته و همین‌جا خوانده می‌شدند ⇒ با set -u
+          # «unbound variable» و خروج با کد ۱ (دو اجرای اول روی main قرمز شد، بدون
+          # هیچ پیام روشنی). آزمون tools/dev/tests/ios.test.mjs همین گام را واقعاً
+          # اجرا می‌کند تا این اشتباه برنگردد.
+          UPLOAD_FILES="$(find . -type f | wc -l | tr -d ' ')"
+          UPLOAD_SIZE="$(du -sh . | cut -f1 | tr -d ' ')"
+          {
+            echo "SITE_ROOT=$SITE_ROOT"
+            echo "UPLOAD_FILES=$UPLOAD_FILES"
+            echo "UPLOAD_SIZE=$UPLOAD_SIZE"
+          } >> "$GITHUB_ENV"
           # چند بررسی که داده‌ی کاربر یا ابزار توسعه روی هاست نرود:
           for bad in shared/config.php data uploads backend ios-app android-app tools .github .git; do
             if [ -e "$bad" ]; then echo "❌ $bad نباید داخل پوشه‌ی آپلود باشد"; exit 1; fi
