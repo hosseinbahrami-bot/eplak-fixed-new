@@ -16,7 +16,8 @@
      ۶) منطق سنجش آزمون دودی (پایتون) با داده‌ی نمونه، هم حالت سالم هم حالت خراب
      ۷) ورک‌فلوها: همه‌ی فایل‌های yml سالم‌اند؛ iOS هر جا APK ساخته می‌شود ساخته می‌شود و به همان
         Release پیوست می‌شود؛ بدون امضا و بدون هیچ secret
-     ۸) ios-app/ داخل بسته‌ی آپلود هاست نمی‌رود (ساخت واقعیِ بسته روی یک کپی تمیز)
+     ۸) ios-app/ داخل بسته‌ی آپلود هاست نمی‌رود (ساخت واقعیِ بسته روی یک کپی تمیز) و گامِ
+        «آماده‌سازی پوشه‌ی آپلود» ورک‌فلوی deploy.yml واقعاً اجرا می‌شود (کد ۰، GITHUB_ENV درست)
      ۹) راهنمای نصب (FA/EN) هست و ابزارهای نصب IPA و نصب PWA را می‌گوید
 */
 import fs from 'fs'; import path from 'path'; import os from 'os';
@@ -438,6 +439,34 @@ const deployText = exists('.github/workflows/deploy.yml') ? read('.github/workfl
 const rmLines = deployText.split('\n').filter((l) => /^\s*rm -rf /.test(l)).join(' ');
 ok('آپلود خودکار FTP (deploy.yml، فقط با ادغام در main و فقط وقتی secret ها هست) هم ios-app، pwa-dist و tools را به هاست نمی‌برد — مثل بسته‌ی zip',
   ['ios-app', 'pwa-dist', 'tools', 'android-app', '.github'].every((d) => new RegExp('(^|\\s)' + d.replace('.', '\\.') + '(\\s|$)').test(rmLines)), rmLines);
+
+/* گامِ «آماده‌سازی پوشه‌ی آپلود» در deploy.yml واقعاً اجرا می‌شود (روی کپی تمیز، بدون
+   secret و بدون اینترنت). این همان گامی است که در دو اجرای اول روی main با کدِ ۱ و
+   بدون پیام قرمز شد: مقدارها فقط در $GITHUB_ENV نوشته و در همان گام خوانده می‌شدند
+   (با set -u ⇒ «unbound variable»). اجرای واقعی، هر برگشتِ این اشتباه را می‌گیرد. */
+const deployWf = wfs['deploy.yml'];
+const prepStep = deployWf && (deployWf.jobs.deploy.steps || []).find((s) => s.run && /SITE_ROOT=/.test(s.run) && /GITHUB_ENV/.test(s.run) && /cp -a \.\/\./.test(s.run));
+if (!prepStep) {
+  ok('deploy.yml گامِ «آماده‌سازی پوشه‌ی آپلود» را دارد (کپی تمیز + نوشتن SITE_ROOT در GITHUB_ENV)', false, 'گام پیدا نشد');
+} else {
+  const src = path.join(TMP, 'deploysrc');
+  fs.cpSync(ROOT, src, { recursive: true, filter: (s) => { const b = path.basename(s); return !['.git', 'node_modules', '.arena'].includes(b) && !(b.endsWith('.zip') && path.dirname(s) === ROOT); } });
+  const runnerTmp = path.join(TMP, 'runner_tmp'); fs.mkdirSync(runnerTmp, { recursive: true });
+  const ghEnv = path.join(TMP, 'github_env'); fs.writeFileSync(ghEnv, '');
+  const r = spawnSync('bash', ['-c', prepStep.run], { cwd: src, encoding: 'utf8', env: { ...process.env, RUNNER_TEMP: runnerTmp, GITHUB_ENV: ghEnv, GITHUB_ACTIONS: 'true' } });
+  const out = (r.stdout || '') + (r.stderr || '');
+  ok('گامِ «آماده‌سازی پوشه‌ی آپلود» با کد ۰ تمام می‌شود (نه «unbound variable»، نه خروج بی‌صدا)',
+    r.status === 0 && !/unbound variable/.test(out) && /✅/.test(out), out.trim().split('\n').slice(-3).join(' | '));
+  const envText = fs.readFileSync(ghEnv, 'utf8');
+  const nFiles = Number((envText.match(/^UPLOAD_FILES=(\d+)$/m) || [])[1]);
+  ok('همان گام SITE_ROOT، UPLOAD_FILES و UPLOAD_SIZE را برای گام‌های بعدی (lftp و خلاصه) در GITHUB_ENV می‌نویسد',
+    /^SITE_ROOT=.+$/m.test(envText) && nFiles > 100 && /^UPLOAD_SIZE=\S+$/m.test(envText), envText.replace(/\n/g, ' | '));
+  const siteRoot = (envText.match(/^SITE_ROOT=(.+)$/m) || [])[1] || '';
+  const inSite = (rel) => siteRoot && fs.existsSync(path.join(siteRoot, rel));
+  ok('پوشه‌ی آپلودِ ساخته‌شده: فایل‌های سایت هست و ios-app/ android-app/ tools/ backend/ data/ uploads/ .github/ shared/config.php نیست',
+    inSite('index.html') && inSite('api/notifications.php') && inSite('shared/bootstrap.php') && inSite('admin/settings.php')
+    && !['ios-app', 'android-app', 'tools', 'backend', 'data', 'uploads', '.github', '.git', 'shared/config.php', 'pwa-dist'].some(inSite), siteRoot);
+}
 fs.rmSync(TMP, { recursive: true, force: true });
 
 /* ── ۹) راهنما ───────────────────────────────────────────────────────────── */
