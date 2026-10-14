@@ -795,8 +795,8 @@ ok('CI: نبودِ سیم‌کشی FCM ساخت را متوقف می‌کند (e
 ok('مستندات: بخش «چرا اعلان روی APK نمی‌آید» با راهِ فعال‌سازی هست',
   read('docs/NOTIFICATIONS_FA.md').includes('چرا اعلان روی **APK** نمی‌آید')
     && read('docs/NOTIFICATIONS_FA.md').includes('Generate new private key'));
-ok('کش‌باسترِ live.js بالا رفت (v=21 — گزارش پروژه‌ی فایربیس و ضربان اپ) تا گوشی‌ها کد تازه را بگیرند',
-  read('index.html').includes('modules/live.js?v=21') && /LIVE_VERSION = '21'/.test(read('modules/live.js')));
+ok('کش‌باسترِ live.js بالا رفت (v=22 — دلیلِ قابل‌مشاهده‌ی فهرست خالی اعلان‌ها) تا گوشی‌ها کد تازه را بگیرند',
+  read('index.html').includes('modules/live.js?v=22') && /LIVE_VERSION = '22'/.test(read('modules/live.js')));
 
 /* ══════════════════════════════════════════════════════════════════
    ۵) «کلید سرویس از پروژه‌ی دیگری است» (SenderId mismatch)
@@ -1057,7 +1057,7 @@ const LH = buildLive({ token: 'TOK-LIVE-HB', phone: '09120006666', start: true }
 await LH.settle(); await LH.settle();
 const hbCalls = () => LH.calls.filter((c) => c.url.includes('notifications.php') && c.method === 'GET');
 ok('live.js: درخواست فهرست اعلان‌ها app=android&v=21&prev=first دارد (اولین بار)',
-  hbCalls().length >= 1 && /app=android/.test(hbCalls()[0].url) && /v=21/.test(hbCalls()[0].url) && /prev=first/.test(hbCalls()[0].url), hbCalls()[0]?.url);
+  hbCalls().length >= 1 && /app=android/.test(hbCalls()[0].url) && /v=22/.test(hbCalls()[0].url) && /prev=first/.test(hbCalls()[0].url), hbCalls()[0]?.url);
 await LH.sb.syncNotifications();
 await LH.settle();
 ok('درخواست بعدی نتیجه‌ی قبلی را می‌فرستد (prev=ok:0) و eplakPushState آن را دارد',

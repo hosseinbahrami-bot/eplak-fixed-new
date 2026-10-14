@@ -203,6 +203,8 @@ class LocalLoader extends ResourceLoader {
 }
 
 const appLogs = [];
+/* هر درخواستی که اپ به api/notifications.php می‌زند (برای سنجش «تازه‌سازی هنگام باز شدن صفحه») */
+const notifFetchCalls = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => appLogs.push('jsdomError: ' + (e && e.message)));
 const dom = await JSDOM.fromFile(path.join(APP, 'index.html'), {
@@ -231,6 +233,7 @@ const dom = await JSDOM.fromFile(path.join(APP, 'index.html'), {
     };
     window.fetch = async (input, init) => {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (/notifications\.php/i.test(url)) notifFetchCalls.push(url);
       const method = (((init || {}).method) || 'GET').toUpperCase();
       const body = (init || {}).body || null;
       const m = url.match(/(?:^|\/)(api\/[a-z0-9_\-]+\.php)(?:\?([^#]*))?/i);
@@ -447,6 +450,100 @@ $stmt->execute([':p' => ${phpVal(PHONE)}, ':c' => '%' . ${phpVal(String(dupFirst
 echo json_encode(['count' => (int) $stmt->fetchColumn()]);`));
 ok('برای آن کد پیگیری فقط یک اعلان در فهرست کاربر وجود دارد',
   (dupCount && dupCount.count) === 1, JSON.stringify(dupCount));
+
+
+/* ───────── ۱۱) «فهرست خالیِ بی‌توضیح» دیگر تکرار نمی‌شود ─────────
+   گزارش کارفرما: «اعلان‌ها داخل .apk نمایش داده نمی‌شه هنوز — نه اعلان‌های پنل نه
+   اعلان‌های ثبت درخواست.» اگر سرور خطا بدهد، یا درخواست اصلاً به سرور نرسد، یا
+   ساخت فهرست به هر دلیلی خطا بخورد، کاربر باید «دلیل» را روی همان صفحه ببیند؛
+   پیش‌تر در همه‌ی این حالت‌ها فقط یک فهرست خالی دیده می‌شد و هیچ سرنخی نبود. */
+section('۱۱) دلیلِ قابل‌مشاهده وقتی فهرست خالی است (اپ اندروید)');
+
+const savedFetch = w.fetch;
+const savedEscape = w.escapeHtml;
+
+/* الف) سرور پاسخ خطا می‌دهد (مثل دیتابیس قدیمیِ هاست) */
+w.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  if (/notifications\.php/i.test(url)) {
+    return {
+      ok: false, status: 500,
+      json: async () => ({ success: false, error: "Unknown column 'send_id'", hint: 'ساختار جدول اعلان‌ها قدیمی است.' }),
+      text: async () => ''
+    };
+  }
+  return savedFetch(input, init);
+};
+await w.eval('window.syncNotifications()');
+await new Promise((r) => setTimeout(r, 300));
+ok('خطای سرور در وضعیت اعلان‌ها ثبت می‌شود (http:500 + پیام سرور)',
+  w.eplakNotificationStatus().outcome === 'http:500' && /قدیمی/.test(w.eplakNotificationStatus().notice),
+  JSON.stringify(w.eplakNotificationStatus()));
+ok('eplakNotificationStatus برای عیب‌یابی در دسترس است (شماره/تعداد/نتیجه)',
+  typeof w.eplakNotificationStatus === 'function'
+  && 'phone' in w.eplakNotificationStatus() && 'count' in w.eplakNotificationStatus()
+  && w.eplakPushState().notifSync && w.eplakPushState().notifSync.outcome === 'http:500');
+w.eval('renderNotifications()');
+ok('کاربر روی صفحه‌ی اعلان‌ها دلیل را می‌بیند (نه فهرست خالیِ بی‌توضیح)',
+  /ساختار جدول اعلان‌ها قدیمی است/.test(rendered()), rendered().slice(0, 240));
+
+/* ب) درخواست اصلاً به سرور نمی‌رسد (اینترنت/فایروال/مهلت تمام‌شده) */
+w.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  if (/notifications\.php/i.test(url)) throw new TypeError('Failed to fetch');
+  return savedFetch(input, init);
+};
+await w.eval('window.syncNotifications()');
+await new Promise((r) => setTimeout(r, 300));
+ok('نرسیدن به سرور هم ثبت می‌شود (net:…) و پیامِ قابل‌فهم دارد',
+  /^net:/.test(w.eplakNotificationStatus().outcome)
+  && /ارتباط با سرور اعلان‌ها/.test(w.eplakNotificationStatus().notice),
+  JSON.stringify(w.eplakNotificationStatus()));
+w.eval('renderNotifications()');
+ok('روی صفحه نوشته می‌شود «ارتباط با سرور اعلان‌ها برقرار نشد»',
+  /ارتباط با سرور اعلان‌ها برقرار نشد/.test(rendered()), rendered().slice(0, 240));
+ok('فهرست قبلیِ روی گوشی با خطای شبکه پاک نمی‌شود',
+  /قطعی آب|ثبت درخواست/.test(rendered()), rendered().slice(0, 240));
+
+/* پ) سرور پاسخ سالم می‌دهد ولی برای این شماره ردیفی نیست */
+const emptyReasonHtml = w.notifEmptyReason({ at: Date.now(), outcome: 'ok:0', phone: PHONE, notice: '' }, false);
+ok('حالت «سرور پاسخ داد ولی اعلانی برای این شماره نیست» شماره را نشان می‌دهد',
+  typeof emptyReasonHtml === 'string' && emptyReasonHtml.includes(PHONE) && /ثبت نشده/.test(emptyReasonHtml),
+  String(emptyReasonHtml).slice(0, 200));
+
+/* ت) خطای غیرمنتظره در ساخت فهرست (تابع کمکیِ ناقص/قدیمی) */
+w.fetch = savedFetch;
+await w.eval('window.syncNotifications()');
+await new Promise((r) => setTimeout(r, 400));
+w.escapeHtml = undefined;
+w.eval('renderNotifications()');
+w.escapeHtml = savedEscape;
+ok('اگر ساخت فهرست خطا بدهد، همان خطا روی صفحه دیده می‌شود (نه فهرست خالی)',
+  /نمایش اعلان‌ها با خطا متوقف شد/.test(rendered()), rendered().slice(0, 240));
+w.eval('renderNotifications()');
+ok('بعد از رفع خطا، فهرست سالم برمی‌گردد', /قطعی آب|ثبت درخواست/.test(rendered()), rendered().slice(0, 240));
+
+/* ث) باز شدن صفحه‌ی اعلان‌ها خودش فهرست را از سرور تازه می‌کند */
+const notifCallsBefore = notifFetchCalls.length;
+w.eval("showScreen('screen-notifications')");
+await new Promise((r) => setTimeout(r, 600));
+ok('باز شدن صفحه‌ی اعلان‌ها یک درخواست تازه به سرور می‌زند',
+  notifFetchCalls.length > notifCallsBefore,
+  notifFetchCalls.length + ' > ' + notifCallsBefore);
+ok('تازه‌سازی، اعلان‌ها را تکراری نمی‌کند (هر عنوان یک‌بار)',
+  (rendered().match(/قطعی آب/g) || []).length <= 1, rendered().slice(0, 300));
+
+/* ج) صفحه‌ی عیب‌یابی پنل: هست، فقط-خواندنی است، و از منو در دسترس است */
+const diagSrc = fs.readFileSync(path.join(APP, 'admin/notif_diag.php'), 'utf8');
+ok('صفحه‌ی عیب‌یابی اعلان‌ها در پنل هست و هیچ چیزی را تغییر نمی‌دهد (فقط SELECT)',
+  /notif_diag/.test(diagSrc)
+  && !/INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|DROP\s+TABLE|ALTER\s+TABLE/i.test(diagSrc));
+ok('صفحه‌ی عیب‌یابی به ورود مدیر وابسته است',
+  /require_once __DIR__ \. '\/auth\.php'/.test(diagSrc));
+ok('صفحه‌ی عیب‌یابی، «ضربان اپ‌ها» و بررسی یک شماره را نشان می‌دهد',
+  /eplakHeartbeatList/.test(diagSrc) && /eplakPhoneVariants/.test(diagSrc));
+ok('لینک صفحه‌ی عیب‌یابی در منوی «ارسال اعلان» پنل هست',
+  fs.readFileSync(path.join(APP, 'admin/notifications.php'), 'utf8').includes('notif_diag.php'));
 
 console.log('\n====================================================');
 console.log('NOTIFY-SCHEMA: ' + pass + ' passed, ' + fail + ' failed');

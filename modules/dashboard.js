@@ -404,6 +404,44 @@
     { id: '3', title: 'Renovation Tax Reminder', body: '10% early payment discount until end of month', time: '3 days ago', read: true, icon: '💳' }
   ];
 
+  /* چرا فهرست خالی است؟ — یک خط توضیح کوتاه برای کاربر.
+     پیش‌تر اگر سرور خطا می‌داد یا درخواست به سرور نمی‌رسید، اپ «اعلانی وجود
+     ندارد» نشان می‌داد و کاربر هیچ راهی برای فهمیدن دلیل نداشت (همان شکایتِ
+     «در APK هیچ اعلانی دیده نمی‌شود»). حالا خودِ اپ می‌گوید چه اتفاقی افتاده. */
+  function notifEmptyReason(status, isEn) {
+    if (!status || !status.at) return '';
+    const esc = (typeof escapeHtml === 'function') ? escapeHtml : (v => String(v == null ? '' : v));
+    const when = (() => {
+      try {
+        if (typeof faTime === 'function') return faTime(new Date(status.at));
+      } catch (e) {}
+      return '';
+    })();
+    const outcome = String(status.outcome || '');
+    let text = '';
+    if (status.notice) {
+      text = String(status.notice);
+    } else if (outcome.indexOf('ok:') === 0) {
+      const phone = String(status.phone || '');
+      text = isEn
+        ? ('The server answered but has no notification for ' + (phone || 'this device') + ' yet.')
+        : ('سرور پاسخ داد ولی تا حالا اعلانی برای ' + (phone ? ('شماره‌ی «' + phone + '»') : 'این دستگاه') + ' ثبت نشده است.');
+    } else if (outcome.indexOf('http:') === 0) {
+      text = (isEn ? 'The server answered with error ' : 'سرور اعلان‌ها پاسخ خطا داد (کد ') + outcome.slice(5) + (isEn ? '.' : ').');
+    } else if (outcome.indexOf('net:') === 0 || outcome === 'json' || outcome === 'fail') {
+      text = isEn ? 'Could not reach the notifications server.' : 'ارتباط با سرور اعلان‌ها برقرار نشد.';
+    }
+    if (!text) return '';
+    const suffix = isEn
+      ? ''
+      : ' هر ۳.۵ ثانیه دوباره تلاش می‌شود؛ اگر تکرار شد، در پنل مدیریت → تنظیمات «ضربان اپ‌ها» را ببینید.';
+    return `<div style="text-align:center; padding:2px 10px 14px; color:var(--text-muted); font-size:12px; line-height:1.9;">`
+      + `<div style="font-size:13px;">⚠️ ${esc(text)}</div>`
+      + `${suffix ? '<div style="opacity:0.85;">' + esc(suffix.trim()) + '</div>' : ''}`
+      + (when ? `<div style="opacity:0.7;">${isEn ? 'Last check' : 'آخرین بررسی'}: ${esc(when)}</div>` : '')
+      + `</div>`;
+  }
+
   function renderNotifications() {
     const wrap = document.getElementById('notifListWrap');
     if (!wrap) return;
@@ -420,17 +458,33 @@
       } catch (e) {}
       return fallback;
     };
+    const esc = (typeof escapeHtml === 'function') ? escapeHtml : (v => String(v == null ? '' : v));
 
-    if (notifications.length === 0) {
-      wrap.innerHTML = `<div style="text-align:center; padding:30px 10px; color:var(--text-muted); font-size:13px;">${isEn ? 'No notifications to display' : 'اعلانی وجود ندارد'}</div>`;
-    } else {
-      wrap.innerHTML = notifications.map((n, idx) => {
-        const enItem = (!String(n.id).startsWith('srv-') && idx < notifications_EN.length) ? notifications_EN[idx] : null;
-        const title = (isEn && enItem) ? enItem.title : n.title;
-        const body = (isEn && enItem) ? enItem.body : n.body;
-        const time = (isEn && enItem) ? enItem.time : (n.time || n.date || '');
-        const deleteLabel = tr('notif_delete_one', isEn ? 'Delete this notification' : 'حذف این اعلان');
-        return `
+    const status = (typeof window.eplakNotificationStatus === 'function')
+      ? window.eplakNotificationStatus() : null;
+
+    /* پیام سرور (دیتابیس قدیمی/خطای خواندن) — یک خط کوتاه بالای فهرست.
+       بدون دکمه و بدون کادر اضافه؛ فقط تا زمانی که مشکل هست نشان داده می‌شود. */
+    let noticeHtml = '';
+    if (status && status.notice) {
+      noticeHtml = `<div style="margin:0 0 10px; padding:9px 12px; border-radius:12px; `
+        + `background:rgba(255,153,0,0.10); border:1px solid rgba(255,153,0,0.28); color:#B26A00; `
+        + `font-size:12.5px; line-height:1.9; text-align:${isEn ? 'left' : 'right'};">⚠️ ${esc(status.notice)}</div>`;
+    }
+
+    let bodyHtml = '';
+    try {
+      if (notifications.length === 0) {
+        bodyHtml = `<div style="text-align:center; padding:30px 10px 6px; color:var(--text-muted); font-size:13px;">${isEn ? 'No notifications to display' : 'اعلانی وجود ندارد'}</div>`
+          + notifEmptyReason(status, isEn);
+      } else {
+        bodyHtml = notifications.map((n, idx) => {
+          const enItem = (!String(n.id).startsWith('srv-') && idx < notifications_EN.length) ? notifications_EN[idx] : null;
+          const title = (isEn && enItem) ? enItem.title : n.title;
+          const body = (isEn && enItem) ? enItem.body : n.body;
+          const time = (isEn && enItem) ? enItem.time : (n.time || n.date || '');
+          const deleteLabel = tr('notif_delete_one', isEn ? 'Delete this notification' : 'حذف این اعلان');
+          return `
           <div class="report-item" onclick="markNotifRead('${n.id}')" style="${n.read ? 'opacity:0.6;' : ''}">
             ${!n.read ? '<span style="width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0;"></span>' : '<span style="width:8px;height:8px;flex-shrink:0;"></span>'}
             <div class="report-info" style="text-align:${isEn ? 'left' : 'right'};">
@@ -445,8 +499,16 @@
             </button>
           </div>
         `;
-      }).join('');
+        }).join('');
+      }
+    } catch (err) {
+      /* ایمنی آخر: هر خطای غیرمنتظره در ساخت فهرست، به‌جای «فهرست خالیِ
+         بی‌توضیح»، همان‌جا نشان داده می‌شود (پیش‌تر catch بیرونی در live.js
+         خطا را می‌خورد و کاربر هیچ‌چیز نمی‌فهمید). */
+      bodyHtml = `<div style="text-align:center; padding:26px 10px; color:#C0392B; font-size:12.5px; line-height:2;">`
+        + `⚠️ ${isEn ? 'Could not display notifications: ' : 'نمایش اعلان‌ها با خطا متوقف شد: '}${esc(String((err && err.message) || err))}</div>`;
     }
+    wrap.innerHTML = noticeHtml + bodyHtml;
     updateNotifDot();
   }
 

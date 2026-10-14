@@ -124,6 +124,10 @@ jobs:
           check admin/settings.php         'app-heartbeats'                'پنل → تنظیمات جدول ضربان اپ‌ها را دارد'
           check modules/live.js            "app=' + encodeURIComponent(appPlatform())" 'اپ سکو/نسخه/نتیجه‌ی قبلی را همراه فهرست اعلان‌ها می‌فرستد'
           check shared/config.example.php  "'driver' => 'mysql'"           'الگوی فایل تنظیمات داخل بسته هست'
+          check modules/dashboard.js       'notifEmptyReason'             'اپ دلیلِ خالی بودن فهرست اعلان‌ها را نشان می‌دهد (حالت خالی)'
+          check modules/live.js            'eplakNotificationStatus'      'وضعیت خوانا برای عیب‌یابی فهرست اعلان‌ها در بسته هست'
+          check core/router.js             'refreshNotificationsNow'      'باز شدن صفحه‌ی اعلان‌ها فهرست را تازه می‌کند'
+          check admin/notif_diag.php       'notif_diag'                   'صفحه‌ی عیب‌یابی اعلان‌ها در بسته هست'
 
       - name: اثر انگشت و مشخصات بسته
         run: |

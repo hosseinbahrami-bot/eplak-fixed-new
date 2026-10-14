@@ -8,10 +8,11 @@
   var isInitialNotifs = true;
   var seenNotifIds = new Set();
   var isSyncing = false;
+  var syncStartedAt = 0;   /* زمان شروع آخرین همگام‌سازی (محافظِ قفل‌شدن) */
 
   /* نسخه‌ی همین اسکریپت (با v= در index.html هم‌خوان است) — همراه هر درخواستِ
      فهرست اعلان‌ها به سرور می‌رود تا در پنل معلوم باشد هر گوشی چه نسخه‌ای دارد. */
-  var LIVE_VERSION = '21';
+  var LIVE_VERSION = '22';
 
   /* نتیجه‌ی آخرین درخواست فهرست اعلان‌ها از نگاه اپ:
        first | ok:N | http:S | json | net:<پیام کوتاه>
@@ -750,9 +751,30 @@
     }
   }
 
+  /* ثبت وضعیت آخرین دریافت فهرست (برای پیام حالت خالی و «ضربان اپ‌ها») */
+  function markNotifSync(outcome, data, phone, notice) {
+    notifSync.at = Date.now();
+    notifSync.outcome = String(outcome || '');
+    notifSync.phone = String(phone || '');
+    notifSync.notice = String(notice || '');
+    if (data && typeof data === 'object') {
+      notifSync.count = Number(data.count || (Array.isArray(data.notifications) ? data.notifications.length : 0)) || 0;
+      notifSync.unread = Number(data.unread || 0) || 0;
+    }
+  }
+
+  /* وضعیت خوانا برای صفحه‌ی اعلان‌ها (حالت خالی) و برای عیب‌یابی در گوشی */
+  window.eplakNotificationStatus = function () {
+    return {
+      at: notifSync.at, outcome: notifSync.outcome, count: notifSync.count,
+      unread: notifSync.unread, phone: notifSync.phone, notice: notifSync.notice,
+      platform: appPlatform(), version: LIVE_VERSION
+    };
+  };
+
   async function syncNotifications() {
+    var phone = '';
     try {
-      var phone = '';
       if (typeof getCurrentPhone === 'function') {
         phone = getCurrentPhone();
       }
@@ -774,33 +796,44 @@
                 + '&v=' + encodeURIComponent(LIVE_VERSION)
                 + '&prev=' + encodeURIComponent(lastPollOutcome)
                 + '&t=' + Date.now();
-      const res = await fetch(apiBase() + '/notifications.php?' + query, { cache: 'no-store' });
+      const res = await fetchWithTimeout(apiBase() + '/notifications.php?' + query,
+        { cache: 'no-store' }, 12000);
       const data = await res.json().catch(function () { return null; });
 
       if (!res.ok || !data || data.success !== true) {
         lastPollOutcome = !res.ok ? ('http:' + res.status) : (!data ? 'json' : 'fail');
         /* پیش‌تر این‌جا فقط «false» برگردانده می‌شد و هیچ سرنخی نمی‌ماند که چرا
            فهرست اعلان‌ها خالی مانده (مثلاً ستون send_id در دیتابیس قدیمیِ هاست
-           وجود نداشت و سرور ۵۰۰ می‌داد). علت/راهنمای سرور نگه داشته می‌شود
-           (کنسول + eplakPushState) و فهرست محلیِ قبلی هم پاک نمی‌شود. */
-        setServerNotificationNotice(
-          (data && (data.hint || data.error))
+           وجود نداشت و سرور ۵۰۰ می‌داد). حالا همان دلیل، در صفحه‌ی اعلان‌ها هم
+           به کاربر نشان داده می‌شود و فهرست محلیِ قبلی هم پاک نمی‌شود. */
+        var failMsg = (data && (data.hint || data.error))
             || (!res.ok ? 'سرور اعلان‌ها پاسخ خطا داد (کد ' + res.status + '). کمی بعد دوباره تلاش می‌شود.' : '')
-            || 'خواندن اعلان‌ها از سرور ممکن نشد.'
-        );
+            || 'خواندن اعلان‌ها از سرور ممکن نشد.';
+        setServerNotificationNotice(failMsg);
+        markNotifSync(lastPollOutcome, null, phone, failMsg);
         return false;
       }
 
       /* degraded = دیتابیس سرور قدیمی است و اعلان‌ها در «حالت سازگار» می‌آیند */
-      setServerNotificationNotice(
-        (Array.isArray(data.degraded) && data.degraded.length && data.hint) ? data.hint : ''
-      );
+      var degradedMsg = (Array.isArray(data.degraded) && data.degraded.length && data.hint) ? data.hint : '';
+      setServerNotificationNotice(degradedMsg);
       var list = Array.isArray(data.notifications) ? data.notifications : [];
       lastPollOutcome = 'ok:' + list.length;
+      markNotifSync(lastPollOutcome, data, phone, degradedMsg);
       applyNotifications(list);
       return true;
     } catch (e) {
-      lastPollOutcome = 'net:' + String((e && (e.name || e.message)) || 'error').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 24);
+      /* ⚠️ پیش‌تر این‌جا هیچ پیامی ساخته نمی‌شد: اگر درخواست به سرور نمی‌رسید
+         (اینترنت، فایروال هاست، یا مهلت تمام‌شدن)، کاربر فقط یک فهرست خالی
+         می‌دید و هیچ سرنخی برای «چرا» نداشت. حالا دلیل روی همان صفحه نوشته
+         می‌شود (و در «ضربان اپ‌ها»‌ی پنل هم به‌صورت prev=net:… می‌ماند). */
+      var errText = String((e && (e.name || e.message)) || 'error');
+      lastPollOutcome = 'net:' + errText.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 24);
+      var netMsg = (e && e.name === 'AbortError')
+        ? 'سرور اعلان‌ها در مهلت مقرر پاسخ نداد؛ اتصال اینترنت را بررسی کنید.'
+        : 'ارتباط با سرور اعلان‌ها برقرار نشد؛ اتصال اینترنت را بررسی کنید.';
+      setServerNotificationNotice(netMsg);
+      markNotifSync(lastPollOutcome, null, phone, netMsg);
       return false;
     }
   }
@@ -817,8 +850,16 @@
   }
 
   window.syncLiveContent = async function () {
-    if (isSyncing) return;
+    if (isSyncing) {
+      /* محافظِ «قفل‌شدنِ همگام‌سازی»: اگر یک درخواست پیشین هر دلیلی معلق بماند
+         (نسخه‌های قدیمی WebView، اینترنت نیمه‌قطع)، بدون این محافظ isSyncing
+         برای همیشه true می‌ماند و از آن لحظه هیچ اعلانی خوانده نمی‌شود — یعنی
+         فهرست اعلان‌های اپ خالی می‌ماند تا اپ بسته و باز شود. */
+      if (Date.now() - syncStartedAt < 45000) return;
+      isSyncing = false;
+    }
     isSyncing = true;
+    syncStartedAt = Date.now();
     try {
       await syncNotifications();
       await syncReportsLive();
@@ -874,17 +915,25 @@
                       projectMatch=false یعنی گوگل ارسال را با SenderId mismatch رد می‌کند */
                    appProject: '', keyProject: '', projectMatch: null };
   /* پیام سرور درباره‌ی وضعیت جدول اعلان‌ها (دیتابیس قدیمی/خطای خواندن).
-     کادر نمایشِ آن در صفحه‌ی اعلان‌ها به درخواست مالک حذف شد؛ پیام فقط برای
-     عیب‌یابی نگه داشته می‌شود (کنسول و خروجی eplakPushState). */
+     کادر نمایشِ آن در صفحه‌ی اعلان‌ها به درخواست مالک حذف شد؛ متن پیام این‌جا
+     نگه داشته می‌شود و در صفحه‌ی «اعلان‌ها» فقط وقتی فهرست خالی است (یا خطایی
+     رخ داده) به‌صورت یک خط کوتاه نشان داده می‌شود — بدون هیچ دکمه/کادر اضافه. */
   var serverNoticeLine = '';
+  /* وضعیت آخرین «دریافت فهرست اعلان‌ها» — برای اینکه «فهرست خالیِ بی‌توضیح»
+     هرگز برای کاربر پیش نیاید. */
+  var notifSync = { at: 0, outcome: 'first', count: 0, unread: 0, phone: '', notice: '' };
   var fcmRetryTimer = null;
   var fcmRetryCount = 0;
   var fcmInFlight = null;
   var FCM_FORM_HEADERS = { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' };
 
-  /* fetch با مهلت: اگر اینترنت گوشی «گیر» کند، درخواست ثبت گوشی نباید تا ابد
-     معلق بماند و ثبت‌های بعدی را هم پشت خودش نگه دارد. */
-  function fcmFetch(url, options, timeoutMs) {
+  /* fetch با مهلت: اگر اینترنت گوشی «گیر» کند، هیچ درخواستی نباید تا ابد معلق
+     بماند و بقیه را پشت خودش نگه دارد.
+
+     ⚠️ برای «فهرست اعلان‌ها» هم همین لازم بود: یک درخواست معلق، حلقه‌ی
+     همگام‌سازی (isSyncing) را قفل می‌کرد و از آن به بعد هیچ اعلانی خوانده
+     نمی‌شد — یعنی فهرست اعلان‌های اپ تا بسته/باز شدن دوباره خالی می‌ماند. */
+  function fetchWithTimeout(url, options, timeoutMs) {
     var opts = options || {};
     var timer = null;
     try {
@@ -901,6 +950,10 @@
       if (timer) clearTimeout(timer);
       throw err;
     });
+  }
+
+  function fcmFetch(url, options, timeoutMs) {
+    return fetchWithTimeout(url, options, timeoutMs);
   }
 
   /* ارسال یک درخواست به api/push.php: اول «فرم ساده»؛ اگر فایروال/پروکسی هاست آن را
@@ -1129,6 +1182,9 @@
       serverNotice: serverNoticeLine,
       /* نتیجه‌ی آخرین دریافت فهرست اعلان‌ها (ok:N / http:S / json / net:…) و سکوی اپ */
       lastPoll: lastPollOutcome, platform: appPlatform(), version: LIVE_VERSION,
+      /* وضعیت کامل فهرست اعلان‌ها: شماره‌ای که اپ فرستاد، تعداد ردیف‌های برگشته،
+         و پیامی که در صفحه‌ی اعلان‌ها (حالت خالی) به کاربر نشان داده می‌شود */
+      notifSync: window.eplakNotificationStatus(),
       at: fcmState.at, native: diag
     };
   };
