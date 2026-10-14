@@ -67,7 +67,9 @@ $degradedText = [
 $pushSubscribers = eplakPushCount($pdo);
 $pushReady = eplakPushEnabled();
 require_once __DIR__ . '/../shared/fcm.php';
-$fcmReady   = eplakFcmConfig($pdo)['ready'];
+$fcmConfigN = eplakFcmConfig($pdo);
+$fcmReady   = (bool) $fcmConfigN['ready'];
+$fcmError   = trim((string) ($fcmConfigN['error'] ?? ''));
 $fcmDevices = eplakFcmCount($pdo);
 ?>
 <!doctype html>
@@ -171,6 +173,35 @@ $fcmDevices = eplakFcmCount($pdo);
           <strong>اعلان اپ اندروید (فایربیس) فعال است</strong> —
           <strong><?= (int) $fcmDevices ?></strong> دستگاه ثبت شده است؛ اعلان‌های این صفحه روی گوشی این کاربران
           حتی وقتی اپ بسته باشد نمایش داده می‌شود.
+        </div>
+      <?php else: ?>
+        <!-- پیش از این، وقتی کلید فایربیس نبود هیچ پیامی نمایش داده نمی‌شد و مدیر
+             فقط از شکایت کاربر («روی APK اعلان نمی‌آید») می‌فهمید. -->
+        <div class="alert alert-danger" style="margin: 0 24px 16px; line-height:1.9;">
+          <i class="fas fa-triangle-exclamation"></i>
+          <strong>اعلانِ اپ اندروید (APK) غیرفعال است</strong> —
+          <?= htmlspecialchars($fcmError !== '' ? $fcmError : 'کلید سرویس فایربیس وارد نشده است.') ?>
+          <p style="margin:8px 0 0;">
+            تا این کلید وارد نشود، اعلان‌ها فقط در <strong>نسخه‌ی وب/PWA</strong> (Web Push با کلیدِ VAPID
+            که خودِ پنل می‌سازد) و <strong>داخلِ خودِ اپ</strong> می‌رسند؛ روی <strong>APK</strong> وقتی اپ
+            بسته یا گوشی قفل است اعلانی نمایش داده نمی‌شود. این همان دلیلِ
+            «اعلان روی PWA و iOS می‌آید ولی روی APK نمی‌آید» است.
+          </p>
+          <ol style="margin:8px 0 0; padding-inline-start:20px; font-size:13px;">
+            <li>در <span dir="ltr">console.firebase.google.com</span> پروژه‌ی اپ را باز کنید
+                (پروژه‌ی APKِ فعلیِ مخزن: <code dir="ltr">eplak-63c74</code> — اگر پروژه‌ی دیگری
+                ساخته‌اید، APK باید با <code dir="ltr">google-services.json</code> همان پروژه ساخته شود).</li>
+            <li><strong>Project settings ← Service accounts ← Generate new private key</strong> را بزنید
+                و فایل JSON را دانلود کنید.</li>
+            <li>محتوای کاملِ همان فایل را در
+                <a href="settings.php#fcm-section"><strong>تنظیمات ← اعلان گوشی برای اپ اندروید (فایربیس)</strong></a>
+                بچسبانید و ذخیره کنید (همان‌جا «عیب‌یابی» و «ارسال اعلان آزمایشی» هم هست).</li>
+            <li>در گوشی: اجازه‌ی اعلانِ برنامه را بدهید و «صرفه‌جویی باتری» را برای ای‌پلاک خاموش کنید.</li>
+          </ol>
+          <p style="margin:8px 0 0; font-size:13px;">
+            فهرستِ کاملِ دلیل‌ها و راهِ تشخیص هرکدام: <code>docs/NOTIFICATIONS_FA.md</code>
+            (بخشِ «چرا اعلان روی APK نمی‌آید»).
+          </p>
         </div>
       <?php endif; ?>
 

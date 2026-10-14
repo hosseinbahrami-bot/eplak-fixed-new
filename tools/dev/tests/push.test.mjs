@@ -498,6 +498,15 @@ function buildLive(opts = {}) {
     fetch: async (url, o) => {
       const call = { url: String(url), method: o?.method || 'GET', body: o?.body || '', ctype: String((o?.headers || {})['Content-Type'] || '') };
       calls.push(call);
+      /* GET action=config — «آیا سرور کلید فایربیس دارد؟» (مسیرِ اپ اندروید) */
+      if (call.url.includes('push.php') && call.url.includes('action=config')) {
+        const fcmOff = server.mode === 'fcm_off';
+        return { ok: true, status: 200, json: async () => ({
+          success: true, enabled: true, vapid_public_key: 'x',
+          fcm_ready: !fcmOff,
+          fcm_reason: fcmOff ? 'کلید سرویس فایربیس وارد نشده است.' : '',
+        }) };
+      }
       if (call.url.includes('push.php') && call.method === 'POST') {
         const fields = fieldsOf(call.body);
         const form = { get: (k) => (fields[k] === undefined ? null : String(fields[k])) };
@@ -510,6 +519,9 @@ function buildLive(opts = {}) {
           if (server.mode === 'network') throw new Error('Failed to fetch');
           if (server.mode === 'http400') return { ok: false, status: 400, json: async () => ({ success: false, error: 'توکن دستگاه الزامی است' }) };
           if (server.mode === 'html') return { ok: false, status: 403, json: async () => { throw new Error('not json'); } };
+          if (server.mode === 'fcm_off') {
+            return { ok: true, status: 200, json: async () => ({ success: true, saved: true, attached: form.get('phone') !== '' && form.get('detach') !== '1', devices: 1, fcm_ready: false, fcm_reason: 'کلید سرویس فایربیس وارد نشده است.' }) };
+          }
           return { ok: true, status: 200, json: async () => ({ success: true, saved: true, attached: form.get('phone') !== '' && form.get('detach') !== '1', devices: 1, fcm_ready: true }) };
         }
         if (form.get('action') === 'test') {
@@ -705,6 +717,69 @@ for (const f of ['docs/FIREBASE_SETUP_FA.md', 'docs/FIREBASE_SETUP_EN.md']) {
 }
 const buildSh = read('tools/build-update-package.sh');
 ok('اسکریپت ساخت بسته، فایل‌های تازه را الزامی می‌کند (api/push.php و shared/fcm.php)', buildSh.includes('api/push.php') && buildSh.includes('shared/fcm.php'));
+
+console.log('\n=== «اعلان روی APK نمی‌آید»: شکستِ بی‌صدا حذف شد ===');
+/* ۱) پنل: وقتی کلید فایربیس نیست، باید بنرِ صریح باشد (پیش از این هیچ پیامی نبود) */
+await exec(`eplakSetAppSetting($pdo, 'fcm_service_account', '');`);
+const notifPage = await admin.get('/admin/notifications.php');
+ok('صفحه‌ی «اعلان‌ها» بدون خطا رندر می‌شود', notifPage.status === 200, String(notifPage.status));
+ok('پنل صریح می‌گوید «اعلانِ اپ اندروید (APK) غیرفعال است» (نه سکوت)',
+  notifPage.text.includes('اعلانِ اپ اندروید (APK) غیرفعال است'),
+  notifPage.text.includes('فایربیس) فعال است') ? 'بنرِ موفقیت دیده شد (کلید در دیتابیسِ آزمون هست)' : 'بنری پیدا نشد');
+ok('همان بنر راهِ حل را هم می‌گوید (Service accounts + پیوندِ تنظیمات)',
+  notifPage.text.includes('Generate new private key') && notifPage.text.includes('settings.php#fcm-section')
+    && notifPage.text.includes('eplak-63c74'));
+
+await exec(`eplakSetAppSetting($pdo, 'fcm_service_account', ${JSON.stringify(JSON.stringify(serviceAccount))});`);
+const notifPageOk = await admin.get('/admin/notifications.php');
+ok('با کلیدِ فایربیس، همان صفحه بنرِ «فعال است» می‌دهد و بنرِ قرمز می‌رود',
+  notifPageOk.text.includes('اعلان اپ اندروید (فایربیس) فعال است')
+    && !notifPageOk.text.includes('اعلانِ اپ اندروید (APK) غیرفعال است'),
+  notifPageOk.text.includes('alert-danger') ? 'هنوز بنرِ قرمز هست' : 'بنرِ سبز هم دیده نشد');
+
+/* ۲) اپ: وضعیتِ واقعیِ سرور نشان داده می‌شود و «✅ ثبت شده» ادعا نمی‌شود */
+const LO = buildLive({ token: 'TOK-LIVE-FCMOFF', phone: '09120009999', start: true, mode: 'fcm_off' });
+await LO.settle();
+await LO.settle();
+const noticeOff = LO.nodes.get('notifDeviceNotice').innerHTML;
+ok('اپ: حتی وقتی ثبت توکن موفق است، «آماده نبودنِ سرور» صریح گفته می‌شود',
+  noticeOff.includes('data-state="server_fcm_off"') && /کلید سرویس فایربیس/.test(noticeOff),
+  noticeOff.slice(0, 180));
+ok('اپ: در این حالت ادعای «اعلان وقتی اپ بسته است می‌رسد» نمی‌کند',
+  !noticeOff.includes('✅ این گوشی برای اعلان گزارش‌های شما ثبت شده است.'));
+ok('اپ: دلیلِ سرور در وضعیتِ ثبت هم دیده می‌شود (fcm_reason)',
+  /fcm_reason|کلید سرویس فایربیس/.test(noticeOff) && /server_fcm_off/.test(noticeOff));
+const stOff = LO.sb.eplakPushState();
+ok('وضعیتِ اپ: serverReady=false با دلیلِ سرور ذخیره می‌شود',
+  stOff.registered === true && stOff.serverReady === false && /کلید/.test(String(stOff.serverReason || '')),
+  JSON.stringify(stOff));
+
+/* ۳) وقتی سرور آماده است، همان پیامِ قبلی (بدون ترساندنِ بی‌مورد) */
+const LOK = buildLive({ token: 'TOK-LIVE-FCMOK', phone: '09120009998', start: true });
+await LOK.settle();
+await LOK.settle();
+const noticeOk = LOK.nodes.get('notifDeviceNotice').innerHTML;
+ok('اپ: با سرورِ آماده، همان «✅ این گوشی برای اعلان گزارش‌های شما ثبت شده است.» می‌ماند',
+  noticeOk.includes('✅ این گوشی برای اعلان گزارش‌های شما ثبت شده است.') && !noticeOk.includes('server_fcm_off'),
+  noticeOk.slice(0, 160));
+const stOk = LOK.sb.eplakPushState();
+ok('وضعیتِ اپ: serverReady=true ثبت می‌شود', stOk.registered === true && stOk.serverReady === true, JSON.stringify(stOk));
+
+/* ۴) ورک‌فلوی APK باید «سیم‌کشی FCM» را سخت‌گیرانه بررسی کند */
+const apkWf = read('.github/workflows/android-apk.yml');
+ok('CI: مانیفستِ ادغام‌شده برای FirebaseMessagingService/POST_NOTIFICATIONS بررسی می‌شود',
+  apkWf.includes('com.google.firebase.messaging.FirebaseMessagingService')
+    && apkWf.includes('android.permission.POST_NOTIFICATIONS')
+    && apkWf.includes('com.example.eplakfixed.EplakMessagingService')
+    && apkWf.includes("grep -qa 'google_app_id'"),
+  'بازرسیِ FCM در android-apk.yml پیدا نشد');
+ok('CI: نبودِ سیم‌کشی FCM ساخت را متوقف می‌کند (exit 1) و پروژه گزارش می‌شود',
+  /اعلانِ گوشی کار نمی‌کند"\n\s+exit 1/.test(apkWf) || (apkWf.includes('اعلانِ گوشی کار نمی‌کند') && apkWf.includes('FCM_PROJECT=')));
+ok('مستندات: بخش «چرا اعلان روی APK نمی‌آید» با راهِ فعال‌سازی هست',
+  read('docs/NOTIFICATIONS_FA.md').includes('چرا اعلان روی **APK** نمی‌آید')
+    && read('docs/NOTIFICATIONS_FA.md').includes('Generate new private key'));
+ok('کش‌باسترِ live.js بالا رفت (v=19) تا گوشی‌ها کد تازه را بگیرند',
+  read('index.html').includes('modules/live.js?v=19'));
 
 fakeGoogle.close();
 console.log('\n' + '='.repeat(52));
