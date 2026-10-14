@@ -10,11 +10,17 @@ android {
     buildToolsVersion"36.0.0"
 
     defaultConfig {
-        applicationId 'com.example.eplakfixed'
+        /* نام بسته‌ی اپ = همان نامی که اپ اندروید در پروژه‌ی فایربیس (eplak-7e6ed) با آن ثبت شده
+           (google-services.json → client[].android_client_info.package_name). پلاگین google-services
+           فقط client هم‌نام را می‌پذیرد؛ وگرنه ساخت با «No matching client found» می‌ایستد.
+           namespace (بسته‌ی کدِ کاتلین) عمداً com.example.eplakfixed مانده — اندروید اجازه می‌دهد
+           applicationId با namespace فرق کند. ⚠️ تغییر applicationId یعنی «اپ دیگری»: نسخه‌ی قبلی
+           (com.example.eplakfixed) باید حذف شود وگرنه دو آیکن می‌ماند. (نسخه‌ی ۲.۱) */
+        applicationId 'com.eplak'
         minSdk 24
         targetSdk 36
-        versionCode 2
-        versionName '2.0'
+        versionCode 3
+        versionName '2.1'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }

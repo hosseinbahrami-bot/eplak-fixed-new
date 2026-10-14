@@ -559,12 +559,13 @@ $httpsOn = eplakIsHttpsRequest();
             <li>در <a href="https://console.firebase.google.com" target="_blank" rel="noopener">console.firebase.google.com</a>
                 یک پروژه بسازید (رایگان).</li>
             <li>در همان پروژه، یک اپ اندروید با نام بسته‌ی
-                <code dir="ltr">com.example.eplakfixed</code> اضافه کنید و فایل
+                <code dir="ltr"><?= htmlspecialchars((string) ($fcmConfig['package'] ?? 'com.eplak'), ENT_QUOTES, 'UTF-8') ?></code> اضافه کنید و فایل
                 <code dir="ltr">google-services.json</code> را دانلود و در پوشه‌ی
-                <code dir="ltr">android-app/app/</code> قرار دهید (قبل از ساخت APK).</li>
+                <code dir="ltr">android-app/app/</code> قرار دهید (قبل از ساخت APK).
+                APK فعلی با پروژه‌ی <code dir="ltr"><?= htmlspecialchars((string) ($fcmConfig['app_project'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code> ساخته شده است.</li>
             <li>در Firebase: ⚙️ Project settings → <strong>Service accounts</strong> →
                 دکمه‌ی <strong>Generate new private key</strong> → فایل JSON دانلود می‌شود.</li>
-            <li>محتوای کامل همان فایل JSON را در کادر زیر بچسبانید و ذخیره کنید.</li>
+            <li>همان فایل را پایین انتخاب کنید (یا محتوایش را در کادر بچسبانید) و ذخیره کنید.</li>
           </ol>
         </p>
 

@@ -2,7 +2,14 @@
 /* tools/dev/apply-google-services.mjs — جایگزینی امن google-services.json اپ اندروید
 
    اجرا:
-     node tools/dev/apply-google-services.mjs <مسیر google-services.json تازه> [--dry-run]
+     node tools/dev/apply-google-services.mjs <مسیر google-services.json تازه> [--dry-run] [--adopt-package]
+
+   --adopt-package: اگر اپ اندروید در فایربیس با نام بسته‌ی دیگری ثبت شده (مثلاً com.eplak به‌جای
+     com.example.eplakfixed)، همان نام بسته را برای اپ می‌پذیرد: applicationId در build.gradle،
+     ثابت EPLAK_APP_PACKAGE سرور و مستندات با آن یکی می‌شوند. (namespace/بسته‌ی کدِ کاتلین دست
+     نمی‌خورد — اندروید اجازه می‌دهد applicationId با namespace فرق کند.)
+     ⚠️ تغییر applicationId یعنی اندروید آن را «اپ دیگری» می‌داند: نسخه‌ی قبلی باید حذف شود
+     (وگرنه دو آیکن می‌ماند) و توکن‌های FCM قبلی بی‌اعتبار می‌شوند.
 
    چه می‌کند؟
      ۱) فایل را می‌خواند و می‌سنجد: project_info (project_id، project_number) و یک client با
@@ -22,6 +29,7 @@ import path from 'path';
 
 const args = process.argv.slice(2);
 const dry = args.includes('--dry-run');
+const adopt = args.includes('--adopt-package');
 const src = args.find((a) => !a.startsWith('--'));
 if (!src) {
   console.error('استفاده: node tools/dev/apply-google-services.mjs <google-services.json> [--dry-run]');
@@ -42,11 +50,19 @@ const project = String(gs.project_info?.project_id || '');
 const sender = String(gs.project_info?.project_number || '');
 if (!project || !sender) die('project_info.project_id / project_number در فایل نیست.');
 
-const appId = (fs.readFileSync(GRADLE, 'utf8').match(/applicationId\s+'([^']+)'/) || [])[1] || 'com.example.eplakfixed';
-const client = (gs.client || []).find((c) => c?.client_info?.android_client_info?.package_name === appId);
+const gradleText = fs.readFileSync(GRADLE, 'utf8');
+const oldAppId = (gradleText.match(/applicationId\s+'([^']+)'/) || [])[1] || 'com.example.eplakfixed';
+let appId = oldAppId;
+let client = (gs.client || []).find((c) => c?.client_info?.android_client_info?.package_name === appId);
 if (!client) {
   const found = (gs.client || []).map((c) => c?.client_info?.android_client_info?.package_name).filter(Boolean);
-  die(`هیچ client با نام بسته‌ی «${appId}» در فایل نیست (بسته‌های موجود: ${found.join(', ') || '—'}). در Firebase Console اپ اندروید را با همین نام بسته ثبت کنید و فایل را دوباره دانلود کنید.`);
+  if (adopt && found.length === 1 && /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(found[0])) {
+    appId = found[0];
+    client = gs.client.find((c) => c?.client_info?.android_client_info?.package_name === appId);
+    console.log(`ℹ️ نام بسته‌ی اپ از «${oldAppId}» به «${appId}» (ثبت‌شده در فایربیس) تغییر می‌کند (--adopt-package).`);
+  } else {
+    die(`هیچ client با نام بسته‌ی «${appId}» در فایل نیست (بسته‌های موجود: ${found.join(', ') || '—'}). یا در Firebase Console اپ اندروید را با همین نام بسته ثبت کنید و فایل را دوباره دانلود کنید، یا با --adopt-package همان نام بسته‌ی فایربیس را برای اپ بپذیرید.`);
+  }
 }
 const mobilesdkAppId = String(client.client_info?.mobilesdk_app_id || '');
 const apiKey = (client.api_key || []).find((k) => k?.current_key)?.current_key || '';
@@ -69,27 +85,39 @@ if (dry) console.log('(حالت --dry-run: چیزی نوشته نمی‌شود)'
 if (!dry) fs.writeFileSync(DEST, raw.endsWith('\n') ? raw : raw + '\n');
 console.log('✅ android-app/app/google-services.json' + (dry ? ' (نوشته می‌شد)' : ' نوشته شد'));
 
-/* ۳) ثابت‌های shared/fcm.php */
+/* ۳) ثابت‌های shared/fcm.php (+ applicationId در build.gradle اگر نام بسته عوض شد) */
 let fcm = fs.readFileSync(FCM, 'utf8');
 const before = fcm;
 fcm = fcm.replace(/define\('EPLAK_APP_FCM_PROJECT_ID', '[^']*'\)/, `define('EPLAK_APP_FCM_PROJECT_ID', '${project}')`);
 fcm = fcm.replace(/define\('EPLAK_APP_FCM_SENDER_ID', '[^']*'\)/, `define('EPLAK_APP_FCM_SENDER_ID', '${sender}')`);
-if (!fcm.includes(`'${project}'`) || !fcm.includes(`'${sender}'`)) die('ثابت‌های EPLAK_APP_FCM_* در shared/fcm.php پیدا نشد.');
+fcm = fcm.replace(/define\('EPLAK_APP_PACKAGE', '[^']*'\)/, `define('EPLAK_APP_PACKAGE', '${appId}')`);
+if (!fcm.includes(`'${project}'`) || !fcm.includes(`'${sender}'`) || !fcm.includes(`'${appId}'`)) die('ثابت‌های EPLAK_APP_FCM_* / EPLAK_APP_PACKAGE در shared/fcm.php پیدا نشد.');
 if (!dry && fcm !== before) fs.writeFileSync(FCM, fcm);
-console.log('✅ shared/fcm.php: EPLAK_APP_FCM_PROJECT_ID / EPLAK_APP_FCM_SENDER_ID = ' + project + ' / ' + sender + (fcm === before ? ' (از قبل همین بود)' : ''));
+console.log('✅ shared/fcm.php: EPLAK_APP_FCM_PROJECT_ID / EPLAK_APP_FCM_SENDER_ID / EPLAK_APP_PACKAGE = ' + project + ' / ' + sender + ' / ' + appId + (fcm === before ? ' (از قبل همین بود)' : ''));
+if (appId !== oldAppId) {
+  const nextGradle = gradleText.replace(/applicationId\s+'[^']+'/, `applicationId '${appId}'`);
+  if (!dry) fs.writeFileSync(GRADLE, nextGradle);
+  console.log(`✅ android-app/app/build.gradle: applicationId '${oldAppId}' → '${appId}' (namespace بدون تغییر)`);
+}
 
 /* ۴) مستندات و بقیه‌ی جاها */
-if (oldProject && oldProject !== project) {
+const replacements = [];
+if (oldProject && oldProject !== project) replacements.push([oldProject, project]);
+if (oldSender && oldSender !== sender) replacements.push([oldSender, sender]);
+if (appId !== oldAppId) replacements.push([oldAppId, appId]);
+if (replacements.length) {
   const docs = fs.readdirSync(path.join(ROOT, 'docs')).filter((f) => f.endsWith('.md')).map((f) => path.join('docs', f));
   for (const rel of docs) {
     const p = path.join(ROOT, rel);
     const txt = fs.readFileSync(p, 'utf8');
-    if (!txt.includes(oldProject) && !(oldSender && txt.includes(oldSender))) continue;
-    let next = txt.split(oldProject).join(project);
-    if (oldSender) next = next.split(oldSender).join(sender);
+    let next = txt;
+    for (const [from, to] of replacements) next = next.split(from).join(to);
+    if (next === txt) continue;
     if (!dry) fs.writeFileSync(p, next);
-    console.log(`✅ ${rel}: ${oldProject} → ${project}`);
+    console.log(`✅ ${rel}: ` + replacements.filter(([from]) => txt.includes(from)).map(([from, to]) => `${from} → ${to}`).join(' · '));
   }
+}
+if (oldProject && oldProject !== project) {
   /* گزارش بقیه‌ی فایل‌ها (کد/آزمون/CI) که هنوز شناسه‌ی قبلی را دارند */
   const scan = (dir, acc = []) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

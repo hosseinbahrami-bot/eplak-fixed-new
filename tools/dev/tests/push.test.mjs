@@ -95,6 +95,7 @@ const setEnv = (obj) => fs.writeFileSync(CTL, JSON.stringify(obj));
 const GOOGLE_ENV = { EPLAK_TEST_TOKEN_URL: `http://127.0.0.1:${G_PORT}/token`, EPLAK_TEST_FCM_BASE: `http://127.0.0.1:${G_PORT}/v1/projects/`, EPLAK_APP_FCM_PROJECT: 'eplak-test-project' };
 const DEAD_ENV = { EPLAK_TEST_TOKEN_URL: 'http://127.0.0.1:1/token', EPLAK_TEST_FCM_BASE: 'http://127.0.0.1:1/v1/projects/', EPLAK_APP_FCM_PROJECT: 'eplak-test-project' };
 /* همان گوگلِ ساختگی، ولی APK «با پروژه‌ی دیگری» ساخته شده است */
+/* «پروژه‌ی دیگر» = پروژه‌ی قدیمی APK تا نسخه‌ی ۲.۰ (eplak-63c74) — همان نمونه‌ی واقعیِ «کلید از پروژه‌ی دیگر» */
 const MISMATCH_ENV = { ...GOOGLE_ENV, EPLAK_APP_FCM_PROJECT: 'eplak-63c74' };
 setEnv(GOOGLE_ENV);
 
@@ -814,6 +815,21 @@ ok('ثابت‌های shared/fcm.php با google-services.json داخل APK یک
     && fcmPhp.includes(`define('EPLAK_APP_FCM_SENDER_ID', '${gsSender}')`)
     && fcmPhp.includes(`define('EPLAK_APP_PACKAGE', '${gsPackage}')`),
   `${gsProject} / ${gsSender} / ${gsPackage}`);
+/* پروژه‌ی تازه‌ی مالک (eplak-7e6ed) اپ اندروید را با نام بسته‌ی com.eplak ثبت کرده؛ پلاگین google-services
+   فقط client هم‌نام با applicationId را می‌پذیرد ⇒ applicationId اپ باید دقیقاً همان باشد. */
+const gradleTxt = read('android-app/app/build.gradle');
+ok('applicationId اپ اندروید = نام بسته‌ی ثبت‌شده در google-services.json (وگرنه ساخت APK یا توکن FCM می‌شکند)',
+  gradleTxt.includes(`applicationId '${gsPackage}'`) && gsPackage === 'com.eplak' && gsProject === 'eplak-7e6ed' && gsSender === '221915268820',
+  `applicationId=${(gradleTxt.match(/applicationId '([^']+)'/) || [])[1]} · gs=${gsPackage}`);
+ok('نام بسته‌ی تازه = نسخه‌ی تازه (versionCode 3 / 2.1) تا نصب روی گوشی قابل تشخیص باشد',
+  /versionCode 3\b/.test(gradleTxt) && gradleTxt.includes("versionName '2.1'"));
+ok('CI: بازرسی APK نام بسته‌ی مانیفستِ ادغام‌شده را با google-services.json مقایسه می‌کند',
+  apkWf.includes('GS_PACKAGE=') && apkWf.includes('package=\\"$GS_PACKAGE\\"') && apkWf.includes('APK_PACKAGE='));
+ok('مستندات به پروژه و نام بسته‌ی تازه اشاره می‌کنند و مهاجرت از نسخه‌ی ۲.۰ را توضیح می‌دهند',
+  read('docs/FIREBASE_SETUP_FA.md').includes('`eplak-7e6ed`') && read('docs/FIREBASE_SETUP_FA.md').includes('`com.eplak`')
+    && read('docs/FIREBASE_SETUP_FA.md').includes('نسخه‌ی ۲.۰ را از گوشی حذف کنید')
+    && read('docs/FIREBASE_SETUP_EN.md').includes('`com.eplak`') && read('docs/NOTIFICATIONS_FA.md').includes('`com.eplak`')
+    && !read('docs/DEPLOY_UPDATE_FA.md').includes('com.example.eplakfixed'));
 
 /* الف) توضیح فارسیِ خطا: متن واقعی گوگل «SenderId mismatch» (نه فقط SENDER_ID_MISMATCH) */
 const explain = grab(await exec(`echo '<<<' . json_encode([
@@ -938,6 +954,33 @@ ok('کلید ≠ پروژه‌ی APK ⇒ همان پاسخ گوگل، ولی ت�
 ok('توضیح فارسی برای این خطا همان راهنمای «کلید از پروژه‌ی دیگر» است (نه ۴۰۳ کلی)',
   /Generate new private key/.test(grab(await exec(`echo '<<<' . json_encode([eplakFcmExplainError(${JSON.stringify(String(rows[0]?.last_error || ''))})], JSON_UNESCAPED_UNICODE) . '>>>';`))[0]));
 setEnv(GOOGLE_ENV);
+
+/* ح) تعویض پروژه‌ی فایربیس (۲.۰ → ۲.۱): گوشی‌ای که هنوز APK قدیمی را دارد، پروژه‌ی قبلی را گزارش می‌کند.
+      کلیدِ پنل برای APK جدید درست است ⇒ این توکن هرگز کار نخواهد کرد ⇒ بدون تماس با گوگل غیرفعال می‌شود
+      (نه این‌که تا ابد در هر ارسال یک «ناموفق» بسازد)؛ گوشیِ APK جدید همان شماره عادی می‌گیرد. */
+console.log('\n=== گوشی با APK قدیمی (پروژه‌ی قبلی) وقتی کلید برای APK جدید درست است ===');
+const STALE_PHONE = '09120006666';
+await appPost({ action: 'register_fcm', phone: STALE_PHONE, token: 'TOK-STALE-OLD', platform: 'android', project_id: 'eplak-63c74', sender_id: '817151129705' });
+await appPost({ action: 'register_fcm', phone: STALE_PHONE, token: 'TOK-STALE-NEW', platform: 'android', project_id: 'eplak-test-project' });
+g0 = gMsgs();
+const stale = grab(await exec(`
+  $res = eplakFcmSend($pdo, eplakFcmTokens($pdo, ['${STALE_PHONE}']), 'آزمون', 'تعویض پروژه');
+  echo '<<<' . json_encode($res, JSON_UNESCAPED_UNICODE) . '>>>';`));
+rows = await q("SELECT token, is_active, last_error FROM device_tokens WHERE user_phone='" + STALE_PHONE + "' ORDER BY token");
+ok('توکن APK قدیمی بدون تماس با گوگل غیرفعال می‌شود و دلیلش «نسخه‌ی قدیمی اپ … APK جدید را نصب» است؛ توکن APK جدید عادی ارسال می‌شود',
+  stale.sent === 1 && stale.failed === 1 && gMsgs() === g0 + 1
+    && rows.length === 2 && rows[1]?.token === 'TOK-STALE-OLD' && Number(rows[1]?.is_active) === 0
+    && /نسخه‌ی قدیمی اپ/.test(rows[1]?.last_error || '') && /eplak-63c74/.test(rows[1]?.last_error || '') && /APK جدید/.test(rows[1]?.last_error || '')
+    && Number(rows[0]?.is_active) === 1 && rows[0]?.last_error === '',
+  JSON.stringify({ stale, rows }));
+const staleExplain = grab(await exec(`echo '<<<' . json_encode([eplakFcmExplainError(${JSON.stringify(String(rows[1]?.last_error || ''))})], JSON_UNESCAPED_UNICODE) . '>>>';`))[0];
+ok('توضیح: «نسخه‌ی قدیمی اپ … APK جدید را نصب» و بدون Generate new private key',
+  /نسخه‌ی قدیمی اپ/.test(staleExplain) && /APK جدید/.test(staleExplain) && !/Generate new private key/.test(staleExplain), staleExplain);
+g0 = gMsgs();
+const stale2 = grab(await exec(`
+  $res = eplakFcmSend($pdo, eplakFcmTokens($pdo, ['${STALE_PHONE}']), 'آزمون', 'ارسال بعدی');
+  echo '<<<' . json_encode($res, JSON_UNESCAPED_UNICODE) . '>>>';`));
+ok('ارسال بعدی به همان شماره فقط به APK جدید می‌رود (۱ ارسال، ۰ ناموفق)', stale2.sent === 1 && stale2.failed === 0 && gMsgs() === g0 + 1, JSON.stringify(stale2));
 
 /* ز) پنل → تنظیمات: انتخاب خودِ فایل کلید (به‌جای کپی/چسباندن) + اشتباه‌های رایج */
 console.log('\n=== ذخیره‌ی کلید سرویس با انتخاب فایل ===');

@@ -172,11 +172,25 @@ jobs:
             echo "::error::google_app_id داخل resources.arscِ APK نیست ⇒ پلاگین google-services اعمال نشده و توکن FCM ساخته نمی‌شود"
             exit 1
           fi
-          FCM_PROJECT="$(grep -o 'eplak-[A-Za-z0-9_-]*' android-app/app/google-services.json | head -1 || true)"
+          FCM_PROJECT="$(grep -o '"project_id": *"[^"]*"' android-app/app/google-services.json | head -1 | sed 's/.*: *"\(.*\)"/\1/' || true)"
           GS_APP_ID="$(grep -o '1:[0-9]\+:android:[a-f0-9]\+' android-app/app/google-services.json | head -1 || true)"
+          GS_PACKAGE="$(grep -o '"package_name": *"[^"]*"' android-app/app/google-services.json | head -1 | sed 's/.*: *"\(.*\)"/\1/' || true)"
           echo "FCM_PROJECT=${FCM_PROJECT:-unknown}" >> "$GITHUB_ENV"
-          echo "✅ اعلانِ فایربیس داخل APK سیم‌کشی شده است (پروژه: ${FCM_PROJECT:-?} · ${GS_APP_ID:-app-id?})"
-          echo "::notice title=اعلان گوشی (FCM)::سیم‌کشی FCM داخل APK تأیید شد · پروژه=${FCM_PROJECT:-?} · FirebaseMessagingService + POST_NOTIFICATIONS در مانیفست"
+          echo "APK_PACKAGE=${GS_PACKAGE:-unknown}" >> "$GITHUB_ENV"
+          # نام بسته‌ی APK باید همان نام بسته‌ی ثبت‌شده در فایربیس باشد (وگرنه توکن FCM برای
+          # پروژه‌ی اشتباه ساخته می‌شود یا پلاگین google-services اصلاً فایل را نمی‌پذیرد).
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          AAPT2="$SDK/build-tools/36.0.0/aapt2"
+          APK_PKG_LINE="$( [ -x "$AAPT2" ] && "$AAPT2" dump badging "$APK_NAME" 2>/dev/null | grep -o "package: name='[^']*'" | head -1 || true)"
+          echo "aapt2: ${APK_PKG_LINE:-(در دسترس نیست)}"
+          if [ -n "$GS_PACKAGE" ] && { grep -q "package=\"$GS_PACKAGE\"" "$MERGED_MANIFEST" || [ "$APK_PKG_LINE" = "package: name='$GS_PACKAGE'" ]; }; then
+            echo "✅ نام بسته‌ی APK = نام بسته‌ی ثبت‌شده در فایربیس ($GS_PACKAGE)"
+          else
+            echo "::error::نام بسته‌ی APK با google-services.json یکی نیست (فایربیس: ${GS_PACKAGE:-?} · APK: ${APK_PKG_LINE:-?}) ⇒ applicationId در build.gradle را با نام بسته‌ی ثبت‌شده در فایربیس یکی کنید"
+            exit 1
+          fi
+          echo "✅ اعلانِ فایربیس داخل APK سیم‌کشی شده است (پروژه: ${FCM_PROJECT:-?} · ${GS_APP_ID:-app-id?} · بسته ${GS_PACKAGE:-?})"
+          echo "::notice title=اعلان گوشی (FCM)::سیم‌کشی FCM داخل APK تأیید شد · پروژه=${FCM_PROJECT:-?} · بسته=${GS_PACKAGE:-?} · FirebaseMessagingService + POST_NOTIFICATIONS در مانیفست"
           if [ "$MISSING" -ne 0 ] || [ "$DIFF" -ne 0 ]; then
             echo "::error::بازرسی APK رد شد: $MISSING فایل داخل APK نیست و $DIFF فایل با مخزن فرق دارد (APK قدیمی/ناقص است)"
             exit 1
@@ -258,6 +272,7 @@ jobs:
             echo "| فایل‌های وبِ داخل APK | \`${APK_WEB_FILES:-?}\` |"
             echo "| sha256 | \`${APK_SHA:-?}\` |"
             echo "| شاخص همگام‌سازی اماکن (PLACES_SYNC_CODE) | \`${PLACES_SYNC_CODE:-?}\` |"
+            echo "| نام بسته (applicationId) | \`${APK_PACKAGE:-?}\` |"
             echo "| اعلانِ گوشی (FCM) داخلِ APK | پروژه‌ی \`${FCM_PROJECT:-?}\` · سیم‌کشی تأیید شد |"
             echo "| امضای APK (کلید دیباگِ ثابت مخزن) | \`${APK_SIGNER_SHA256:-?}\` |"
             echo "| شاخه / کامیت | \`${GITHUB_REF_NAME}\` / \`${GITHUB_SHA}\` |"
@@ -285,7 +300,12 @@ jobs:
             | `eplak-ios-project.zip` | پروژه‌ی Xcode همراه فایل‌های وبِ روز |
 
             **APK همین اجرا:** نسخه‌ی `${{ env.APK_VERSION }}` · \`${{ env.APK_SHA }}\` ·
-            شاخه‌ی `${{ github.ref_name }}` · کامیت `${{ github.sha }}`
+            شاخه‌ی `${{ github.ref_name }}` · کامیت `${{ github.sha }}` ·
+            نام بسته `${{ env.APK_PACKAGE }}` · پروژه‌ی فایربیس `${{ env.FCM_PROJECT }}`
+
+            ⚠️ از نسخه‌ی ۲.۱ نام بسته‌ی اپ `com.eplak` است (همان‌که در فایربیس ثبت شده). اگر نسخه‌ی قبلی
+            (`com.example.eplakfixed`) روی گوشی هست، اول آن را حذف کنید؛ وگرنه دو آیکن «ای‌پلاک» می‌ماند
+            و اعلان‌های گوشی فقط به نسخه‌ی تازه می‌رسد.
 
             **شاخص همگام‌سازی اماکنِ پنل با اپ (PLACES_SYNC_CODE):** `${{ env.PLACES_SYNC_CODE }}`
             یعنی تغییرات «اماکن شهری» در پنل، از سرور به اپ می‌رسند

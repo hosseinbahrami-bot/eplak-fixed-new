@@ -47,7 +47,7 @@ These two are often confused — read this table first:
 
 | Field | Value |
 |---|---|
-| **Android package name** | `com.example.eplakfixed` |
+| **Android package name** | `com.eplak` |
 | **App nickname** (optional) | `Eplak` |
 | **Debug signing certificate SHA-1** (optional) | leave **empty** (not needed for FCM) |
 
@@ -129,7 +129,10 @@ Install that APK on the phone (it updates over the previous version; if you get
 > The repository’s `.gitignore` already blocks `*firebase-adminsdk*.json`.
 
 > ⚠️ **The key must come from the same Firebase project as the app’s `google-services.json`.**
-> The repository’s APK is built against project **`eplak-63c74`** (sender ID `817151129705`).
+> The repository’s APK is built against project **`eplak-7e6ed`** (sender ID `221915268820`,
+> package name `com.eplak`). *(Up to v2.0 it was project `eplak-63c74` with package
+> `com.example.eplakfixed`; since v2.1 the app uses the package name registered in Firebase.
+> Uninstall v2.0 — Android treats it as a separate app and pushes only reach the new one.)*
 > A key from any other project is accepted by the panel and even passes the “check connection”
 > steps, but Google rejects every send with `HTTP 403 PERMISSION_DENIED SenderId mismatch`,
 > so nothing ever reaches the APK. The admin panel now detects this (“service-account key
@@ -240,7 +243,7 @@ After every change the panel shows a coloured message with the **real outcome**:
 # ✅ Final checklist
 
 - [ ] Firebase project created
-- [ ] Android app registered as `com.example.eplakfixed`
+- [ ] Android app registered as `com.eplak`
 - [ ] `google-services.json` downloaded
 - [ ] committed at `android-app/app/google-services.json`
 - [ ] **Build Android APK** green and the new APK installed & opened once
