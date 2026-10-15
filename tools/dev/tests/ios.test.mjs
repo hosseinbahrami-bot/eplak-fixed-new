@@ -404,21 +404,38 @@ for (const f of fs.readdirSync(wfDir).filter((x) => /\.ya?ml$/.test(x))) {
   try { wfs[f] = YAML.parse(fs.readFileSync(path.join(wfDir, f), 'utf8')); } catch (e) { wfErr += f + ': ' + e.message + ' '; }
 }
 ok(`همه‌ی ${Object.keys(wfs).length} فایل ورک‌فلو YAML سالم‌اند (یک خطا = اجرا نشدنِ بی‌صدا)`, Object.keys(wfs).length >= 4 && wfErr === '', wfErr);
-const iosWf = wfs['ios-ipa.yml'], apkWf = wfs['android-apk.yml'];
-ok('ورک‌فلوی iOS روی macOS اجرا می‌شود', !!iosWf && /^macos-/.test(iosWf.jobs.ipa['runs-on']));
+const iosWf = wfs['ios-ipa.yml'], apkWf = wfs['android-apk.yml'], iosBuild = wfs['ios-build.yml'];
+/* بدنه‌ی ساخت در ios-build.yml (workflow_call) است و ios-ipa.yml آن را روی دو رانر صدا می‌زند:
+   اول Apple Silicon، و فقط اگر آن به نتیجه نرسید (ازجمله «رانر داده نشد») روی Intel. */
+const iosJobs = (iosWf && iosWf.jobs) || {};
+const iosRunners = Object.values(iosJobs).map((j) => String((j.with || {}).runner || ''));
+ok('ورک‌فلوی iOS روی macOS اجرا می‌شود (هر دو رانرِ صدازده‌شده macOS هستند و بدنه runs-on را از ورودی می‌گیرد)',
+  !!iosBuild && iosBuild.jobs.build['runs-on'] === '${{ inputs.runner }}' && iosRunners.length === 2 && iosRunners.every((r) => /^macos-/.test(r))
+  && Object.values(iosJobs).every((j) => j.uses === './.github/workflows/ios-build.yml'), iosRunners.join(' '));
+ok('رانر جایگزین (Intel) فقط وقتی اجرا می‌شود که اجرای اول موفق نشده و کل اجرا لغو نشده باشد',
+  !!iosJobs['ipa-fallback'] && iosJobs['ipa-fallback'].needs === 'ipa' && /!cancelled\(\)/.test(String(iosJobs['ipa-fallback'].if || ''))
+  && /needs\.ipa\.result\s*!=\s*'success'/.test(String(iosJobs['ipa-fallback'].if || ''))
+  && /-intel$/.test(String(iosJobs['ipa-fallback'].with.runner)) && !/-intel/.test(String(iosJobs.ipa.with.runner)) && !iosJobs.ipa.needs && !iosJobs.ipa.if,
+  JSON.stringify(iosJobs['ipa-fallback'] || null));
 const iosPaths = new Set((iosWf && iosWf.on.push.paths) || []);
 const apkPaths = ((apkWf && apkWf.on.push.paths) || []).filter((x) => x !== 'android-app/**' && x !== '.github/workflows/android-apk.yml');
 ok('هر تغییرِ وبی که APK تازه می‌سازد، IPA تازه هم می‌سازد (مسیرهای وب یکی است)',
-  apkPaths.length >= 6 && apkPaths.every((x) => iosPaths.has(x)) && iosPaths.has('ios-app/**') && iosPaths.has('.github/workflows/ios-ipa.yml'), [...iosPaths].join(' '));
-const iosText = fs.readFileSync(p('.github/workflows/ios-ipa.yml'), 'utf8');
+  apkPaths.length >= 6 && apkPaths.every((x) => iosPaths.has(x)) && iosPaths.has('ios-app/**') && iosPaths.has('.github/workflows/ios-ipa.yml')
+  && iosPaths.has('.github/workflows/ios-build.yml') && iosBuild && Object.keys(iosBuild.on).join(',') === 'workflow_call', [...iosPaths].join(' '));
+const iosText = fs.readFileSync(p('.github/workflows/ios-build.yml'), 'utf8');
+const iosCallerText = fs.readFileSync(p('.github/workflows/ios-ipa.yml'), 'utf8');
 ok('هر دو ساخت (شبیه‌ساز و دستگاه) بدون امضا هستند و هیچ secret لازم نیست',
-  (iosText.match(/CODE_SIGNING_ALLOWED=NO/g) || []).length === 2 && !/secrets\./.test(iosText) && !/CODE_SIGNING_ALLOWED=YES/.test(iosText));
+  (iosText.match(/CODE_SIGNING_ALLOWED=NO/g) || []).length === 2 && !/secrets\./.test(iosText) && !/secrets\./.test(iosCallerText) && !/CODE_SIGNING_ALLOWED=YES/.test(iosText));
 const apkTag = (apkWf.jobs.build.steps.find((s) => s.with && s.with.tag_name) || { with: {} }).with.tag_name;
-ok('IPA به همان صفحه‌ی Releases پیوست می‌شود که APK (v2.0-eplak-update)',
-  apkTag === 'v2.0-eplak-update' && iosWf.env.RELEASE_TAG === apkTag && /gh release upload "\$RELEASE_TAG"[\s\S]*--clobber/.test(iosText));
+ok('IPA به همان صفحه‌ی Releases پیوست می‌شود که APK (v2.0-eplak-update) — از هر دو رانر',
+  apkTag === 'v2.0-eplak-update' && Object.values(iosJobs).every((j) => j.with.release_tag === apkTag)
+  && iosBuild.on.workflow_call.inputs.release_tag.default === apkTag && iosBuild.env.RELEASE_TAG === '${{ inputs.release_tag }}'
+  && /gh release upload "\$RELEASE_TAG"[\s\S]*--clobber/.test(iosText));
 ok('IPA فقط پس از گذشتن آزمون دودی و بازرسی منتشر می‌شود (پیوست بعد از هر دو است)',
   iosText.indexOf('simulator-smoke.sh') > 0 && iosText.indexOf('simulator-smoke.sh') < iosText.indexOf('gh release upload')
   && iosText.indexOf('بازرسی IPA') < iosText.indexOf('gh release upload'));
+ok('نام Artifact شواهد شبیه‌ساز برای هر رانر یکتاست (وگرنه اجرای جایگزین با «نام تکراری» می‌افتاد)',
+  /name: ios-simulator-evidence-\$\{\{ inputs\.runner \}\}/.test(iosText));
 
 /* ── ۸) نرفتن ios-app به بسته‌ی هاست ─────────────────────────────────────── */
 console.log('— ۸) بسته‌ی هاست');

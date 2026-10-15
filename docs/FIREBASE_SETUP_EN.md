@@ -47,7 +47,7 @@ These two are often confused — read this table first:
 
 | Field | Value |
 |---|---|
-| **Android package name** | `com.example.eplakfixed` |
+| **Android package name** | `com.eplak` |
 | **App nickname** (optional) | `Eplak` |
 | **Debug signing certificate SHA-1** (optional) | leave **empty** (not needed for FCM) |
 
@@ -127,6 +127,16 @@ Install that APK on the phone (it updates over the previous version; if you get
 
 > 🔒 This file is your server’s password. Keep it out of GitHub, chat and email.
 > The repository’s `.gitignore` already blocks `*firebase-adminsdk*.json`.
+
+> ⚠️ **The key must come from the same Firebase project as the app’s `google-services.json`.**
+> The repository’s APK is built against project **`eplak-7e6ed`** (sender ID `221915268820`,
+> package name `com.eplak`). *(Up to v2.0 it was project `eplak-63c74` with package
+> `com.example.eplakfixed`; since v2.1 the app uses the package name registered in Firebase.
+> Uninstall v2.0 — Android treats it as a separate app and pushes only reach the new one.)*
+> A key from any other project is accepted by the panel and even passes the “check connection”
+> steps, but Google rejects every send with `HTTP 403 PERMISSION_DENIED SenderId mismatch`,
+> so nothing ever reaches the APK. The admin panel now detects this (“service-account key
+> belongs to a different project”) on the Notifications and Settings pages.
 
 Open it in a text editor (do **not** change anything). Note the two useful values:
 
@@ -213,7 +223,7 @@ After every change the panel shows a coloured message with the **real outcome**:
 - **Report detail → “Phone notification for this user”** — the user's devices, per-report send results, *resend* and *test* buttons.
 - **Version check** — the *registered phones* number, and the marker “phone registration from the Android app” must read *present*; if it does not, `api/_common.php` / `api/push.php` from the latest update package are not on the host.
 
-**Inside the app (citizen):** the notifications screen shows a status line (✅ registered / ⏳ fetching id / ⚠️ not registered) and a **“Test notification”** button that sends a test to *this* phone and explains any failure. If the permission was denied, **“Phone notification settings”** opens the app's system notification settings.
+**Inside the app (citizen):** the notifications screen is just the list of notifications. The status box that used to sit above it (✅ registered / ⏳ fetching id / ⚠️ not registered, with the **“Test notification”** and **“Phone notification settings”** buttons) was **removed at the owner's request**. The permission prompt still appears on the first tap and device registration is automatic; for diagnostics use the admin panel (above) or run `eplakPushState()` in the app's remote-debug console.
 
 > **Previous root cause:** the app registered its phone as a plain form post, but `api/push.php` only read JSON, so every registration was rejected with HTTP 400 and `device_tokens` stayed empty (no panel notification ever left the server). The server now accepts both formats, and the app retries with 2/4/8/16/30 s back-off until registration succeeds and refreshes it every 6 hours.
 
@@ -233,7 +243,7 @@ After every change the panel shows a coloured message with the **real outcome**:
 # ✅ Final checklist
 
 - [ ] Firebase project created
-- [ ] Android app registered as `com.example.eplakfixed`
+- [ ] Android app registered as `com.eplak`
 - [ ] `google-services.json` downloaded
 - [ ] committed at `android-app/app/google-services.json`
 - [ ] **Build Android APK** green and the new APK installed & opened once

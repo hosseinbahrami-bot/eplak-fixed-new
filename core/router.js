@@ -176,6 +176,12 @@
         break;
       case 'screen-notifications':
         if (typeof renderNotifications === 'function') renderNotifications();
+        /* هر بار باز شدن صفحه‌ی اعلان‌ها، فهرست از سرور هم تازه می‌شود؛ وگرنه اگر
+           کاربر سریع صفحه را باز کند، لیستِ محلی (که ممکن است خالی باشد) دیده
+           می‌شود و اعلان‌های سرور دیرتر می‌رسند. */
+        if (typeof window.refreshNotificationsNow === 'function') {
+          try { window.refreshNotificationsNow(); } catch (e) {}
+        }
         break;
       case 'screen-favorites':
         if (typeof renderFavorites === 'function') renderFavorites();

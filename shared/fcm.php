@@ -18,16 +18,76 @@
 
 require_once __DIR__ . '/webpush.php';   /* استفاده از eplakHttpPost و توابع base64 */
 
+/* ── پروژه‌ی فایربیسِ خودِ اپ اندروید ───────────────────────────────────────
+   APK این مخزن با فایل android-app/app/google-services.json ساخته می‌شود و آن
+   فایل به یک پروژه‌ی مشخص فایربیس گره خورده است. کلید سرویسی که در پنل وارد
+   می‌شود باید دقیقاً از «همان» پروژه باشد؛ وگرنه گوگل هر ارسال را با
+   «HTTP 403 PERMISSION_DENIED … SenderId mismatch» رد می‌کند و هیچ اعلانی به
+   APK نمی‌رسد — در حالی که همان کلید برای پروژه‌ی خودش کاملاً معتبر است و
+   گام‌های «توکن دسترسی» و «اعتبارسنجی پیام» سبز می‌مانند.
+   (آزمون push.test.mjs هم‌خوانیِ این مقدارها با google-services.json را می‌سنجد.)
+   در محیط آزمون با EPLAK_APP_FCM_PROJECT یا تنظیم app_fcm_project قابل تغییر است. */
+if (!defined('EPLAK_APP_FCM_PROJECT_ID')) define('EPLAK_APP_FCM_PROJECT_ID', 'eplak-7e6ed');
+if (!defined('EPLAK_APP_FCM_SENDER_ID'))  define('EPLAK_APP_FCM_SENDER_ID', '221915268820');
+if (!defined('EPLAK_APP_PACKAGE'))        define('EPLAK_APP_PACKAGE', 'com.eplak');
+
+/** پروژه‌ای که اپ اندروید (APK) با آن ساخته شده است */
+function eplakFcmAppProject(): array
+{
+    $project = trim((string) (getenv('EPLAK_APP_FCM_PROJECT') ?: ''));
+    $source  = $project !== '' ? 'env' : '';
+    if ($project === '' && function_exists('eplakConfigValue')) {
+        try {
+            $project = trim((string) eplakConfigValue('app_fcm_project', ''));
+        } catch (\Throwable $e) {
+            $project = '';
+        }
+        if ($project !== '') $source = 'config';
+    }
+    if ($project === '') {
+        $project = EPLAK_APP_FCM_PROJECT_ID;
+        $source  = 'apk';
+    }
+    $sender = trim((string) (getenv('EPLAK_APP_FCM_SENDER') ?: ''));
+    if ($sender === '' && $project === EPLAK_APP_FCM_PROJECT_ID) $sender = EPLAK_APP_FCM_SENDER_ID;
+
+    return [
+        'project_id' => $project,
+        'sender_id'  => $sender,
+        'package'    => EPLAK_APP_PACKAGE,
+        'source'     => $source,
+    ];
+}
+
+/** متن فارسیِ «کلید از پروژه‌ی دیگری است» با راه حل گام‌به‌گام */
+function eplakFcmProjectMismatchText(string $keyProject, string $appProject = ''): string
+{
+    if ($appProject === '') $appProject = eplakFcmAppProject()['project_id'];
+    $key = $keyProject !== '' ? $keyProject : 'نامشخص';
+    return 'کلید سرویس فایربیس برای پروژه‌ی «' . $key . '» است، ولی اپ اندروید (APK) با پروژه‌ی «'
+        . $appProject . '» ساخته شده؛ گوگل ارسال را با «SenderId mismatch» رد می‌کند و هیچ اعلانی به اپ اندروید نمی‌رسد. '
+        . 'راه حل: در Firebase Console پروژه‌ی «' . $appProject . '» را باز کنید → Project settings → Service accounts → '
+        . 'Generate new private key، و محتوای همان فایل JSON را این‌جا (پنل → تنظیمات → کلید سرویس فایربیس) بچسبانید. '
+        . '(کلید پروژه‌ی «' . $key . '» فقط وقتی به کار می‌آید که APK با google-services.json همان پروژه دوباره ساخته شود.)';
+}
+
 /** وضعیت آماده بودن موتور: افزونه‌های لازم + کلید سرویس وارد شده */
 function eplakFcmConfig(PDO $pdo): array
 {
+    $app = eplakFcmAppProject();
     $out = [
-        'ready'        => false,
-        'configured'   => false,
-        'project_id'   => '',
-        'client_email' => '',
-        'private_key'  => '',
-        'error'        => '',
+        'ready'         => false,
+        'configured'    => false,
+        'project_id'    => '',
+        'client_email'  => '',
+        'private_key'   => '',
+        'error'         => '',
+        /* هم‌خوانی پروژه‌ی کلید با پروژه‌ی APK (null = هنوز کلیدی نیست که مقایسه شود) */
+        'app_project'   => $app['project_id'],
+        'app_sender'    => $app['sender_id'],
+        'package'       => $app['package'],
+        'project_match' => null,
+        'warning'       => '',
     ];
 
     if (!function_exists('openssl_sign') || !function_exists('openssl_get_privatekey')) {
@@ -69,6 +129,14 @@ function eplakFcmConfig(PDO $pdo): array
     $out['private_key']  = $key;
     $out['configured']   = true;
     $out['ready']        = true;
+
+    /* کلید معتبر است؛ ولی اگر از پروژه‌ی دیگری باشد، به APK این مخزن نمی‌رسد.
+       ready همچنان true می‌ماند (ارسال به پروژه‌ی خودِ کلید ممکن است)؛ پنل و
+       اپ از project_match/warning می‌فهمند که باید کلید عوض شود. */
+    $out['project_match'] = ($app['project_id'] === '' || $project === $app['project_id']);
+    if (!$out['project_match']) {
+        $out['warning'] = eplakFcmProjectMismatchText($project, $app['project_id']);
+    }
 
     return $out;
 }
@@ -199,12 +267,14 @@ function eplakFcmAccessToken(PDO $pdo, bool $force = false, int $timeout = 15): 
  *                          بسته و منتظر نتیجه‌ی گزارشش است دیگر اعلانی نمی‌گرفت.)
  *   • $detach = true     → اتصال شماره عمداً پاک می‌شود (خروج کاربر از حساب).
  */
-function eplakFcmSaveToken(PDO $pdo, string $phone, string $token, string $platform = 'android', bool $detach = false): bool
+function eplakFcmSaveToken(PDO $pdo, string $phone, string $token, string $platform = 'android', bool $detach = false, string $appProject = ''): bool
 {
     $token = trim($token);
     if ($token === '' || strlen($token) > 400) {
         return false;
     }
+    /* پروژه‌ی فایربیسی که خودِ اپ گزارش می‌دهد (از google-services.json داخل APK) */
+    $appProject = eplakFcmCleanProjectId($appProject);
 
     $phone = preg_replace('/[^0-9+]/', '', $phone) ?? '';
     if (strlen($phone) > 20) {
@@ -228,15 +298,54 @@ function eplakFcmSaveToken(PDO $pdo, string $phone, string $token, string $platf
                 $upd = $pdo->prepare('UPDATE device_tokens SET user_phone = :phone, platform = :platform, is_active = 1, fail_count = 0, last_error = "", last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = :id');
                 $upd->execute([':phone' => $phone, ':platform' => $platform, ':id' => $id]);
             }
+            eplakFcmStoreAppProject($pdo, $id, $appProject);
             return true;
         }
 
         $ins = $pdo->prepare('INSERT INTO device_tokens (user_phone, token, platform, is_active, last_seen_at) VALUES (:phone, :token, :platform, 1, CURRENT_TIMESTAMP)');
         $ins->execute([':phone' => $phone, ':token' => $token, ':platform' => $platform]);
+        eplakFcmStoreAppProject($pdo, (int) $pdo->lastInsertId(), $appProject);
         return true;
     } catch (\Throwable $e) {
         error_log('[eplak-fcm] ذخیره‌ی توکن ناموفق: ' . $e->getMessage());
         return false;
+    }
+}
+
+/** شناسه‌ی پروژه‌ی فایربیس فقط با نویسه‌های مجاز (حروف لاتین، رقم، نقطه، خط تیره) */
+function eplakFcmCleanProjectId(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') return '';
+    $value = preg_replace('/[^A-Za-z0-9._-]/', '', $value) ?? '';
+    return substr($value, 0, 80);
+}
+
+/** ستون device_tokens.app_project — روی دیتابیس‌های قدیمی خودکار اضافه می‌شود */
+function eplakFcmProjectColumnReady(PDO $pdo): bool
+{
+    static $ready = null;
+    if ($ready !== null) return $ready;
+    $ready = false;
+    try {
+        if (function_exists('eplakEnsureColumn')) {
+            $ready = eplakEnsureColumn($pdo, 'device_tokens', 'app_project', "VARCHAR(80) NOT NULL DEFAULT ''");
+        }
+    } catch (\Throwable $e) {
+        $ready = false;
+    }
+    return $ready;
+}
+
+/** پروژه‌ی گزارش‌شده‌ی اپ را روی ردیف دستگاه می‌نویسد (بی‌صدا؛ هرگز ثبت را خراب نمی‌کند) */
+function eplakFcmStoreAppProject(PDO $pdo, int $id, string $appProject): void
+{
+    if ($id <= 0 || $appProject === '' || !eplakFcmProjectColumnReady($pdo)) return;
+    try {
+        $upd = $pdo->prepare('UPDATE device_tokens SET app_project = :p WHERE id = :id');
+        $upd->execute([':p' => $appProject, ':id' => $id]);
+    } catch (\Throwable $e) {
+        /* ستون اختیاری است */
     }
 }
 
@@ -417,17 +526,35 @@ function eplakFcmSendOne(PDO $pdo, array $device, string $accessToken, string $p
 
     $status = '';
     $detail = '';
+    $code   = '';
     $parsed = json_decode((string) $response['body'], true);
     if (is_array($parsed) && isset($parsed['error']) && is_array($parsed['error'])) {
         $status = (string) ($parsed['error']['status'] ?? '');
         $detail = (string) ($parsed['error']['message'] ?? '');
+        /* کد دقیق FCM در details (type.googleapis.com/google.firebase.fcm.v1.FcmError):
+           UNREGISTERED / SENDER_ID_MISMATCH / INVALID_ARGUMENT / … — status کلی‌تر است
+           (مثلاً برای SenderId mismatch فقط PERMISSION_DENIED می‌گوید). */
+        foreach ((array) ($parsed['error']['details'] ?? []) as $d) {
+            if (is_array($d) && !empty($d['errorCode'])) {
+                $code = strtoupper((string) $d['errorCode']);
+                break;
+            }
+        }
     }
+    if ($code === '' && preg_replace('/[\s_-]+/', '', strtoupper($detail)) === 'SENDERIDMISMATCH') {
+        $code = 'SENDER_ID_MISMATCH';
+    }
+    $out['code'] = $code;
 
     $out['error'] = trim(($response['status'] ? 'HTTP ' . $response['status'] . ' ' : '') . $status . ' ' . $detail);
     if ($out['error'] === '') {
         $out['error'] = $response['error'] !== '' ? $response['error'] : 'خطای نامشخص در ارسال به گوگل';
     }
-    $out['fatal'] = eplakFcmErrorIsFatal($status, (int) $response['status']);
+    $out['fatal'] = eplakFcmErrorIsFatal($status, (int) $response['status']) || eplakFcmErrorIsFatal($code, (int) $response['status']);
+    if ($code === 'SENDER_ID_MISMATCH') {
+        /* سرنوشت این خطا (توکنِ کهنه یا کلیدِ اشتباه) در eplakFcmSend تصمیم گرفته می‌شود */
+        $out['fatal'] = false;
+    }
 
     return $out;
 }
@@ -475,6 +602,35 @@ function eplakFcmSend(PDO $pdo, array $devices, string $title, string $body, arr
             $result['errors'][] = $netFailure;
             continue;
         }
+
+        /* گوشی خودش گفته با کدام پروژه‌ی فایربیس ساخته شده؛ اگر با پروژه‌ی کلید
+           یکی نباشد، گوگل قطعاً «SenderId mismatch» می‌دهد — پس بی‌جهت به گوگل
+           نمی‌رویم و همان دلیل دقیق را روی ردیف دستگاه می‌نویسیم.
+             • کلید از پروژه‌ی دیگری است (project_match=false) ⇒ اشتباه از کلید است؛ توکن فعال
+               می‌ماند و با عوض شدن کلید همین توکن دوباره کار می‌کند.
+             • کلید همان پروژه‌ی APK فعلی است (project_match=true) ⇒ این گوشی هنوز APK قدیمی
+               (پروژه‌ی قبلی) را دارد؛ توکنش برای پروژه‌ی تازه هرگز کار نمی‌کند ⇒ غیرفعال می‌شود
+               تا هر ارسال، یک «ناموفق» بی‌دلیل نسازد. با نصب/باز شدن APK جدید توکن تازه ثبت می‌شود. */
+        $deviceProject = eplakFcmCleanProjectId((string) ($device['app_project'] ?? ''));
+        if ($deviceProject !== '' && $deviceProject !== (string) $cfg['project_id']) {
+            $stale = ($cfg['project_match'] === true);
+            if ($stale) {
+                $mismatch = 'SENDER_ID_MISMATCH: توکن از نسخه‌ی قدیمی اپ (پروژه‌ی «' . $deviceProject . '») است؛ کلید فعلی برای پروژه‌ی APK جدید «'
+                    . $cfg['project_id'] . '» درست است — کاربر باید APK جدید را نصب و باز کند تا دوباره ثبت شود';
+            } else {
+                $mismatch = 'SENDER_ID_MISMATCH: اپ با پروژه‌ی «' . $deviceProject . '» ساخته شده ولی کلید سرویس برای پروژه‌ی «' . $cfg['project_id'] . '» است';
+            }
+            $result['failed']++;
+            $result['errors'][] = $mismatch;
+            try {
+                $upd = $pdo->prepare($stale
+                    ? 'UPDATE device_tokens SET is_active = 0, last_error = :err, fail_count = fail_count + 1 WHERE id = :id'
+                    : 'UPDATE device_tokens SET last_error = :err, fail_count = fail_count + 1 WHERE id = :id');
+                $upd->execute([':err' => mb_substr($mismatch, 0, 250, 'UTF-8'), ':id' => (int) $device['id']]);
+            } catch (\Throwable $e) {}
+            continue;
+        }
+
         $one = eplakFcmSendOne($pdo, $device, $accessToken, $cfg['project_id'], $title, $body, $extra, $timeout);
 
         if (!$one['ok'] && (int) ($one['http'] ?? 0) === 401 && !$refreshed) {
@@ -494,6 +650,22 @@ function eplakFcmSend(PDO $pdo, array $devices, string $title, string $body, arr
                 $upd->execute([':id' => (int) $device['id']]);
             } catch (\Throwable $e) {}
             continue;
+        }
+
+        /* گوگل خودش «SenderId mismatch» داد (گوشی پروژه‌اش را گزارش نکرده بود یا هم‌خوان بود):
+             • کلید همان پروژه‌ی APK فعلی است ⇒ توکن از نسخه/پروژه‌ی قدیمی اپ مانده و دیگر هرگز
+               کار نمی‌کند ⇒ غیرفعال می‌شود (با باز شدن APK جدید، توکن تازه ثبت می‌شود).
+             • کلید از پروژه‌ی دیگری است ⇒ اشتباه از کلید است، نه گوشی ⇒ توکن فعال می‌ماند و
+               دلیل دقیق روی ردیف می‌نشیند تا مدیر کلید را عوض کند. */
+        if (($one['code'] ?? '') === 'SENDER_ID_MISMATCH') {
+            if ($cfg['project_match'] !== false && $deviceProject === '') {
+                $one['fatal'] = true;
+                $one['error'] = 'SENDER_ID_MISMATCH: توکن از نسخه/پروژه‌ی قدیمی اپ است (کلید فعلی برای پروژه‌ی «' . $cfg['project_id'] . '» درست است)؛ کاربر باید APK جدید را باز کند تا دوباره ثبت شود';
+            } else {
+                $one['fatal'] = false;
+                $one['error'] = 'SENDER_ID_MISMATCH: اپ با پروژه‌ی «' . ($deviceProject !== '' ? $deviceProject : $cfg['app_project'])
+                    . '» ساخته شده ولی کلید سرویس برای پروژه‌ی «' . $cfg['project_id'] . '» است (پاسخ گوگل: ' . $one['error'] . ')';
+            }
         }
 
         $result['failed']++;
@@ -529,8 +701,20 @@ function eplakFcmExplainError(string $error): string
     if (strpos($e, 'UNREGISTERED') !== false || strpos($e, 'NOT_FOUND') !== false || strpos($e, 'HTTP 404') !== false) {
         return 'توکن این گوشی دیگر معتبر نیست (برنامه حذف/دوباره نصب شده). کاربر باید یک‌بار اپ را باز کند و وارد شود تا دوباره ثبت شود.';
     }
-    if (strpos($e, 'SENDER_ID_MISMATCH') !== false) {
-        return 'کلید سرویس فایربیس مربوط به پروژه‌ی دیگری است. باید از همان پروژه‌ای باشد که فایل google-services.json اپ از آن ساخته شده (eplak-63c74).';
+    /* گوگل این خطا را به چند شکل می‌نویسد: «SenderId mismatch» (متن واقعی پاسخ ۴۰۳)،
+       «SENDER_ID_MISMATCH» (کد خطای قدیمی) … همه یعنی یک چیز: کلید از پروژه‌ی دیگری است. */
+    $compact = preg_replace('/[\s_-]+/', '', $e) ?? $e;
+    if (strpos($compact, 'SENDERIDMISMATCH') !== false && (strpos($error, 'نسخه/پروژه‌ی قدیمی اپ') !== false || strpos($error, 'نسخه‌ی قدیمی اپ') !== false)) {
+        /* کلید درست است؛ خودِ گوشی هنوز APK قدیمی (پروژه‌ی قبلی) را دارد */
+        $app = eplakFcmAppProject();
+        return 'این گوشی هنوز نسخه‌ی قدیمی اپ را دارد که با پروژه‌ی قبلی فایربیس ساخته شده بود؛ توکنش برای پروژه‌ی فعلی («' . $app['project_id']
+            . '») کار نمی‌کند و غیرفعال شد. کلید سرویس درست است — کاربر باید APK جدید را نصب و یک‌بار باز کند تا گوشی دوباره ثبت شود.';
+    }
+    if (strpos($compact, 'SENDERIDMISMATCH') !== false) {
+        $app = eplakFcmAppProject();
+        return 'کلید سرویس فایربیس برای پروژه‌ی دیگری است و اپ اندروید (APK) با پروژه‌ی «' . $app['project_id']
+            . '» ساخته شده؛ گوگل ارسال را با «SenderId mismatch» رد می‌کند. در Firebase Console پروژه‌ی «'
+            . $app['project_id'] . '» → Project settings → Service accounts → Generate new private key را بزنید و فایل تازه را در پنل → تنظیمات → «کلید سرویس فایربیس» بچسبانید.';
     }
     if (strpos($e, 'SERVICE_DISABLED') !== false || strpos($e, 'HAS NOT BEEN USED') !== false || strpos($e, 'IS DISABLED') !== false) {
         return 'سرویس Firebase Cloud Messaging API در پروژه‌ی گوگل فعال نیست. در Google Cloud Console → APIs → «Firebase Cloud Messaging API» را Enable کنید.';
@@ -707,6 +891,23 @@ function eplakPushLogRecent(PDO $pdo, array $filter = [], int $limit = 8): array
     }
 }
 
+/** پروژه‌هایی که گوشی‌های فعال خودشان گزارش کرده‌اند: ['project_id' => تعداد] */
+function eplakFcmReportedProjects(PDO $pdo): array
+{
+    if (!eplakFcmProjectColumnReady($pdo)) return [];
+    try {
+        $stmt = $pdo->query("SELECT app_project, COUNT(*) AS n FROM device_tokens WHERE is_active = 1 AND app_project <> '' GROUP BY app_project ORDER BY n DESC");
+        $out = [];
+        foreach ($stmt->fetchAll() ?: [] as $row) {
+            $proj = eplakFcmCleanProjectId((string) ($row['app_project'] ?? ''));
+            if ($proj !== '') $out[$proj] = (int) ($row['n'] ?? 0);
+        }
+        return $out;
+    } catch (\Throwable $e) {
+        return [];
+    }
+}
+
 /**
  * عیب‌یابی زنجیره‌ی اعلان، گام‌به‌گام و بدون نیاز به هیچ گوشی:
  *   ۱) کلید سرویس فایربیس   ۲) اتصال به گوگل و گرفتن مجوز   ۳) اتصال به سرویس
@@ -727,6 +928,23 @@ function eplakFcmDiagnose(PDO $pdo): array
     if (!$cfg['ready']) {
         return $steps;
     }
+
+    /* مهم‌ترین گام: کلید باید از همان پروژه‌ای باشد که APK با آن ساخته شده.
+       گام‌های بعدی (مجوز، سرویس ارسال) با کلیدِ پروژه‌ی اشتباه هم «سبز» می‌شوند؛
+       فقط موقع ارسال واقعی، گوگل «SenderId mismatch» می‌دهد. */
+    $match  = $cfg['project_match'] !== false;
+    $detail = 'کلید: ' . $cfg['project_id'] . ' · اپ اندروید (APK): ' . $cfg['app_project'];
+    $reported = eplakFcmReportedProjects($pdo);
+    if ($reported) {
+        $parts = [];
+        foreach ($reported as $proj => $n) $parts[] = $proj . ' (' . $n . ' گوشی)';
+        $detail .= ' · گزارش خودِ گوشی‌ها: ' . implode('، ', $parts);
+        foreach ($reported as $proj => $n) {
+            if ($proj !== $cfg['project_id']) $match = false;
+        }
+    }
+    $add('هم‌خوانی پروژه‌ی کلید با پروژه‌ی اپ اندروید', $match, $detail,
+        $match ? '' : eplakFcmProjectMismatchText($cfg['project_id'], $cfg['app_project']));
 
     $auth = eplakFcmAccessToken($pdo, true, 12);
     $authOk = $auth['token'] !== '';

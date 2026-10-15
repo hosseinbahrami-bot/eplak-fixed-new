@@ -7,6 +7,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/../shared/fcm.php';
+require_once __DIR__ . '/../shared/app_heartbeat.php';
 require_once __DIR__ . '/../shared/notify_events.php';
 
 $adminId  = (int) ($_SESSION['admin_id'] ?? 0);
@@ -84,14 +85,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         /* کلید سرویس فایربیس (JSON) — از Firebase Console → Project settings →
            Service accounts → Generate new private key */
         $raw = trim((string) ($_POST['fcm_service_account'] ?? ''));
-        if ($raw === '') {
+        /* راه ساده‌تر (به‌خصوص روی گوشی): انتخاب خودِ فایل JSON به‌جای کپی/چسباندن متن.
+           اگر فایلی انتخاب شده باشد، همان مبنا است. */
+        $upload = $_FILES['fcm_service_account_file'] ?? null;
+        $uploadError = '';
+        if (is_array($upload) && (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            if ((int) $upload['error'] !== UPLOAD_ERR_OK) {
+                $uploadError = 'آپلود فایل کلید ناموفق بود (کد ' . (int) $upload['error'] . ').';
+            } elseif ((int) ($upload['size'] ?? 0) > 64 * 1024 || (int) ($upload['size'] ?? 0) <= 0) {
+                $uploadError = 'اندازه‌ی فایل کلید غیرعادی است (فایل کلید سرویس چند کیلوبایت است).';
+            } elseif (!is_uploaded_file((string) $upload['tmp_name'])) {
+                $uploadError = 'فایل کلید دریافت نشد.';
+            } else {
+                $raw = trim((string) file_get_contents((string) $upload['tmp_name']));
+                /* BOM احتمالی ویرایشگرهای ویندوز */
+                $raw = ltrim($raw, "\xEF\xBB\xBF");
+            }
+        }
+        if ($uploadError !== '') {
+            $message = '⚠️ ' . $uploadError;
+            $messageType = 'danger';
+        } elseif ($raw === '') {
             eplakSetAppSetting($pdo, 'fcm_service_account', '');
             $message = '✅ کلید سرویس فایربیس پاک شد. اعلان اپ اندروید غیرفعال می‌شود.';
             $messageType = 'success';
         } else {
             $decoded = json_decode($raw, true);
-            if (!is_array($decoded) || empty($decoded['project_id']) || empty($decoded['client_email']) || empty($decoded['private_key'])) {
-                $message = '⚠️ محتوای کلید سرویس نامعتبر است. کل فایل JSON را (از { تا }) کپی کنید.';
+            if (is_array($decoded) && (isset($decoded['project_info']) || (isset($decoded['type']) && $decoded['type'] !== 'service_account'))) {
+                /* اشتباه رایج: به‌جای کلید سرویس، فایل google-services.json (مخصوص داخل APK) داده می‌شود */
+                $message = '⚠️ این فایل «کلید سرویس» نیست (به نظر google-services.json یا فایل دیگری است). کلید سرویس از Firebase Console → Project settings → Service accounts → Generate new private key دانلود می‌شود و فیلد "type":"service_account" دارد.';
+                $messageType = 'danger';
+            } elseif (!is_array($decoded) || empty($decoded['project_id']) || empty($decoded['client_email']) || empty($decoded['private_key'])) {
+                $message = '⚠️ محتوای کلید سرویس نامعتبر است. کل فایل JSON را (از { تا }) کپی کنید یا خودِ فایل را انتخاب کنید.';
                 $messageType = 'danger';
             } else {
                 eplakSetAppSetting($pdo, 'fcm_service_account', (string) json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
@@ -101,8 +126,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $cfg = eplakFcmConfig($pdo);
                 $auth = eplakFcmAccessToken($pdo, true);
-                if ($cfg['ready'] && $auth['token'] !== '') {
-                    $message = '✅ کلید سرویس فایربیس ذخیره شد و اتصال به گوگل برقرار است (پروژه: ' . htmlspecialchars($cfg['project_id']) . ').';
+                if ($cfg['ready'] && $auth['token'] !== '' && $cfg['project_match'] === false) {
+                    /* کلید سالم است ولی به APK این مخزن نمی‌رسد — همین‌جا، نه بعد از اولین ارسالِ ناموفق */
+                    $message = '⛔ کلید ذخیره شد و گوگل آن را می‌پذیرد، ولی ' . htmlspecialchars((string) $cfg['warning']);
+                    $messageType = 'danger';
+                } elseif ($cfg['ready'] && $auth['token'] !== '') {
+                    $message = '✅ کلید سرویس فایربیس ذخیره شد و اتصال به گوگل برقرار است (پروژه: ' . htmlspecialchars($cfg['project_id']) . ' — همان پروژه‌ی اپ اندروید).';
                     $messageType = 'success';
                 } else {
                     $message = '⚠️ کلید ذخیره شد ولی اتصال به گوگل برقرار نشد: ' . htmlspecialchars($auth['error'] !== '' ? $auth['error'] : $cfg['error']);
@@ -234,10 +263,14 @@ $fcmTokensTotal = eplakFcmCount($pdo, false);
 $fcmDiag    = $fcmDiag ?? null;
 $fcmDeviceRows = [];
 try {
-    $fcmDeviceRows = $pdo->query('SELECT user_phone, platform, is_active, fail_count, last_error, last_seen_at FROM device_tokens ORDER BY id DESC LIMIT 10')->fetchAll() ?: [];
+    /* ستون app_project (پروژه‌ای که خودِ گوشی گزارش می‌دهد) روی دیتابیس قدیمی ممکن است نباشد */
+    $fcmProjectCol = eplakFcmProjectColumnReady($pdo) ? ', app_project' : '';
+    $fcmDeviceRows = $pdo->query('SELECT user_phone, platform, is_active, fail_count, last_error, last_seen_at' . $fcmProjectCol . ' FROM device_tokens ORDER BY id DESC LIMIT 10')->fetchAll() ?: [];
 } catch (Throwable $e) {
 }
 $fcmLogRows = eplakPushLogRecent($pdo, [], 12);
+/* «ضربان اپ‌ها»: آخرین دریافت فهرست اعلان‌ها توسط هر اپ (APK / IPA / PWA) */
+$appHeartbeats = eplakHeartbeatList($pdo, 30);
 $pushOutcomeLabels = [
     'sent' => ['ارسال شد', 'ok'], 'partial' => ['بخشی رسید', 'warn'], 'failed' => ['گوگل نپذیرفت', 'bad'],
     'no_device' => ['گوشی ثبت نیست', 'warn'], 'fcm_off' => ['کلید فایربیس نیست', 'warn'],
@@ -526,12 +559,13 @@ $httpsOn = eplakIsHttpsRequest();
             <li>در <a href="https://console.firebase.google.com" target="_blank" rel="noopener">console.firebase.google.com</a>
                 یک پروژه بسازید (رایگان).</li>
             <li>در همان پروژه، یک اپ اندروید با نام بسته‌ی
-                <code dir="ltr">com.example.eplakfixed</code> اضافه کنید و فایل
+                <code dir="ltr"><?= htmlspecialchars((string) ($fcmConfig['package'] ?? 'com.eplak'), ENT_QUOTES, 'UTF-8') ?></code> اضافه کنید و فایل
                 <code dir="ltr">google-services.json</code> را دانلود و در پوشه‌ی
-                <code dir="ltr">android-app/app/</code> قرار دهید (قبل از ساخت APK).</li>
+                <code dir="ltr">android-app/app/</code> قرار دهید (قبل از ساخت APK).
+                APK فعلی با پروژه‌ی <code dir="ltr"><?= htmlspecialchars((string) ($fcmConfig['app_project'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code> ساخته شده است.</li>
             <li>در Firebase: ⚙️ Project settings → <strong>Service accounts</strong> →
                 دکمه‌ی <strong>Generate new private key</strong> → فایل JSON دانلود می‌شود.</li>
-            <li>محتوای کامل همان فایل JSON را در کادر زیر بچسبانید و ذخیره کنید.</li>
+            <li>همان فایل را پایین انتخاب کنید (یا محتوایش را در کادر بچسبانید) و ذخیره کنید.</li>
           </ol>
         </p>
 
@@ -539,7 +573,10 @@ $httpsOn = eplakIsHttpsRequest();
           <div class="kv-row">
             <span class="kv-key">وضعیت کلید سرویس</span>
             <span class="kv-val">
-              <?php if ($fcmConfig['ready']): ?>
+              <?php if ($fcmConfig['ready'] && $fcmConfig['project_match'] === false): ?>
+                <span class="pill pill-bad" data-testid="fcm-project-mismatch">کلید از پروژه‌ی دیگری است</span>
+                <span style="font-size:12px; color:var(--dark-500);" dir="ltr"><?= htmlspecialchars($fcmConfig['project_id']) ?></span>
+              <?php elseif ($fcmConfig['ready']): ?>
                 <span class="pill pill-ok">آماده</span>
                 <span style="font-size:12px; color:var(--dark-500);" dir="ltr"><?= htmlspecialchars($fcmConfig['project_id']) ?></span>
               <?php else: ?>
@@ -548,6 +585,24 @@ $httpsOn = eplakIsHttpsRequest();
               <?php endif; ?>
             </span>
           </div>
+          <div class="kv-row">
+            <span class="kv-key">پروژه‌ی فایربیس اپ اندروید (APK)</span>
+            <span class="kv-val" data-testid="fcm-app-project">
+              <span dir="ltr" style="font-size:12px;"><?= htmlspecialchars((string) $fcmConfig['app_project']) ?></span>
+              <?php if ($fcmConfig['ready']): ?>
+                <?= $fcmConfig['project_match'] === false
+                    ? '<span class="pill pill-bad">✖ با کلید سرویس یکی نیست</span>'
+                    : '<span class="pill pill-ok">✔ با کلید سرویس یکی است</span>' ?>
+              <?php endif; ?>
+            </span>
+          </div>
+          <?php if ($fcmConfig['ready'] && $fcmConfig['project_match'] === false): ?>
+            <div class="kv-row" style="display:block;">
+              <div class="diag-hint" data-testid="fcm-project-mismatch-text" style="background:#fef2f2; border:1px solid #fecaca; color:#991b1b; border-radius:10px; padding:10px 12px; line-height:2;">
+                ⛔ <?= htmlspecialchars((string) $fcmConfig['warning']) ?>
+              </div>
+            </div>
+          <?php endif; ?>
           <div class="kv-row">
             <span class="kv-key">دستگاه‌های ثبت‌شده‌ی اپ</span>
             <span class="kv-val">
@@ -559,16 +614,22 @@ $httpsOn = eplakIsHttpsRequest();
           </div>
         </div>
 
-        <form method="post" style="display:grid; gap:14px;">
+        <form method="post" enctype="multipart/form-data" style="display:grid; gap:14px;">
           <?= eplakCsrfField() ?>
           <input type="hidden" name="action" value="save_fcm">
           <div class="form-group">
-            <label for="fcm_service_account"><i class="fas fa-key" style="color: var(--primary-500); margin-left: 6px;"></i> کلید سرویس فایربیس (محتوای فایل JSON)</label>
+            <label for="fcm_service_account_file"><i class="fas fa-file-arrow-up" style="color: var(--primary-500); margin-left: 6px;"></i> فایل کلید سرویس فایربیس (ساده‌ترین راه: خودِ فایل JSON را انتخاب کنید)</label>
+            <input class="form-control" type="file" id="fcm_service_account_file" name="fcm_service_account_file" accept=".json,application/json" data-testid="fcm-key-file">
+            <p class="field-hint">فایلی با نامی شبیه <code dir="ltr">&lt;پروژه&gt;-firebase-adminsdk-xxxxx.json</code> که از Firebase Console → Project settings → Service accounts → Generate new private key دانلود شده. اگر فایل انتخاب شود، کادر متنی زیر نادیده گرفته می‌شود.</p>
+          </div>
+          <div class="form-group">
+            <label for="fcm_service_account"><i class="fas fa-key" style="color: var(--primary-500); margin-left: 6px;"></i> یا محتوای فایل JSON را این‌جا بچسبانید</label>
             <textarea class="form-control" id="fcm_service_account" name="fcm_service_account" rows="6"
                       dir="ltr" style="text-align:left; font-family:monospace; font-size:12px;"
                       placeholder='{"type":"service_account","project_id":"...","private_key":"-----BEGIN PRIVATE KEY-----
 ...","client_email":"..."}'><?= htmlspecialchars((string) eplakAppSetting($pdo, 'fcm_service_account', '')) ?></textarea>
-            <p class="field-hint">این کلید محرمانه است؛ فقط روی سرور شما ذخیره می‌شود و در گیت‌هاب قرار نمی‌گیرد. برای پاک کردن، کادر را خالی کنید و ذخیره بزنید.</p>
+            <p class="field-hint">این کلید محرمانه است؛ فقط روی سرور شما ذخیره می‌شود و در گیت‌هاب قرار نمی‌گیرد. برای پاک کردن، کادر را خالی کنید (و فایلی انتخاب نکنید) و ذخیره بزنید.
+              کلید باید از پروژه‌ی <code dir="ltr"><?= htmlspecialchars((string) $fcmConfig['app_project']) ?></code> (پروژه‌ی خودِ APK) باشد.</p>
           </div>
           <div>
             <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> ذخیره و بررسی اتصال</button>
@@ -616,13 +677,20 @@ $httpsOn = eplakIsHttpsRequest();
         <h3 style="margin-top: 26px; font-size: 15px;"><i class="fas fa-mobile-screen" style="color: var(--primary-500); margin-left:6px;"></i> گوشی‌های ثبت‌شده (۱۰ مورد آخر)</h3>
         <?php if ($fcmDeviceRows): ?>
           <table class="tbl-mini" data-testid="fcm-devices">
-            <thead><tr><th>کاربر</th><th>وضعیت</th><th>آخرین ثبت</th><th>آخرین خطا</th></tr></thead>
+            <thead><tr><th>کاربر</th><th>وضعیت</th><th>آخرین ثبت</th><th>پروژه‌ی اپ</th><th>آخرین خطا</th></tr></thead>
             <tbody>
               <?php foreach ($fcmDeviceRows as $d): ?>
+                <?php $devProject = (string) ($d['app_project'] ?? ''); ?>
                 <tr>
                   <td dir="ltr" style="text-align:right;"><?= htmlspecialchars($maskPhone((string) $d['user_phone'])) ?></td>
                   <td><?= (int) $d['is_active'] === 1 ? '<span class="pill pill-ok">فعال</span>' : '<span class="pill pill-bad">غیرفعال</span>' ?></td>
                   <td dir="rtl" style="text-align:right;"><?= htmlspecialchars(eplakFaDateTimeOf($d['last_seen_at'] ?? null, '—')) ?></td>
+                  <td dir="ltr" style="text-align:right; font-size:12px;">
+                    <?php if ($devProject === ''): ?>—<?php else: ?>
+                      <?= htmlspecialchars($devProject) ?>
+                      <?php if ($fcmConfig['ready'] && $devProject !== (string) $fcmConfig['project_id']): ?><span class="pill pill-bad">≠ کلید</span><?php endif; ?>
+                    <?php endif; ?>
+                  </td>
                   <td style="color:var(--dark-500); word-break:break-word;"><?= htmlspecialchars((string) ($d['last_error'] ?? '')) ?: '—' ?></td>
                 </tr>
               <?php endforeach; ?>
@@ -654,6 +722,40 @@ $httpsOn = eplakIsHttpsRequest();
           </table>
         <?php else: ?>
           <p class="field-hint">هنوز اعلانی برای هیچ کاربری ارسال نشده است.</p>
+        <?php endif; ?>
+
+        <h3 style="margin-top: 26px; font-size: 15px;"><i class="fas fa-heart-pulse" style="color: var(--primary-500); margin-left:6px;"></i> ضربان اپ‌ها: آخرین دریافت فهرست اعلان‌ها</h3>
+        <p class="field-hint" style="line-height:2;">
+          هر اپ (APK / IPA / PWA) وقتی باز است، هر چند ثانیه فهرست اعلان‌ها را از سرور می‌گیرد. این جدول نشان می‌دهد
+          هر اپ با <strong>کدام شماره</strong> و <strong>چند ثانیه پیش</strong> آخرین بار پرسیده و سرور برایش
+          <strong>چند اعلان</strong> برگردانده است. اگر اپی این‌جا نیست یعنی اصلاً به سرور نمی‌رسد؛ اگر هست ولی
+          «۰ اعلان» می‌گیرد، مشکل از شماره/دیتابیس است نه از گوشی.
+        </p>
+        <?php if ($appHeartbeats): ?>
+          <table class="tbl-mini" data-testid="app-heartbeats">
+            <thead><tr><th>اپ</th><th>کاربر</th><th>آخرین درخواست</th><th>اعلان‌ها</th><th>نسخه</th><th>پاسخ قبلی از نگاه اپ</th></tr></thead>
+            <tbody>
+              <?php foreach ($appHeartbeats as $hb): ?>
+                <tr>
+                  <td><?= htmlspecialchars(eplakHeartbeatPlatformLabel($hb['platform'])) ?></td>
+                  <td dir="ltr" style="text-align:right;"><?= htmlspecialchars($hb['phone'] !== '' ? $maskPhone($hb['phone']) : 'مهمان (' . mb_substr($hb['device'], 0, 10, 'UTF-8') . '…)') ?></td>
+                  <td dir="rtl" style="text-align:right;">
+                    <?= htmlspecialchars($hb['age_text']) ?>
+                    <?php if ($hb['age'] >= 0 && $hb['age'] <= 60): ?><span class="pill pill-ok">زنده</span><?php endif; ?>
+                  </td>
+                  <td>
+                    <strong><?= (int) $hb['count'] ?></strong> اعلان
+                    <span style="color:var(--dark-500); font-size:12px;">(<?= (int) $hb['unread'] ?> نخوانده<?= (int) $hb['hidden'] > 0 ? '، ' . (int) $hb['hidden'] . ' حذف‌شده' : '' ?>)</span>
+                    <?php if ($hb['degraded']): ?><span class="pill pill-warn">دیتابیس قدیمی</span><?php endif; ?>
+                  </td>
+                  <td dir="ltr" style="text-align:right; font-size:12px;"><?= htmlspecialchars($hb['v'] !== '' ? $hb['v'] : '—') ?></td>
+                  <td style="color:var(--dark-500); word-break:break-word; font-size:12px;"><?= htmlspecialchars(eplakHeartbeatPrevText($hb['prev'])) ?></td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        <?php else: ?>
+          <p class="field-hint" data-testid="app-heartbeats-empty">هنوز هیچ اپی (با نسخه‌ی جدید) فهرست اعلان‌ها را نگرفته است.</p>
         <?php endif; ?>
       </section>
 

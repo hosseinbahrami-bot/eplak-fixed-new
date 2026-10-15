@@ -15,6 +15,14 @@
 #    ← بسته‌بندی IPA ← «بازرسی IPA» ← انتشار
 #  یعنی IPA فقط وقتی منتشر می‌شود که اپ واقعاً روی شبیه‌ساز اجرا شده باشد و
 #  فایل‌های وبِ داخلش با مخزن یکی باشد.
+#
+#  دو رانر، یک بدنه (ios-build.yml):
+#    ۱) ipa           → macos-latest (Apple Silicon، جدیدترین Xcode)
+#    ۲) ipa-fallback  → macos-15-intel؛ فقط اگر اجرای اول «موفق» نشد — ازجمله وقتی
+#       گیت‌هاب اصلاً رانر arm64 نداد («The job was not acquired by Runner of type
+#       hosted even after multiple attempts»؛ ۱۴ اکتبر ۲۰۲۶ دو ساخت پیاپی همین‌طور
+#       افتاد و IPA ریلیز کهنه ماند). اگر کل اجرا لغو شده باشد (push تازه‌تر)،
+#       جایگزین هم اجرا نمی‌شود.
 # ============================================================================
 
 name: ساخت اپ iOS (IPA بدون امضا)
@@ -33,6 +41,7 @@ on:
       - 'assets/**'
       - 'ios-app/**'
       - '.github/workflows/ios-ipa.yml'
+      - '.github/workflows/ios-build.yml'
   workflow_dispatch:
 
 permissions:
@@ -42,254 +51,28 @@ concurrency:
   group: ios-ipa-${{ github.ref }}
   cancel-in-progress: true
 
+# بدنه‌ی ساخت در .github/workflows/ios-build.yml است (workflow_call) تا یک بدنه
+# روی دو رانر قابل اجرا باشد؛ env این‌جا به ورک‌فلوی صدازده‌شده نمی‌رسد، پس
+# نام ریلیز به‌صورت ورودی (release_tag) داده می‌شود.
 env:
   RELEASE_TAG: v2.0-eplak-update
-  PROJECT: ios-app/Eplak.xcodeproj
-  SCHEME: Eplak
 
 jobs:
   ipa:
-    name: ساخت، آزمون شبیه‌ساز و انتشار IPA
-    runs-on: macos-latest
-    timeout-minutes: 90
-    steps:
-      # دو اجرای پیاپیِ IPA با «Process completed with exit code 134» (SIGABRT) و بدون
-      # هیچ step گزارش‌شده افتاد؛ یعنی خودِ رانر پیش از رسیدن به ساخت مرده بود و هیچ
-      # لاگی از ماشین به جا نماند. این step پیش از همه چیز اجرا می‌شود تا مشخص باشد کار
-      # روی کدام رانر/ایمیج/Xcode بوده و خلاصه‌اش هم به‌صورت annotation بماند.
-      - name: اطلاعات رانر (برای تشخیص شکست‌های زیرساختی)
-        run: |
-          set +e
-          INFO="${RUNNER_TEMP:-/tmp}/eplak-runner-info.txt"
-          {
-            echo "runner=${RUNNER_NAME:-?} os=${RUNNER_OS:-?} arch=${RUNNER_ARCH:-?}"
-            sw_vers 2>&1 | tr '\n' ' '
-            echo
-            echo "kernel=$(uname -mrs 2>&1)"
-            echo "xcodes=$(ls -d /Applications/Xcode*.app 2>/dev/null | tr '\n' ' ')"
-            xcodebuild -version 2>&1 | tr '\n' ' '
-            echo
-            df -h / 2>&1 | tail -1
-          } > "$INFO" 2>&1
-          cat "$INFO"
-          echo "::notice::$(tr '\n' ' ' < "$INFO" | cut -c1-500)"
-          exit 0
+    name: ساخت IPA (رانر Apple Silicon)
+    uses: ./.github/workflows/ios-build.yml
+    with:
+      runner: macos-latest
+      release_tag: v2.0-eplak-update
 
-      - name: دریافت کد
-        uses: actions/checkout@v4
-
-      # «جدیدترین Xcode» به‌تنهایی کافی نیست: آزمون دودی به یک شبیه‌سار iPhone
-      # «در دسترس» نیاز دارد. پس از میان Xcode های نصب‌شده، جدیدترینی انتخاب
-      # می‌شود که واقعاً شبیه‌سار iPhone دارد.
-      - name: انتخاب Xcode (جدیدترین، با شبیه‌سار iPhone در دسترس)
-        run: |
-          # عمداً بدون «set -e»: روی بعضی رانرهای macOS سرویس CoreSimulator با
-          # SIGABRT می‌میرد و «xcrun simctl» کد ۱۳۴ برمی‌گرداند. با set -e همان یک
-          # خطا کل ساخت IPA را می‌انداخت (سه بار این‌طور شد)؛ پس هر فراخوانی
-          # جداگانه بررسی می‌شود و فقط شکستِ واقعی (هیچ Xcode / xcode-select ناموفق)
-          # باعث exit 1 می‌شود. (رنر اسکریپت را با «bash -e» صدا می‌کند، پس errexit
-          # باید صریحاً خاموش شود؛ «set -uo pipefail» به‌تنهایی آن را خاموش نمی‌کند.)
-          set +e
-          set -uo pipefail
-
-          simctl_has_iphone() {   # $1 = DEVELOPER_DIR
-            local out rc
-            out="$(DEVELOPER_DIR="$1" xcrun simctl list devices available 2>/dev/null)"
-            rc=$?
-            if [ "$rc" -ne 0 ]; then
-              echo "::warning::simctl list devices با کد $rc شکست خورد ($1)"
-              return "$rc"
-            fi
-            printf '%s' "$out" | grep -q iPhone
-          }
-
-          CHOSEN=""
-          for ATTEMPT in 1 2 3; do
-            for X in $(ls -d /Applications/Xcode*.app 2>/dev/null | sort -Vr); do
-              if simctl_has_iphone "$X/Contents/Developer"; then CHOSEN="$X"; break; fi
-              echo "ℹ️  $X شبیه‌سار iPhone در دسترس ندارد (یا simctl خطا داد)"
-            done
-            if [ -n "$CHOSEN" ]; then break; fi
-            echo "::warning::تلاش $ATTEMPT: هیچ Xcode شبیه‌سار iPhone در دسترس نداشت؛ سرویس CoreSimulator تازه می‌شود"
-            sudo pkill -9 -f com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
-            sleep 10
-          done
-
-          if [ -z "$CHOSEN" ]; then
-            CHOSEN="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
-            if [ -z "$CHOSEN" ]; then echo "::error::هیچ Xcode پیدا نشد"; exit 1; fi
-            echo "::warning::هیچ Xcode شبیه‌سار iPhone در دسترس نداشت؛ $CHOSEN انتخاب شد (آزمون دودی رد می‌شود)"
-          fi
-
-          if ! sudo xcode-select -s "$CHOSEN/Contents/Developer"; then
-            echo "::error::xcode-select روی $CHOSEN شکست خورد"; exit 1
-          fi
-          echo "✅ Xcode: $CHOSEN"
-          XCODE_VER="$(xcodebuild -version 2>/dev/null | head -1 || true)"
-          if [ -z "$XCODE_VER" ]; then XCODE_VER="نامشخص (xcodebuild -version خطا داد)"; fi
-          echo "$XCODE_VER"
-          echo "XCODE_VER=$XCODE_VER ($CHOSEN)" >> "$GITHUB_ENV"
-          (xcrun simctl list runtimes 2>&1 | grep -i ios) || echo "::warning::رانتایم iOS فهرست نشد"
-
-      - name: همگام‌سازی فایل‌های وب داخل پروژه‌ی iOS (Eplak/Web)
-        run: bash ios-app/sync-web.sh
-
-      # ── ساخت ۱: شبیه‌ساز (برای آزمون دودی واقعی) ────────────────────────────
-      - name: ساخت برای شبیه‌ساز (بدون امضا)
-        run: |
-          set -euo pipefail
-          xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
-            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
-          ls -l build/Build/Products/Release-iphonesimulator/
-
-      - name: آزمون دودی روی شبیه‌ساز iPhone
-        run: |
-          set -euo pipefail
-          APP="build/Build/Products/Release-iphonesimulator/Eplak.app"
-          [ -d "$APP" ] || { echo "❌ Eplak.app ساخته نشد"; exit 1; }
-          bash ios-app/ci/simulator-smoke.sh "$APP" ios-evidence
-
-      # ── ساخت ۲: دستگاه (برای IPA) ──────────────────────────────────────────
-      - name: ساخت برای دستگاه (archive بدون امضا)
-        run: |
-          set -euo pipefail
-          xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
-            -destination 'generic/platform=iOS' -archivePath build/Eplak.xcarchive \
-            CODE_SIGNING_ALLOWED=NO archive
-          ls -l build/Eplak.xcarchive/Products/Applications/
-
-      - name: بسته‌بندی IPA و پروژه‌ی Xcode
-        run: |
-          set -euo pipefail
-          SRC_APP="build/Eplak.xcarchive/Products/Applications/Eplak.app"
-          [ -d "$SRC_APP" ] || { echo "❌ Eplak.app داخل archive نیست"; exit 1; }
-
-          rm -rf payload && mkdir -p payload/Payload
-          cp -R "$SRC_APP" payload/Payload/
-          (cd payload && zip -qry ../eplak-app-unsigned.ipa Payload)
-          shasum -a 256 eplak-app-unsigned.ipa > eplak-app-unsigned.ipa.sha256
-
-          # پروژه‌ی Xcode همراه «فایل‌های وبِ روز» (Eplak/Web) — کاربر مک فقط
-          # Extract می‌کند و پروژه را در Xcode باز می‌کند (بدون sync-web.sh).
-          rm -f eplak-ios-project.zip
-          zip -qry eplak-ios-project.zip ios-app -x 'ios-app/build/*' -x '*.DS_Store'
-          shasum -a 256 eplak-ios-project.zip > eplak-ios-project.zip.sha256
-
-          {
-            echo "IPA_SIZE=$(du -h eplak-app-unsigned.ipa | cut -f1 | tr -d ' ')"
-            echo "IPA_SHA=$(cut -d' ' -f1 eplak-app-unsigned.ipa.sha256)"
-            echo "PROJECT_ZIP_SIZE=$(du -h eplak-ios-project.zip | cut -f1 | tr -d ' ')"
-          } >> "$GITHUB_ENV"
-          ls -lh eplak-app-unsigned.ipa eplak-ios-project.zip
-
-      # ── بازرسی IPA ────────────────────────────────────────────────────────
-      # «بازرسی IPA» یعنی مطمئن شویم چیزی که منتشر می‌شود واقعاً اپ است:
-      # فایل‌های وبِ داخلش با مخزن یکی است، شناسه‌ی بسته و معماری درست است.
-      # نکته: manifest.json و sw.js عمداً داخل اپ نمی‌روند (مثل اپ اندروید؛
-      # سرویس‌ورکر روی file:// کار نمی‌کند) — پس از فهرست «منابع لازم» بیرون‌اند
-      # و نبودنشان خودش یک بررسی مثبت است.
-      - name: بازرسی IPA (فایل‌های وب = مخزن، شناسه، معماری)
-        run: |
-          set -uo pipefail
-          rm -rf ipa-check && mkdir -p ipa-check
-          unzip -q eplak-app-unsigned.ipa -d ipa-check
-          APP="ipa-check/Payload/Eplak.app"
-          FAIL=0
-          ok()   { echo "✅ $1"; }
-          bad()  { echo "::error::بازرسی IPA: $1"; echo "❌ $1"; FAIL=1; }
-          info() { echo "::notice title=بازرسی IPA::$1"; echo "ℹ️  $1"; }
-
-          [ -f "$APP/Info.plist" ] && ok "Info.plist داخل بسته هست" || bad "Info.plist داخل بسته نیست"
-          [ -f "$APP/Web/index.html" ] && ok "Web/index.html داخل بسته هست" || bad "Web/index.html داخل بسته نیست"
-          { [ -d "$APP/Web/modules" ] && [ -d "$APP/Web/core" ]; } && ok "پوشه‌های core و modules داخل بسته‌اند" || bad "core یا modules داخل بسته نیست"
-
-          # سرویس‌ورکر/مانیفست روی file:// کار نمی‌کنند ⇒ نباید داخل اپ باشند
-          if [ -e "$APP/Web/manifest.json" ] || [ -e "$APP/Web/sw.js" ]; then
-            bad "manifest.json یا sw.js داخل بسته‌ی وب است (سرویس‌ورکر روی file:// کار نمی‌کند)"
-          else
-            ok "manifest.json و sw.js داخل بسته‌ی وب نیستند (درست، مثل اپ اندروید)"
-          fi
-
-          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" 2>/dev/null || echo '')"
-          if [ "$BUNDLE_ID" = "ir.eplak.app" ]; then ok "شناسه‌ی بسته ir.eplak.app است"; else bad "شناسه‌ی بسته ir.eplak.app نیست (بود: ${BUNDLE_ID:-—})"; fi
-          MIN_OS="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist" 2>/dev/null || echo '?')"
-          info "MinimumOSVersion = $MIN_OS"
-
-          ARCH="$(lipo -archs "$APP/Eplak" 2>/dev/null || file "$APP/Eplak" 2>/dev/null | sed 's/.*: //' || echo '?')"
-          case "$ARCH" in
-            *arm64*) ok "معماری arm64 است ($ARCH)" ;;
-            *)       bad "معماری arm64 نیست ($ARCH)" ;;
-          esac
-
-          # هر منبع محلیِ index.html باید داخل بسته باشد (وگرنه صفحه سفید می‌شود).
-          # manifest.json / sw.js / javascript: بیرون گذاشته می‌شوند (عمداً بسته نمی‌شوند).
-          MISSING=0; CHECKED=0
-          for ref in $(grep -oE '(src|href)="[^"]+"' "$APP/Web/index.html" | sed 's/.*="//; s/"$//' \
-                       | grep -vE '^(https?:|//|data:|blob:|#|mailto:|javascript:)' \
-                       | grep -vE '^(manifest\.json|sw\.js)$' | sort -u); do
-            ref="${ref%%\?*}"                      # کش‌باستر (?v=16) را جدا کن
-            CHECKED=$((CHECKED + 1))
-            [ -e "$APP/Web/$ref" ] || { echo "   ❌ $ref داخل بسته نیست"; MISSING=$((MISSING + 1)); }
-          done
-          if [ "$MISSING" -eq 0 ]; then ok "همه‌ی $CHECKED منبع محلیِ index.html داخل بسته هستند"
-          else bad "$MISSING منبع محلیِ index.html داخل بسته نیست (صفحه سفید/خراب می‌شود)"; fi
-
-          # نگهبانِ تعمیرِ اعلان‌ها: همان چیزی که قبلاً روی هاست/اپ قدیمی مانده بود
-          if grep -q 'notifServerNotice' "$APP/Web/modules/live.js" 2>/dev/null; then
-            ok "کدِ نمایش وضعیت اعلان‌ها (notifServerNotice) داخل بسته هست"
-          else
-            bad "modules/live.js داخل بسته کدِ نمایش اعلان‌ها را ندارد (بسته قدیمی است)"
-          fi
-
-          WEB_FILES=$(find "$APP/Web" -type f | wc -l | tr -d ' ')
-          echo "IPA_WEB_FILES=$WEB_FILES" >> "$GITHUB_ENV"
-          info "$WEB_FILES فایل وب داخل IPA است · sha256=$IPA_SHA · حجم=$IPA_SIZE"
-
-          [ "$FAIL" -eq 0 ] || { echo "::error::بازرسی IPA رد شد — منتشر نمی‌شود"; exit 1; }
-          echo "✅ بازرسی IPA کامل شد"
-
-      - name: خلاصه‌ی اجرا
-        if: always()
-        run: |
-          {
-            echo "### اپ iOS — \`eplak-app-unsigned.ipa\` (بدون امضا)"
-            echo
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| حجم IPA | \`${IPA_SIZE:-?}\` |"
-            echo "| فایل‌های وبِ داخل IPA | \`${IPA_WEB_FILES:-?}\` |"
-            echo "| sha256 | \`${IPA_SHA:-?}\` |"
-            echo "| پروژه‌ی Xcode | \`eplak-ios-project.zip\` (\`${PROJECT_ZIP_SIZE:-?}\`) |"
-            echo "| Xcode | \`${XCODE_VER:-?}\` |"
-            echo "| شاخه / کامیت | \`${GITHUB_REF_NAME}\` / \`${GITHUB_SHA}\` |"
-            echo
-            echo "**نصب:** با Sideloadly یا AltStore و Apple ID خودتان (بدون امضا هر ۷ روز تمدید می‌شود)."
-            echo "راهنما: \`docs/IOS_PWA_FA.md\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: پیوست عکس‌ها و گزارش آزمون شبیه‌ساز
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-simulator-evidence
-          path: ios-evidence
-          if-no-files-found: ignore
-          retention-days: 30
-
-      # فقط پس از «آزمون دودی» و «بازرسی IPA» منتشر می‌شود.
-      - name: پیوست به همان ریلیزی که APK هست
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release upload "$RELEASE_TAG" \
-            eplak-app-unsigned.ipa \
-            eplak-app-unsigned.ipa.sha256 \
-            eplak-ios-project.zip \
-            eplak-ios-project.zip.sha256 \
-            --clobber
-          echo "✅ به ریلیز $RELEASE_TAG اضافه/جایگزین شد"
-          # لاگ کامل اجرا همیشه قابل دانلود نیست؛ نتیجه در annotation هم می‌آید.
-          echo "::notice title=IPA::منتشر شد · حجم $IPA_SIZE · sha256=$IPA_SHA · $IPA_WEB_FILES فایل وب · ${XCODE_VER:-?} · شاخه‌ی $GITHUB_REF_NAME · کامیت ${GITHUB_SHA:0:7}"
-          echo "::notice title=دانلود IPA::https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/eplak-app-unsigned.ipa"
+  ipa-fallback:
+    name: ساخت IPA (رانر Intel — فقط اگر اولی به نتیجه نرسید)
+    needs: ipa
+    # !cancelled(): اگر خودِ اجرا لغو شده (push تازه‌تر/دستی) دوباره تلاش نمی‌کند؛
+    # result != success: شکست واقعی ساخت یا «رانر داده نشد» (job به‌صورت cancelled
+    # ثبت می‌شود ولی اجرا لغو نشده) هر دو را می‌گیرد.
+    if: ${{ !cancelled() && needs.ipa.result != 'success' }}
+    uses: ./.github/workflows/ios-build.yml
+    with:
+      runner: macos-15-intel
+      release_tag: v2.0-eplak-update

@@ -8,6 +8,17 @@
   var isInitialNotifs = true;
   var seenNotifIds = new Set();
   var isSyncing = false;
+  var syncStartedAt = 0;   /* زمان شروع آخرین همگام‌سازی (محافظِ قفل‌شدن) */
+
+  /* نسخه‌ی همین اسکریپت (با v= در index.html هم‌خوان است) — همراه هر درخواستِ
+     فهرست اعلان‌ها به سرور می‌رود تا در پنل معلوم باشد هر گوشی چه نسخه‌ای دارد. */
+  var LIVE_VERSION = '22';
+
+  /* نتیجه‌ی آخرین درخواست فهرست اعلان‌ها از نگاه اپ:
+       first | ok:N | http:S | json | net:<پیام کوتاه>
+     با درخواست بعدی (prev=) برای سرور فرستاده می‌شود؛ پس حتی وقتی اپ نمی‌تواند
+     پاسخ را بخواند، پنل → تنظیمات → «ضربان اپ‌ها» دلیلش را نشان می‌دهد. */
+  var lastPollOutcome = 'first';
 
   function apiBase() {
     return (typeof window.EPLAK_API_BASE_URL === 'string' && window.EPLAK_API_BASE_URL)
@@ -158,6 +169,30 @@
       }
     } catch (e) {}
     return null;
+  }
+
+  /* سکوی همین اپ برای «ضربان اپ‌ها» در پنل: android (پل AndroidApp)، ios (پوسته‌ی
+     WKWebView که window.EPLAK_IOS_APP را تزریق می‌کند)، وگرنه web (سایت/PWA). */
+  function appPlatform() {
+    try {
+      if (nativeBridge()) return 'android';
+      if (window.EPLAK_IOS_APP === true) return 'ios';
+    } catch (e) {}
+    return 'web';
+  }
+  window.eplakAppPlatform = appPlatform;
+
+  /* پروژه‌ی فایربیسی که خودِ APK با آن ساخته شده (از google-services.json داخل
+     اپ). اپ‌های قدیمی این متد را ندارند → {} */
+  function nativeFcmProject() {
+    var bridge = nativeBridge();
+    if (!bridge || typeof bridge.getFcmProject !== 'function') return {};
+    try {
+      var parsed = JSON.parse(String(bridge.getFcmProject() || '{}'));
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch (e) {
+      return {};
+    }
   }
 
   /* آیا اعلان سیستمی روی این دستگاه ممکن است؟ */
@@ -664,7 +699,6 @@
     if (typeof renderNotifications === 'function') {
       try { renderNotifications(); } catch (e) {}
     }
-    try { renderDeviceNotice(); } catch (e) {}
 
     /* اگر قبلاً (به‌خاطر قطعی اینترنت) گزارش «خوانده شد» ارسال نشده بود، حالا
        که سرور پاسخ داده دوباره تلاش می‌کنیم */
@@ -717,9 +751,30 @@
     }
   }
 
+  /* ثبت وضعیت آخرین دریافت فهرست (برای پیام حالت خالی و «ضربان اپ‌ها») */
+  function markNotifSync(outcome, data, phone, notice) {
+    notifSync.at = Date.now();
+    notifSync.outcome = String(outcome || '');
+    notifSync.phone = String(phone || '');
+    notifSync.notice = String(notice || '');
+    if (data && typeof data === 'object') {
+      notifSync.count = Number(data.count || (Array.isArray(data.notifications) ? data.notifications.length : 0)) || 0;
+      notifSync.unread = Number(data.unread || 0) || 0;
+    }
+  }
+
+  /* وضعیت خوانا برای صفحه‌ی اعلان‌ها (حالت خالی) و برای عیب‌یابی در گوشی */
+  window.eplakNotificationStatus = function () {
+    return {
+      at: notifSync.at, outcome: notifSync.outcome, count: notifSync.count,
+      unread: notifSync.unread, phone: notifSync.phone, notice: notifSync.notice,
+      platform: appPlatform(), version: LIVE_VERSION
+    };
+  };
+
   async function syncNotifications() {
+    var phone = '';
     try {
-      var phone = '';
       if (typeof getCurrentPhone === 'function') {
         phone = getCurrentPhone();
       }
@@ -733,32 +788,52 @@
          روی سرور با کلید (شماره + دستگاه) ثبت می‌شود. بدون device، کاربر
          مهمان هر بار اعلان‌های خوانده‌شده را دوباره خوانده‌نشده می‌دید و
          «خوانده شد»ها بین چند گوشی یک نفر هم قاطی می‌شد. */
+      /* app/v/prev فقط برای «ضربان اپ‌ها» در پنل است (سرور با آن‌ها چیزی را فیلتر
+         نمی‌کند): کدام اپ، با کدام نسخه، و درخواست قبلی‌اش چه شد. */
       var query = 'phone=' + encodeURIComponent(queryPhone)
                 + '&device=' + encodeURIComponent(deviceId())
+                + '&app=' + encodeURIComponent(appPlatform())
+                + '&v=' + encodeURIComponent(LIVE_VERSION)
+                + '&prev=' + encodeURIComponent(lastPollOutcome)
                 + '&t=' + Date.now();
-      const res = await fetch(apiBase() + '/notifications.php?' + query, { cache: 'no-store' });
+      const res = await fetchWithTimeout(apiBase() + '/notifications.php?' + query,
+        { cache: 'no-store' }, 12000);
       const data = await res.json().catch(function () { return null; });
 
       if (!res.ok || !data || data.success !== true) {
-        /* پیش‌تر این‌جا فقط «false» برگردانده می‌شد و کاربر هیچ سرنخی نداشت که
-           چرا فهرست اعلان‌ها خالی مانده (مثلاً ستون send_id در دیتابیس قدیمیِ
-           هوست وجود نداشت و سرور ۵۰۰ می‌داد). حالا علت/راهنمای سرور در صفحه‌ی
-           اعلان‌ها نشان داده می‌شود و فهرست محلیِ قبلی هم پاک نمی‌شود. */
-        setServerNotificationNotice(
-          (data && (data.hint || data.error))
+        lastPollOutcome = !res.ok ? ('http:' + res.status) : (!data ? 'json' : 'fail');
+        /* پیش‌تر این‌جا فقط «false» برگردانده می‌شد و هیچ سرنخی نمی‌ماند که چرا
+           فهرست اعلان‌ها خالی مانده (مثلاً ستون send_id در دیتابیس قدیمیِ هاست
+           وجود نداشت و سرور ۵۰۰ می‌داد). حالا همان دلیل، در صفحه‌ی اعلان‌ها هم
+           به کاربر نشان داده می‌شود و فهرست محلیِ قبلی هم پاک نمی‌شود. */
+        var failMsg = (data && (data.hint || data.error))
             || (!res.ok ? 'سرور اعلان‌ها پاسخ خطا داد (کد ' + res.status + '). کمی بعد دوباره تلاش می‌شود.' : '')
-            || 'خواندن اعلان‌ها از سرور ممکن نشد.'
-        );
+            || 'خواندن اعلان‌ها از سرور ممکن نشد.';
+        setServerNotificationNotice(failMsg);
+        markNotifSync(lastPollOutcome, null, phone, failMsg);
         return false;
       }
 
       /* degraded = دیتابیس سرور قدیمی است و اعلان‌ها در «حالت سازگار» می‌آیند */
-      setServerNotificationNotice(
-        (Array.isArray(data.degraded) && data.degraded.length && data.hint) ? data.hint : ''
-      );
-      applyNotifications(data.notifications || []);
+      var degradedMsg = (Array.isArray(data.degraded) && data.degraded.length && data.hint) ? data.hint : '';
+      setServerNotificationNotice(degradedMsg);
+      var list = Array.isArray(data.notifications) ? data.notifications : [];
+      lastPollOutcome = 'ok:' + list.length;
+      markNotifSync(lastPollOutcome, data, phone, degradedMsg);
+      applyNotifications(list);
       return true;
     } catch (e) {
+      /* ⚠️ پیش‌تر این‌جا هیچ پیامی ساخته نمی‌شد: اگر درخواست به سرور نمی‌رسید
+         (اینترنت، فایروال هاست، یا مهلت تمام‌شدن)، کاربر فقط یک فهرست خالی
+         می‌دید و هیچ سرنخی برای «چرا» نداشت. حالا دلیل روی همان صفحه نوشته
+         می‌شود (و در «ضربان اپ‌ها»‌ی پنل هم به‌صورت prev=net:… می‌ماند). */
+      var errText = String((e && (e.name || e.message)) || 'error');
+      lastPollOutcome = 'net:' + errText.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 24);
+      var netMsg = (e && e.name === 'AbortError')
+        ? 'سرور اعلان‌ها در مهلت مقرر پاسخ نداد؛ اتصال اینترنت را بررسی کنید.'
+        : 'ارتباط با سرور اعلان‌ها برقرار نشد؛ اتصال اینترنت را بررسی کنید.';
+      setServerNotificationNotice(netMsg);
+      markNotifSync(lastPollOutcome, null, phone, netMsg);
       return false;
     }
   }
@@ -775,8 +850,16 @@
   }
 
   window.syncLiveContent = async function () {
-    if (isSyncing) return;
+    if (isSyncing) {
+      /* محافظِ «قفل‌شدنِ همگام‌سازی»: اگر یک درخواست پیشین هر دلیلی معلق بماند
+         (نسخه‌های قدیمی WebView، اینترنت نیمه‌قطع)، بدون این محافظ isSyncing
+         برای همیشه true می‌ماند و از آن لحظه هیچ اعلانی خوانده نمی‌شود — یعنی
+         فهرست اعلان‌های اپ خالی می‌ماند تا اپ بسته و باز شود. */
+      if (Date.now() - syncStartedAt < 45000) return;
+      isSyncing = false;
+    }
     isSyncing = true;
+    syncStartedAt = Date.now();
     try {
       await syncNotifications();
       await syncReportsLive();
@@ -827,18 +910,30 @@
      register_fcm و push.php?action=config). بدون این، اپ حتی وقتی سرور کلید نداشت
      «✅ ثبت شده است» می‌گفت و کاربر دلیل نرسیدن اعلان را نمی‌فهمید. */
   var fcmState = { token: false, registered: false, attached: false, phone: '', reason: '',
-                   attempts: 0, at: 0, serverReady: null, serverReason: '' };
+                   attempts: 0, at: 0, serverReady: null, serverReason: '',
+                   /* پروژه‌ی فایربیس اپ (از خود APK) و پروژه‌ی کلید سرویس روی سرور؛
+                      projectMatch=false یعنی گوگل ارسال را با SenderId mismatch رد می‌کند */
+                   appProject: '', keyProject: '', projectMatch: null };
   /* پیام سرور درباره‌ی وضعیت جدول اعلان‌ها (دیتابیس قدیمی/خطای خواندن).
-     در renderDeviceNotice زیر وضعیت اعلان گوشی نمایش داده می‌شود. */
+     کادر نمایشِ آن در صفحه‌ی اعلان‌ها به درخواست مالک حذف شد؛ متن پیام این‌جا
+     نگه داشته می‌شود و در صفحه‌ی «اعلان‌ها» فقط وقتی فهرست خالی است (یا خطایی
+     رخ داده) به‌صورت یک خط کوتاه نشان داده می‌شود — بدون هیچ دکمه/کادر اضافه. */
   var serverNoticeLine = '';
+  /* وضعیت آخرین «دریافت فهرست اعلان‌ها» — برای اینکه «فهرست خالیِ بی‌توضیح»
+     هرگز برای کاربر پیش نیاید. */
+  var notifSync = { at: 0, outcome: 'first', count: 0, unread: 0, phone: '', notice: '' };
   var fcmRetryTimer = null;
   var fcmRetryCount = 0;
   var fcmInFlight = null;
   var FCM_FORM_HEADERS = { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' };
 
-  /* fetch با مهلت: اگر اینترنت گوشی «گیر» کند، درخواست ثبت گوشی نباید تا ابد
-     معلق بماند و ثبت‌های بعدی را هم پشت خودش نگه دارد. */
-  function fcmFetch(url, options, timeoutMs) {
+  /* fetch با مهلت: اگر اینترنت گوشی «گیر» کند، هیچ درخواستی نباید تا ابد معلق
+     بماند و بقیه را پشت خودش نگه دارد.
+
+     ⚠️ برای «فهرست اعلان‌ها» هم همین لازم بود: یک درخواست معلق، حلقه‌ی
+     همگام‌سازی (isSyncing) را قفل می‌کرد و از آن به بعد هیچ اعلانی خوانده
+     نمی‌شد — یعنی فهرست اعلان‌های اپ تا بسته/باز شدن دوباره خالی می‌ماند. */
+  function fetchWithTimeout(url, options, timeoutMs) {
     var opts = options || {};
     var timer = null;
     try {
@@ -855,6 +950,10 @@
       if (timer) clearTimeout(timer);
       throw err;
     });
+  }
+
+  function fcmFetch(url, options, timeoutMs) {
+    return fetchWithTimeout(url, options, timeoutMs);
   }
 
   /* ارسال یک درخواست به api/push.php: اول «فرم ساده»؛ اگر فایروال/پروکسی هاست آن را
@@ -885,7 +984,6 @@
     fcmState.reason = reason;
     fcmState.attempts += 1;
     fcmState.at = Date.now();
-    try { renderDeviceNotice(); } catch (e) {}
     return { ok: false, reason: reason, details: details };
   }
 
@@ -947,7 +1045,15 @@
     }
 
     try {
-      var sent = await postFcm({ action: 'register_fcm', phone: phone, token: token, platform: 'android' }, 20000);
+      var fields = { action: 'register_fcm', phone: phone, token: token, platform: 'android' };
+      /* اپ می‌گوید با کدام پروژه‌ی فایربیس ساخته شده تا سرور «کلید از پروژه‌ی
+         دیگر» را همان لحظه تشخیص دهد (به‌جای ۴۰۳ SenderId mismatch هنگام ارسال). */
+      var project = nativeFcmProject();
+      if (project.project_id) fields.project_id = String(project.project_id);
+      if (project.sender_id) fields.sender_id = String(project.sender_id);
+      if (project.project_id) fcmState.appProject = String(project.project_id);
+
+      var sent = await postFcm(fields, 20000);
       var data = sent.data;
       if (data && data.success === true) {
         try {
@@ -962,9 +1068,13 @@
         fcmState.at = Date.now();
         if (typeof data.fcm_ready === 'boolean') fcmState.serverReady = data.fcm_ready;
         fcmState.serverReason = String(data.fcm_reason || '');
+        if (data.key_project) fcmState.keyProject = String(data.key_project);
+        if (typeof data.project_match === 'boolean') fcmState.projectMatch = data.project_match;
+        if (data.project_match === false) {
+          console.warn('[fcm] کلید سرویس فایربیس سرور از پروژه‌ی دیگری است: ' + fcmState.serverReason);
+        }
         console.log('[fcm] دستگاه اپ ثبت شد');
-        try { renderDeviceNotice(); } catch (e) {}
-        return { ok: true, devices: data.devices, fcm_ready: data.fcm_ready, attached: data.attached };
+        return { ok: true, devices: data.devices, fcm_ready: data.fcm_ready, attached: data.attached, project_match: data.project_match };
       }
       scheduleFcmRetry();
       return fcmFail('server', data && data.error);
@@ -1049,71 +1159,11 @@
       .catch(function () { return { ok: false, reason: 'network' }; });
   };
 
-  /* دکمه‌ی «تست اعلان» در صفحه‌ی اعلان‌ها: همین گوشی را در سرور می‌سنجد و
-     یک اعلان آزمایشی به «همین گوشی» می‌فرستد. خروجی: {ok, message, code} */
-  async function sendTestPush() {
-    var bridge = nativeBridge();
-    if (!bridge || typeof bridge.getFcmToken !== 'function') {
-      return { ok: false, code: 'not_android_app', message: 'این امکان فقط داخل اپ اندروید ای‌پلاک کار می‌کند.' };
-    }
-    var token = readFcmToken(bridge);
-    if (!token) {
-      return { ok: false, code: 'no_fcm_token', message: 'هنوز شناسه‌ی اعلان از گوگل به گوشی نرسیده است. اینترنت و Google Play Services را بررسی کنید و چند ثانیه بعد دوباره امتحان کنید.' };
-    }
-    if (!fcmState.registered) {
-      await registerAppDevice(true);
-    }
-    try {
-      var sentTest = await postFcm({ action: 'test', token: token, phone: currentPhoneSafe() }, 25000);
-      var res = sentTest.res;
-      var data = sentTest.data;
-      if (!data) {
-        return { ok: false, code: 'server', message: 'پاسخ سرور نامعتبر بود (کد ' + res.status + '). چند لحظه بعد دوباره امتحان کنید.' };
-      }
-      if (data.success === true) {
-        return { ok: true, code: 'sent', message: 'اعلان آزمایشی ارسال شد. اگر چند ثانیه بعد در نوار اعلان‌های گوشی نیامد، اجازه‌ی اعلان و «صرفه‌جویی باتری» ای‌پلاک را در تنظیمات گوشی بررسی کنید.' };
-      }
-      var messages = {
-        no_device: 'این گوشی هنوز در سرور ثبت نشده است؛ چند ثانیه صبر کنید و دوباره امتحان کنید.',
-        fcm_off: 'سرور هنوز برای ارسال اعلان گوشی تنظیم نشده است (کلید فایربیس در پنل مدیریت).',
-        google_error: 'سرور سایت به گوگل دسترسی ندارد؛ این مشکل از سمت هاست است و باید توسط مدیر رفع شود.',
-        failed: data.hint || data.error || 'گوگل اعلان را نپذیرفت.'
-      };
-      var text = messages[data.outcome] || data.hint || data.error || 'ارسال اعلان آزمایشی ناموفق بود.';
-      if (res.status === 429) text = data.error || 'چند ثانیه صبر کنید و دوباره امتحان کنید.';
-      return { ok: false, code: data.outcome || 'failed', message: text };
-    } catch (e) {
-      return { ok: false, code: 'network', message: 'اتصال اینترنت برقرار نیست.' };
-    }
-  }
+  /* کادر وضعیتِ بالای صفحه‌ی اعلان‌ها (با دکمه‌های ارسال اعلان آزمایشی و باز کردن
+     تنظیمات اعلان گوشی) به درخواست مالک حذف شد؛ توابع آن دکمه‌ها هم همراهش رفتند.
+     ثبت گوشی در سرور، تلاش مجدد و وضعیت عیب‌یابی (eplakPushState) دست‌نخورده‌اند. */
 
-  /* نتیجه‌ی آخرین «تست اعلان»؛ با هر بازنویسی کادر وضعیت از بین نمی‌رود */
-  var pushTestLine = '';
-  var pushTestCode = '';
-
-  window.eplakTestPushClick = async function (button) {
-    if (button) button.disabled = true;
-    pushTestLine = '⏳ در حال ارسال اعلان آزمایشی…';
-    pushTestCode = 'pending';
-    renderDeviceNotice();
-    var result = await sendTestPush();
-    pushTestLine = (result.ok ? '✅ ' : '⚠️ ') + result.message;
-    pushTestCode = result.code || '';
-    renderDeviceNotice();
-    return result;
-  };
-
-  window.eplakOpenNotificationSettings = function () {
-    try {
-      if (window.AndroidApp && typeof window.AndroidApp.openNotificationSettings === 'function') {
-        window.AndroidApp.openNotificationSettings();
-        return true;
-      }
-    } catch (e) {}
-    return false;
-  };
-
-  /* وضعیت فعلی ثبت گوشی برای نمایش (و برای عیب‌یابی) */
+  /* وضعیت فعلی ثبت گوشی برای عیب‌یابی (در کنسول/ریموت دیباگ: eplakPushState()) */
   window.eplakPushState = function () {
     var diag = null;
     try {
@@ -1126,6 +1176,15 @@
       phone: fcmState.phone, reason: fcmState.reason, attempts: fcmState.attempts,
       /* وضعیتِ سمتِ سرور: آیا «کلید سرویس فایربیس» هست و اعلانِ حالتِ بسته می‌رسد؟ */
       serverReady: fcmState.serverReady, serverReason: fcmState.serverReason,
+      /* پروژه‌ی فایربیس اپ در برابر پروژه‌ی کلید سرویس سرور (false = SenderId mismatch) */
+      appProject: fcmState.appProject, keyProject: fcmState.keyProject, projectMatch: fcmState.projectMatch,
+      /* آخرین پیام سرور درباره‌ی جدول اعلان‌ها (دیتابیس قدیمی/خطای خواندن) */
+      serverNotice: serverNoticeLine,
+      /* نتیجه‌ی آخرین دریافت فهرست اعلان‌ها (ok:N / http:S / json / net:…) و سکوی اپ */
+      lastPoll: lastPollOutcome, platform: appPlatform(), version: LIVE_VERSION,
+      /* وضعیت کامل فهرست اعلان‌ها: شماره‌ای که اپ فرستاد، تعداد ردیف‌های برگشته،
+         و پیامی که در صفحه‌ی اعلان‌ها (حالت خالی) به کاربر نشان داده می‌شود */
+      notifSync: window.eplakNotificationStatus(),
       at: fcmState.at, native: diag
     };
   };
@@ -1306,16 +1365,8 @@
   }
   window.markNotificationsRead = markNotificationsRead;
 
-  /* وضعیت «ثبت گوشی روی سرور» به زبان کاربر */
-  function fcmStateKey() {
-    if (fcmState.registered) return currentPhoneSafe() ? 'registered' : 'guest';
-    if (fcmState.reason === 'no_fcm_token') return 'no_token';
-    if (fcmState.reason === 'server' || fcmState.reason === 'network' || fcmState.reason === 'exception') return 'error';
-    return 'pending';
-  }
-
   /* پرس‌وجوی «آماده بودنِ فایربیس روی سرور» — مستقل از ثبت توکن، تا حتی اگر
-     ثبت ناموفق بود هم دلیلِ واقعی (نبودِ کلید سرویس) به کاربر نشان داده شود. */
+     ثبت ناموفق بود هم دلیلِ واقعی (نبودِ کلید سرویس) در eplakPushState دیده شود. */
   function refreshServerFcmState(cachedOnly) {
     if (!nativeBridge()) return Promise.resolve(null);
     /* در حالتِ سبک‌بار (ثبتِ تکراری) هیچ درخواستِ تازه‌ای زده نمی‌شود */
@@ -1324,114 +1375,43 @@
       if (!cfg) return null;
       if (typeof cfg.fcm_ready === 'boolean') fcmState.serverReady = cfg.fcm_ready;
       fcmState.serverReason = String(cfg.fcm_reason || '');
-      try { renderDeviceNotice(); } catch (e) {}
+      if (cfg.fcm_key_project) fcmState.keyProject = String(cfg.fcm_key_project);
+      if (typeof cfg.fcm_project_match === 'boolean' && fcmState.projectMatch === null) {
+        fcmState.projectMatch = cfg.fcm_project_match;
+      }
       return cfg;
     }).catch(function () { return null; });
   }
 
-  function fcmStatusText() {
-    switch (fcmStateKey()) {
-      case 'registered':
-        if (fcmState.serverReady === false) {
-          return '⚠️ این گوشی ثبت شده است، اما سمتِ سرور برای اعلانِ فایربیس آماده نیست'
-               + (fcmState.serverReason ? ' (' + fcmState.serverReason + ')' : '')
-               + '. تا مدیر «کلید سرویس فایربیس» را در پنل → تنظیمات وارد کند، اعلان فقط '
-               + 'داخل برنامه و تا وقتی اپ باز است می‌رسد.';
-        }
-        return '✅ این گوشی برای اعلان گزارش‌های شما ثبت شده است.';
-      case 'guest': return 'ℹ️ برای دریافت اعلان گزارش‌هایتان، وارد حساب خود شوید.';
-      case 'no_token': return '⏳ در حال دریافت شناسه‌ی اعلان از گوگل… اگر این پیام می‌ماند، اینترنت و Google Play Services گوشی را بررسی کنید.';
-      case 'error': return '⚠️ ثبت گوشی در سرور انجام نشد؛ چند لحظه بعد خودکار دوباره تلاش می‌شود.';
-      default: return '⏳ در حال آماده‌سازی اعلان گوشی…';
-    }
-  }
-
   /* ───────────────────────────────────────────────────────────
-     پیام وضعیت اعلان برای کاربر (صفحه‌ی اعلان‌ها)
-
-     در اپ اندرویدِ WebView، اندروید «Push API» و «Notification API» ندارد؛ پس
-     این‌جا صادقانه به کاربر می‌گوییم اعلان سیستمی در چه حالتی می‌رسد و چه کاری
-     برای رسیدن اعلان در حالت «بسته بودن کامل اپ» لازم است.
+     کادر «وضعیت اعلان روی همین دستگاه» در بالای صفحه‌ی اعلان‌ها (متن وضعیت،
+     خط ثبت گوشی، دکمه‌های اعلان آزمایشی و تنظیمات اعلان گوشی، هشدار کلید
+     فایربیس و پیام سرور) به درخواست مالک «کلاً» حذف شد.
+     صفحه‌ی اعلان‌ها حالا فقط فهرست اعلان‌هاست. چیزی که باقی مانده:
+       • اجازه‌ی اعلان همچنان با اولین لمس کاربر خودکار پرسیده می‌شود (promptPerm)
+       • ثبت گوشی در سرور، تلاش مجدد و جداکردن هنگام خروج، بدون تغییر
+       • وضعیت عیب‌یابی فقط برنامه‌نویسی است: window.eplakPushState()
+       • پیام سرور درباره‌ی جدول اعلان‌ها فقط در کنسول و eplakPushState().serverNotice
   ─────────────────────────────────────────────────────────── */
-  function renderDeviceNotice() {
-    var box = document.getElementById('notifDeviceNotice');
-    if (!box) return;
 
-    var cap = pushCapability();
-    var text = '';
-
-    if (cap.kind === 'android_native') {
-      var enabled = true;
-      try {
-        if (window.AndroidApp && typeof window.AndroidApp.notificationsEnabled === 'function') {
-          enabled = !!window.AndroidApp.notificationsEnabled();
-        }
-      } catch (e) {}
-      var btn = 'border:0;background:#ea580c;color:#fff;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:4px 0 0 6px;';
-      var settingsBtn = '<button type="button" onclick="eplakOpenNotificationSettings()" style="' + btn + '">تنظیمات اعلان گوشی</button>';
-      if (enabled) {
-        /* جمله‌ی «اعلان گوشی کاملاً فعال است» عمداً نوشته نمی‌شود؛ تا وقتی
-           رسیدن اعلان در حالت بسته بودن کامل اپ روی گوشی کاربر تأیید نشده،
-           چنین ادعایی درست نیست. به‌جایش وضعیت «واقعی» ثبت گوشی نشان داده می‌شود
-           و دکمه‌ی «تست اعلان» رسیدن اعلان را عملاً می‌سنجد. */
-        text = '🔔 اعلان‌های داخل برنامه فعال است و اعلان‌های تازه در همین فهرست نمایش داده می‌شوند. '
-             + 'اگر اعلان را در نوار اعلان‌های گوشی نمی‌بینید: در تنظیمات گوشی → برنامه‌ها → ای‌پلاک → اعلان‌ها، اجازه‌ی اعلان را روشن کنید و آخرین نسخه‌ی اپ را نصب کنید.'
-             + '<div id="notifPushStatus" data-state="' + escapeText(fcmStateKey()) + '" style="margin-top:8px;font-weight:600;">' + escapeText(fcmStatusText()) + '</div>'
-             + '<button type="button" id="notifPushTestBtn" onclick="eplakTestPushClick(this)" style="' + btn + '">تست اعلان</button>'
-             + settingsBtn
-             + (pushTestLine ? '<div id="notifPushTestResult" data-code="' + escapeText(pushTestCode) + '" style="margin-top:8px;">' + escapeText(pushTestLine) + '</div>' : '');
-      } else {
-        text = '🔕 برای دریافت اعلان روی گوشی، اجازه‌ی اعلان را به این برنامه بدهید. '
-             + '<button type="button" onclick="requestPushPermission()" style="' + btn + '">فعال‌سازی اعلان</button>'
-             + settingsBtn;
-      }
-      /* اگر سرور کلیدِ فایربیس نداشته باشد، اعلان در حالت «بسته بودن اپ» هرگز
-         نمی‌رسد — صریح گفته می‌شود (پیش از این بی‌صدا بود). */
-      if (fcmState.serverReady === false) {
-        text += '<div id="notifFcmServer" data-state="server_fcm_off" style="margin-top:8px;font-weight:700;color:#b91c1c;">'
-              + '⚠️ اعلان در حالت بسته بودن اپ غیرفعال است: سمتِ سرور «کلید سرویس فایربیس» ندارد'
-              + (fcmState.serverReason ? ' — ' + escapeText(fcmState.serverReason) : '')
-              + '. این مورد با تنظیمات گوشی درست نمی‌شود؛ مدیر باید کلید را در پنل → تنظیمات وارد کند.</div>';
-      }
-    } else if (cap.kind === 'unsupported') {
-      text = '📵 این دستگاه امکان اعلان پس‌زمینه ندارد؛ اعلان‌های تازه در فهرست اعلان‌های همین برنامه نمایش داده می‌شوند.';
-    } else if (cap.permission === 'granted') {
-      text = '🔔 اعلان‌های تازه در فهرست اعلان‌های همین برنامه نمایش داده می‌شوند.';
-    } else if (cap.permission === 'denied') {
-      text = '🔕 اعلان این دستگاه توسط شما رد شده است. برای فعال‌سازی، در تنظیمات مرورگر اجازه‌ی اعلان این سایت را بدهید.';
-    } else {
-      text = '🔔 برای دریافت اعلان روی همین دستگاه، اجازه‌ی اعلان را بدهید. '
-           + '<button type="button" onclick="requestPushPermission()" style="border:0;background:#ea580c;color:#fff;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">فعال‌سازی اعلان</button>';
-    }
-
-    if (serverNoticeLine) {
-      text += '<div id=\"notifServerNotice\" data-state=\"server\" style=\"margin-top:8px;font-weight:600;color:#b91c1c;\">⚠️ '
-            + escapeText(serverNoticeLine) + '</div>';
-    }
-
-    box.innerHTML = text;
-    box.style.display = 'block';
-  }
-  window.renderDeviceNotice = renderDeviceNotice;
-
-  /* پیام وضعیتِ سمت سرور را در صفحه‌ی اعلان‌ها نشان می‌دهد (خالی = پاک می‌شود) */
+  /* پیام وضعیتِ سمت سرور را نگه می‌دارد (خالی = پاک می‌شود)؛ نمایشی در صفحه ندارد */
   function setServerNotificationNotice(message) {
     var next = String(message || '').trim();
     if (next === serverNoticeLine) return;
     serverNoticeLine = next;
-    try { renderDeviceNotice(); } catch (e) {}
+    if (next) console.warn('[notifications] سرور: ' + next);
   }
   window.setServerNotificationNotice = setServerNotificationNotice;
 
-  /* نتیجه‌ی درخواست اجازه‌ی اعلان — هم از لایه‌ی وب و هم از خود اندروید صدا زده می‌شود */
+  /* نتیجه‌ی درخواست اجازه‌ی اعلان — هم از لایه‌ی وب و هم از خود اندروید
+     (MainActivity ← notificationPermissionLauncher) صدا زده می‌شود. اگر کاربر اجازه
+     داد، اشتراک/ثبت همان لحظه انجام می‌شود؛ چیزی برای نمایش در صفحه نیست. */
   window.eplakNativePermissionResult = function (granted) {
-    renderDeviceNotice();
     if (granted) {
       subscribeToPush({});
     }
   };
   window.eplakOnPushResult = function (result) {
-    renderDeviceNotice();
     return result;
   };
 
@@ -1506,16 +1486,12 @@
       if (!document.hidden) {
         syncPushSubscription();
         syncNotifications();
-        renderDeviceNotice();
         /* اگر کاربر در این فاصله وارد شده یا توکن تازه ساخته شده، دوباره ثبت می‌کنیم
            (شمارنده‌ی تلاش‌های ناموفق صفر می‌شود تا تلاش‌ها از نو شروع شوند) */
         fcmRetryCount = 0;
         registerAppDevice(false);
       }
     });
-
-    /* نمایش وضعیت اعلان روی همین دستگاه در صفحه‌ی اعلان‌ها */
-    renderDeviceNotice();
   }
 
   if (document.readyState === 'loading') {

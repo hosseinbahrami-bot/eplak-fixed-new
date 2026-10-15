@@ -165,7 +165,7 @@ CI همان فایل به‌عنوان **Artifact** هم برای شاخه‌ه�
 
 **الف) پروژه‌ی رایگان فایربیس بسازید**
 1. <https://console.firebase.google.com> → **Add project** (مثلاً به نام `eplak`).
-2. داخل پروژه → آیکن **Android** → نام بسته را دقیقاً `com.example.eplakfixed` بگذارید → **Register app**.
+2. داخل پروژه → آیکن **Android** → نام بسته را دقیقاً `com.eplak` بگذارید → **Register app**.
 3. فایل **`google-services.json`** را دانلود کنید.
 
 **ب) فایل را در پروژه بگذارید (تا APK با فایربیس ساخته شود)** ✅ انجام شده

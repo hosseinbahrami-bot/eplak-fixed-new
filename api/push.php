@@ -56,9 +56,14 @@ try {
                 'vapid_public_key' => $vapid['public'],
                 'reason'          => $vapid['ready'] ? '' : $vapid['error'],
                 'secure_context_required' => true,
-                /* مسیر اعلان سیستمی برای اپ اندروید (فایربیس) */
-                'fcm_ready'       => $fcm['ready'],
-                'fcm_reason'      => $fcm['ready'] ? '' : $fcm['error'],
+                /* مسیر اعلان سیستمی برای اپ اندروید (فایربیس).
+                   fcm_ready فقط وقتی true است که کلید معتبر باشد «و» از همان پروژه‌ی
+                   APK باشد؛ وگرنه گوگل هر ارسال را با SenderId mismatch رد می‌کند. */
+                'fcm_ready'       => $fcm['ready'] && $fcm['project_match'] !== false,
+                'fcm_reason'      => !$fcm['ready'] ? $fcm['error'] : ($fcm['project_match'] === false ? $fcm['warning'] : ''),
+                'fcm_key_project' => $fcm['project_id'],
+                'fcm_app_project' => $fcm['app_project'],
+                'fcm_project_match' => $fcm['project_match'],
             ]);
         }
 
@@ -84,13 +89,15 @@ try {
                 ];
             }
 
+            $fcm = eplakFcmConfig($pdo);
             eplakJson([
                 'success'       => true,
                 'devices'       => count($subs) + count($tokens),
                 'browser_devices' => count($subs),
                 'app_devices'   => count($tokens),
                 'push_enabled'  => eplakPushEnabled(),
-                'fcm_ready'     => eplakFcmConfig($pdo)['ready'],
+                'fcm_ready'     => $fcm['ready'] && $fcm['project_match'] !== false,
+                'fcm_project_match' => $fcm['project_match'],
                 'device'        => $device,
             ]);
         }
@@ -128,11 +135,28 @@ try {
             }
             $detach = in_array(strtolower($in('detach')), ['1', 'true', 'yes'], true);
             $platform = $in('platform') !== '' ? $in('platform') : 'android';
-            if (!eplakFcmSaveToken($pdo, $phone, $token, $platform, $detach)) {
+            /* اپ می‌گوید با کدام پروژه‌ی فایربیس ساخته شده (google-services.json داخل APK)؛
+               سرور آن را کنار توکن نگه می‌دارد تا «کلید از پروژه‌ی دیگر» بی‌درنگ معلوم شود. */
+            $appProject = eplakFcmCleanProjectId($in('project_id'));
+            if (!eplakFcmSaveToken($pdo, $phone, $token, $platform, $detach, $appProject)) {
                 eplakJsonError('ذخیره‌ی توکن دستگاه ناموفق بود', 400);
             }
             $fcm  = eplakFcmConfig($pdo);
             $info = eplakFcmTokenInfo($pdo, $token);
+
+            $projectMatch = $fcm['project_match'];
+            if ($fcm['ready'] && $appProject !== '') {
+                /* گزارش خودِ گوشی دقیق‌تر از ثابتِ مخزن است */
+                $projectMatch = ($appProject === (string) $fcm['project_id']);
+            }
+            $ready  = $fcm['ready'] && $projectMatch !== false;
+            $reason = '';
+            if (!$fcm['ready']) {
+                $reason = $fcm['error'];
+            } elseif ($projectMatch === false) {
+                $reason = eplakFcmProjectMismatchText((string) $fcm['project_id'], $appProject !== '' ? $appProject : (string) $fcm['app_project']);
+            }
+
             eplakJson([
                 'success'   => true,
                 'saved'     => true,
@@ -140,8 +164,11 @@ try {
                 /* اتصال این گوشی به شماره‌ی کاربر (برای اعلان‌های شخصی) */
                 'attached'  => $info !== null && (string) ($info['user_phone'] ?? '') !== '',
                 'devices'   => $phone !== '' ? count(eplakFcmTokens($pdo, [$phone])) : 0,
-                'fcm_ready' => $fcm['ready'],
-                'fcm_reason' => $fcm['ready'] ? '' : $fcm['error'],
+                'fcm_ready' => $ready,
+                'fcm_reason' => $reason,
+                'app_project' => $appProject !== '' ? $appProject : (string) $fcm['app_project'],
+                'key_project' => (string) $fcm['project_id'],
+                'project_match' => $projectMatch,
             ]);
         }
 

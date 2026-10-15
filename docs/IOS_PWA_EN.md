@@ -116,7 +116,7 @@ sign and publish it with their enterprise/Ad-Hoc certificate. I have not tested 
   The app reads the location itself through CoreLocation (the `GeoBridge`), so the iOS permission dialog appears only once. (Without this bridge WebKit showed a dialog
   with “the path of index.html inside the app” on every request — seen in the simulator test and fixed.)
 - **Neshan:** “Route with Neshan” opens a `neshan://…` link; if the Neshan app is not installed, the Neshan web version opens in Safari a moment later.
-- **Updates:** the web files inside the IPA go in at build time just like the APK; every change rebuilds the IPA (`.github/workflows/ios-ipa.yml`)
+- **Updates:** the web files inside the IPA go in at build time just like the APK; every change rebuilds the IPA (`.github/workflows/ios-ipa.yml` → build body in `ios-build.yml`: first on an Apple Silicon runner, and automatically once more on an Intel runner if GitHub gives no runner or the build fails)
   and republishes the PWA on Pages (`pwa.yml`). The server (PHP) always comes from the host and is updated by uploading the host package.
 
 ---
