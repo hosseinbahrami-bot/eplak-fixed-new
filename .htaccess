@@ -62,6 +62,19 @@ AddDefaultCharset UTF-8
   </IfModule>
 </FilesMatch>
 
+# --- فایل‌های فقط-توسعه از مخزن حذف شده‌اند؛ اگر نسخه‌ی قدیمی‌شان روی هاست
+# --- مانده باشد، از وب بسته می‌شوند (router_admin.php روتر پیش‌نمایش محلی بود
+# --- و preview-hub.html صفحه‌ی پیش‌نمایش توسعه).
+<FilesMatch "^(router_admin\.php|preview-hub\.html)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
 # --- پوشه‌های داخلی: هیچ دسترسی مستقیمی از مرورگر نداشته باشند -------------
 <IfModule mod_alias.c>
   RedirectMatch 404 ^/.*/(data|shared|docs|android-app|backend)(/|$)

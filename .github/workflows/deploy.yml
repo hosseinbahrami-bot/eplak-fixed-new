@@ -123,6 +123,8 @@ jobs:
           rm -rf data uploads
           rm -f shared/config.php
           rm -f .gitignore .gitattributes INSTALL_GUIDE_FA.md
+          # فایل‌های فقط-توسعه (اگر روزی به مخزن برگردند) روی هاست عمومی نروند:
+          rm -f router_admin.php preview-hub.html
           rm -f eplak-fixed-update.zip eplak-fixed-update.zip.sha256
           rm -f eplak-app.apk eplak-app.apk.sha256 eplak-app-unsigned.ipa eplak-ios-project.zip
           rm -f docs/README.md docs/technical-architecture.md

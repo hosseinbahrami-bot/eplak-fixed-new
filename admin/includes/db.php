@@ -9,13 +9,39 @@ try {
        برای فراخوان‌های JSON (API) همان خطا به‌صورت JSON برمی‌گردد. */
     if (PHP_SAPI !== 'cli' && !headers_sent()) {
         http_response_code(500);
+        /* اپ (WebView اندروید و وب) درخواست را با Content-Type: text/plain و بدون
+           Accept: application/json می‌فرستد. اگر در این حالت صفحه‌ی HTML خطا بگیرد،
+           JSON پارس نمی‌شود و کاربر فقط «ارسال کد تایید انجام نشد» می‌بیند، بی‌آنکه
+           بداند دلیلش «نبودِ shared/config.php روی هاست تازه» است. پس همه‌ی
+           اندپوینت‌های api/ بدون قیدِ سرآیند، JSON می‌گیرند. */
+        $scriptName = str_replace('\\', '/', (string)($_SERVER['SCRIPT_NAME'] ?? ''));
         $wantsJson = (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest')
-            || (stripos((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json') !== false);
+            || (stripos((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json') !== false)
+            || (stripos((string)($_SERVER['CONTENT_TYPE'] ?? ''), 'json') !== false)
+            || (preg_match('#(^|/)api/[^/]+\\.php$#', $scriptName) === 1);
         if ($wantsJson) {
             header('Content-Type: application/json; charset=utf-8');
+            /* پیامِ فارسیِ actionable در «error» می‌آید؛ چون اپِ نصب‌شده (با کدِ قدیمی)
+               همان data.error را در toast نشان می‌دهد ⇒ بدون نیاز به نصبِ نسخه‌ی تازه،
+               دلیلِ واقعی روی گوشی کاربر دیده می‌شود. */
+            $rootDir = dirname(__DIR__, 2);
+            $hasConfig = is_file($rootDir . '/shared/config.php');
+            $apiDir = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
+            $siteDir = (basename($apiDir) === 'api') ? rtrim(dirname($apiDir), '/') : $apiDir;
+            $isHttps = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+                || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+            $setupUrl = ($isHttps ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'localhost')
+                . ($siteDir === '' || $siteDir === '/' ? '' : $siteDir) . '/setup.php';
             echo json_encode([
-                'error'   => 'database_unavailable',
-                'message' => $e->getMessage(),
+                'success'   => false,
+                'error'     => $hasConfig
+                    ? 'اتصال به دیتابیس سایت برقرار نیست؛ اطلاعات دیتابیس در shared/config.php یا سرویس MySQL را بررسی کنید (صفحه‌ی setup.php وضعیت را نشان می‌دهد).'
+                    : 'سایت روی این هاست هنوز راه‌اندازی نشده است: فایل shared/config.php وجود ندارد. نشانی «setup.php» در ریشه‌ی سایت را باز کنید و اطلاعات دیتابیس و پنل پیامک را وارد کنید.',
+                'code'      => 'database_unavailable',
+                'config_exists' => $hasConfig,
+                'setup_url' => $setupUrl,
+                'detail'    => $e->getMessage(),
+                'hint'      => 'راهنمای انتقال به هاست تازه: docs/NEW_HOST_FA.md',
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             exit;
         }
@@ -42,6 +68,7 @@ try {
            . '<li>دیتابیس هدف وجود داشته باشد؛ نام پیش‌فرض در کد <code>wigitali_eplak-db</code> است که روی نصب تازه‌ها وجود ندارد — خودتان یک دیتابیس خالی بسازید (مثلاً <code>CREATE DATABASE eplak_db;</code>).</li>'
            . '<li>فایل <code>shared/config.php</code> را از روی <code>shared/config.example.php</code> بسازید و هاست/نام کاربری/رمز/نام دیتابیس را درست کنید (یا از متغیرهای محیطی <code>DB_HOST</code>، <code>DB_USER</code>، <code>DB_PASS</code>، <code>DB_NAME</code> استفاده کنید).</li>'
            . '<li>اکستنشن <code>pdo_mysql</code> در PHP فعال باشد (خروجی <code>php -m | grep pdo</code>).</li>'
+           . '<li><strong>هاست تازه؟</strong> صفحه‌ی راه‌انداز را باز کنید: <a href="../setup.php"><code>setup.php</code></a> — وضعیت را نشان می‌دهد و <code>shared/config.php</code> را می‌سازد. راهنما: <code>docs/NEW_HOST_FA.md</code></li>'
            . '</ul>'
            . '<p class="tip">نکته: به‌محض برقراری اتصال، جداول و کاربر پیش‌فرض ادمین (<code>admin</code> / <code>admin123</code>) به‌صورت خودکار ساخته می‌شوند؛ نیازی به ایمپورت دستی اسکیمای SQL نیست.</p>'
            . '</div></body></html>';
