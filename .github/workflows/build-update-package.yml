@@ -117,8 +117,17 @@ jobs:
           check shared/bootstrap.php       'function eplakReportCode'       'کد پیگیری یکدست در بسته هست'
           check admin/includes/functions.php 'broadcast_row_blocked'        'ارسال گروهی با حالت سازگار در بسته هست'
           check shared/notify_events.php   'eplakNotificationInsert'       'اعلان «ثبت درخواست» از مسیر مشترک می‌آید'
-          check modules/live.js            'setServerNotificationNotice'   'اپ پیام وضعیت سرور را نشان می‌دهد'
+          check modules/live.js            'setServerNotificationNotice'   'اپ پیام وضعیت سرور را (برای عیب‌یابی) نگه می‌دارد'
+          check shared/fcm.php             'function eplakFcmAppProject'   'تشخیص «کلید سرویس از پروژه‌ی دیگر» (SenderId mismatch) در بسته هست'
+          check shared/app_heartbeat.php   'function eplakHeartbeatRecord' '«ضربان اپ‌ها» (آخرین دریافت فهرست اعلان‌ها) در بسته هست'
+          check api/notifications.php      'eplakHeartbeatRecord'          'api/notifications.php ضربان اپ را ثبت می‌کند'
+          check admin/settings.php         'app-heartbeats'                'پنل → تنظیمات جدول ضربان اپ‌ها را دارد'
+          check modules/live.js            "app=' + encodeURIComponent(appPlatform())" 'اپ سکو/نسخه/نتیجه‌ی قبلی را همراه فهرست اعلان‌ها می‌فرستد'
           check shared/config.example.php  "'driver' => 'mysql'"           'الگوی فایل تنظیمات داخل بسته هست'
+          check modules/dashboard.js       'notifEmptyReason'             'اپ دلیلِ خالی بودن فهرست اعلان‌ها را نشان می‌دهد (حالت خالی)'
+          check modules/live.js            'eplakNotificationStatus'      'وضعیت خوانا برای عیب‌یابی فهرست اعلان‌ها در بسته هست'
+          check core/router.js             'refreshNotificationsNow'      'باز شدن صفحه‌ی اعلان‌ها فهرست را تازه می‌کند'
+          check admin/notif_diag.php       'notif_diag'                   'صفحه‌ی عیب‌یابی اعلان‌ها در بسته هست'
 
       - name: اثر انگشت و مشخصات بسته
         run: |

@@ -1,0 +1,154 @@
+# ============================================================================
+#  بررسی زنده‌ی API اعلان‌ها — «از نگاه اپ»
+# ============================================================================
+#  چرا؟ سندباکس توسعه به eplak.ir دسترسی ندارد، ولی اجراکننده‌ی GitHub دارد.
+#  این ورک‌فلو همان درخواستی را که اپ اندروید (WebView داخل APK) برای گرفتن
+#  فهرست اعلان‌ها می‌فرستد، با همان سرآیندها (User-Agent وب‌ویو، X-Requested-With
+#  نام بسته، Origin: null) به سرور واقعی می‌زند و نتیجه را در خلاصه‌ی اجرا و
+#  annotationها می‌نویسد: کد HTTP، نوع پاسخ، JSON بودن، success، تعداد ردیف،
+#  degraded/hint سرور. کنارش معلوم می‌شود فایل‌های تازه (admin/notif_diag.php،
+#  نسخه‌ی live.js داخل index.html هاست) روی هاست آپلود شده‌اند یا نه.
+#
+#  هیچ شماره‌ی شخصی فرستاده نمی‌شود (فقط phone=all = اعلان‌های عمومی) و متن
+#  اعلان‌ها چاپ نمی‌شود؛ فقط شناسه/تاریخ. شناسه‌ی دستگاه «ci-probe-…» است تا در
+#  «ضربان اپ‌ها»ی پنل از گوشی‌های واقعی جدا دیده شود.
+#
+#  این اجرا «گزارشی» است: اگر هاست خاموش باشد قرمز نمی‌شود.
+# ============================================================================
+
+name: بررسی زنده‌ی API اعلان‌ها (از نگاه اپ)
+
+on:
+  push:
+    branches: [ main, 'arena/**' ]
+    paths:
+      - '.github/workflows/live-api-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BASE: 'https://eplak.ir/eplak-fixed'
+  LIVE_V: '22'
+
+jobs:
+  probe:
+    name: درخواست‌های آزمایشی به سرور واقعی
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: درخواست‌ها (فقط مهمان؛ بدون شماره‌ی شخصی)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          UA_WV='Mozilla/5.0 (Linux; Android 12; SM-A525F Build/SP1A.210812.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/130.0.6723.107 Mobile Safari/537.36'
+          UA_PWA='Mozilla/5.0 (Linux; Android 12; SM-A525F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.107 Mobile Safari/537.36'
+          T=$(date +%s)
+
+          echo "## بررسی زنده‌ی API اعلان‌ها — $(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| آزمون | HTTP | نوع پاسخ | بایت | زمان | JSON | success | ردیف | degraded | hint/error |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+
+          # تحلیل‌گر JSON (جدا نوشته می‌شود تا تورفتگی heredoc داخل تابع مشکل نسازد)
+          cat > probe.py <<'PY'
+          import json, sys
+          raw = open(sys.argv[1], 'rb').read()
+          try:
+              d = json.loads(raw.decode('utf-8-sig'))
+          except Exception:
+              head = raw[:120].decode('utf-8', 'replace').replace('\n', ' ').replace('|', '/')
+              print('json=no|success=-|rows=-|degraded=-|hint=-|ids=-|head=' + head)
+              sys.exit(0)
+          if not isinstance(d, dict):
+              print('json=yes(not-object)|success=-|rows=-|degraded=-|hint=-|ids=-')
+              sys.exit(0)
+          n = d.get('notifications')
+          rows = len(n) if isinstance(n, list) else '-'
+          ids = ','.join(str(x.get('id')) for x in n[:5]) if isinstance(n, list) else '-'
+          deg = d.get('degraded')
+          deg = ','.join(map(str, deg)) if isinstance(deg, list) and deg else ('-' if not deg else str(deg))
+          hint = str(d.get('hint') or d.get('error') or '-').replace('|', '/').replace('\n', ' ')[:140]
+          extra = ''
+          for k in ('count', 'unread', 'app_project', 'key_project', 'project_match', 'fcm_ready', 'configured', 'enabled'):
+              if k in d and not isinstance(d[k], (dict, list)):
+                  extra += ' %s=%s' % (k, d[k])
+          fcm = d.get('fcm') if isinstance(d.get('fcm'), dict) else None
+          if fcm:
+              for k in ('configured', 'app_project', 'key_project', 'project_match', 'package', 'warning', 'error'):
+                  if k in fcm and not isinstance(fcm[k], (dict, list)):
+                      extra += ' fcm.%s=%s' % (k, str(fcm[k]).replace('|', '/')[:100])
+          print('json=yes|success=%s|rows=%s|degraded=%s|hint=%s|ids=%s|keys=%s%s' % (
+              d.get('success'), rows, deg, hint, ids, ','.join(list(d.keys())[:12]), extra))
+          PY
+
+          # probe <برچسب> <آدرس> [آرگومان‌های اضافی curl…]
+          probe() {
+            local label="$1" url="$2"; shift 2
+            local body="body-$label.txt" hdr="hdr-$label.txt" meta
+            meta=$(curl -sS -o "$body" -D "$hdr" --max-time 25 -w '%{http_code}|%{content_type}|%{size_download}|%{time_total}' "$url" "$@" 2>"err-$label.txt" || true)
+            local code ctype size ttime
+            IFS='|' read -r code ctype size ttime <<< "${meta:-000|||}"
+            [ -n "${code:-}" ] || code='000'
+            local err; err=$(head -c 160 "err-$label.txt" 2>/dev/null | tr -d '\r\n' || true)
+            # تحلیل JSON (بدون چاپ متن اعلان‌ها)
+            local js; js=$(python3 probe.py "$body" 2>/dev/null || echo "json=no|success=-|rows=-|degraded=-|hint=-|ids=-")
+            local acao; acao=$(grep -i '^access-control-allow-origin:' "$hdr" | head -1 | tr -d '\r' | cut -d' ' -f2- || true)
+            local server; server=$(grep -i '^server:' "$hdr" | head -1 | tr -d '\r' | cut -d' ' -f2- || true)
+            echo "::notice title=live-api ${label}::http=${code} type=${ctype} bytes=${size} time=${ttime}s acao=${acao:-none} server=${server:-?} ${js} ${err:+curl=${err}}"
+            local jsonf succ rows deg hint
+            jsonf=$(sed -n 's/.*json=\([^|]*\).*/\1/p' <<< "$js"); succ=$(sed -n 's/.*success=\([^|]*\).*/\1/p' <<< "$js")
+            rows=$(sed -n 's/.*rows=\([^|]*\).*/\1/p' <<< "$js"); deg=$(sed -n 's/.*degraded=\([^|]*\).*/\1/p' <<< "$js")
+            hint=$(sed -n 's/.*hint=\([^|]*\).*/\1/p' <<< "$js")
+            echo "| ${label} | ${code} | ${ctype:-?} | ${size:-?} | ${ttime:-?}s | ${jsonf:-?} | ${succ:-?} | ${rows:-?} | ${deg:-?} | ${hint:-?} ${err:+⚠️ ${err}} |" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          # ۱) سرور بالاست؟
+          probe ping "$BASE/api/ping.php" -H "User-Agent: $UA_PWA"
+
+          # ۲) فهرست اعلان‌های عمومی — همان‌طور که مرورگر/PWA می‌فرستد
+          probe notif-web "$BASE/api/notifications.php?phone=all&device=ci-probe-web&app=web&v=$LIVE_V&prev=first&t=$T" \
+            -H "User-Agent: $UA_PWA" -H "Accept: */*" -H "Accept-Language: fa-IR,fa;q=0.9" \
+            -H "Origin: https://eplak.ir" -H "Referer: $BASE/" -H "Cache-Control: no-cache" -H "Pragma: no-cache"
+
+          # ۳) همان درخواست، دقیقاً مثل WebView داخل APK (file:// → Origin: null،
+          #    X-Requested-With = نام بسته، UA با «wv»)
+          probe notif-apk "$BASE/api/notifications.php?phone=all&device=ci-probe-apk&app=android&v=$LIVE_V&prev=first&t=$T" \
+            -H "User-Agent: $UA_WV" -H "X-Requested-With: com.eplak" -H "Accept: */*" \
+            -H "Accept-Language: fa-IR,fa;q=0.9,en-US;q=0.8" -H "Origin: null" \
+            -H "Cache-Control: no-cache" -H "Pragma: no-cache"
+
+          # ۴) مثل APK ولی بدون Origin (وقتی allowUniversalAccessFromFileURLs روشن است)
+          probe notif-apk-noorigin "$BASE/api/notifications.php?phone=all&device=ci-probe-apk2&app=android&v=$LIVE_V&prev=ok:0&t=$T" \
+            -H "User-Agent: $UA_WV" -H "X-Requested-With: com.eplak" -H "Accept: */*" \
+            -H "Accept-Language: fa-IR,fa;q=0.9" -H "Cache-Control: no-cache" -H "Pragma: no-cache"
+
+          # ۵) پیکربندی عمومی اعلان گوشی (کلید عمومی VAPID و وضعیت پروژه‌ی فایربیس؛ بدون راز)
+          probe push-config "$BASE/api/push.php?action=config" -H "User-Agent: $UA_WV" -H "X-Requested-With: com.eplak" -H "Origin: null"
+
+          # ۶) آیا فایل‌های تازه روی هاست هستند؟ (۴۰۴ = بسته‌ی به‌روزرسانی آپلود نشده)
+          probe notif-diag-page "$BASE/admin/notif_diag.php" -H "User-Agent: $UA_PWA" -o /dev/null
+          probe heartbeat-lib "$BASE/shared/app_heartbeat.php" -H "User-Agent: $UA_PWA"
+
+          # ۷) نسخه‌ی فایل‌های وبِ روی هاست (کش‌باسترها داخل index.html هاست)
+          curl -sS --max-time 25 -H "User-Agent: $UA_PWA" "$BASE/index.html?t=$T" -o host-index.html || true
+          HOST_LIVE=$(grep -o 'modules/live.js?v=[0-9]*' host-index.html | head -1 || true)
+          HOST_DASH=$(grep -o 'modules/dashboard.js?v=[0-9]*' host-index.html | head -1 || true)
+          HOST_ROUTER=$(grep -o 'core/router.js?v=[0-9]*' host-index.html | head -1 || true)
+          echo "::notice title=live-api host-web-version::index.html روی هاست: ${HOST_LIVE:-?} · ${HOST_DASH:-?} · ${HOST_ROUTER:-?} (این مخزن: live.js?v=$LIVE_V)"
+          {
+            echo ""
+            echo "**نسخه‌ی فایل‌های وب روی هاست:** \`${HOST_LIVE:-?}\` · \`${HOST_DASH:-?}\` · \`${HOST_ROUTER:-?}\` (این مخزن: \`modules/live.js?v=$LIVE_V\`)"
+            echo ""
+            echo "- \`notif-apk\` همان درخواست وب‌ویوی APK است (UA با «wv»، X-Requested-With: com.eplak، Origin: null)."
+            echo "- ردیف‌های «ci-probe-…» در پنل → تنظیمات → «ضربان اپ‌ها» مربوط به همین بررسی‌اند، نه گوشی واقعی."
+            echo "- \`notif-diag-page\` = ۳۰۲/۲۰۰ یعنی فایل‌های تازه روی هاست هستند؛ ۴۰۴ یعنی بسته‌ی به‌روزرسانی آپلود نشده."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # نمونه‌ی سرآیندهای پاسخ درخواست APK (برای تشخیص فایروال/کش)
+          echo "----- response headers (notif-apk) -----"
+          sed -n '1,25p' hdr-notif-apk.txt 2>/dev/null | tr -d '\r' || true
+          echo "----- response headers (notif-diag-page) -----"
+          sed -n '1,12p' hdr-notif-diag-page.txt 2>/dev/null | tr -d '\r' || true

@@ -8,11 +8,14 @@ const ok = (n, c, x = '') => { if (c) { pass++; console.log('  ✅ ' + n); } els
 /* ---------- محیط حداقلی مرورگر/WebView ---------- */
 const calls = [];
 const store = {};
+/* هر شناسه‌ای که live.js از DOM می‌خواهد ثبت می‌شود (برای اثبات اینکه سراغ
+   کادرِ حذف‌شده‌ی notifDeviceNotice نمی‌رود) */
+const askedIds = new Set();
 
 function makeDom(nodes) {
   return {
     readyState: 'loading',
-    getElementById: (id) => nodes.get(id) || null,
+    getElementById: (id) => { askedIds.add(String(id)); return nodes.get(id) || null; },
     createElement: () => {
       const node = { style: {}, onclick: null, appendChild() {}, addEventListener() {}, _html: '', id: '' };
       Object.defineProperty(node, 'innerHTML', { set(v) { this._html = v; if (node.id === 'eplakLiveNotifBanner') calls.push('banner'); }, get() { return this._html; } });
@@ -26,7 +29,8 @@ function makeDom(nodes) {
 
 function buildSandbox(opts = {}) {
   const nodes = new Map();
-  ['notifDeviceNotice', 'notifListWrap', 'homeNotifDot', 'dashNotifDot'].forEach((id) => {
+  /* مثل index.html واقعی: کادر notifDeviceNotice دیگر وجود ندارد */
+  ['notifListWrap', 'homeNotifDot', 'dashNotifDot'].forEach((id) => {
     nodes.set(id, { id, innerHTML: '', style: { display: '' }, appendChild() {}, addEventListener() {} });
   });
 
@@ -132,28 +136,55 @@ console.log('\n=== اپ بدون فایربیس (تنظیم نشده) ===');
 const s3 = buildSandbox({ android: true, fcmToken: '' });
 const r3 = await s3.registerAppDevice(true);
 ok('نبود توکن بی‌خطا مدیریت می‌شود', r3.ok === false && r3.reason === 'no_fcm_token', JSON.stringify(r3));
-s3.renderDeviceNotice();
-const notice = s3.document.getElementById('notifDeviceNotice').innerHTML;
-ok('به کاربر وضعیت دقیق اعلان نشان داده می‌شود', notice.length > 20, notice.slice(0, 80));
+ok('وضعیت دقیق برای عیب‌یابی در eplakPushState می‌ماند (reason=no_fcm_token)',
+  s3.eplakPushState().reason === 'no_fcm_token' && s3.eplakPushState().registered === false, JSON.stringify(s3.eplakPushState()));
 
-/* ---------- ۵) اپ با فایربیس ---------- */
-console.log('\n=== اپ با فایربیس ===');
+/* ---------- ۵) کادر «وضعیت اعلان» بالای صفحه‌ی اعلان‌ها حذف شده است ---------- */
+/* مالک خواست این کادر (متن «اعلان‌های داخل برنامه فعال است…»، دکمه‌های «تست اعلان»
+   و «تنظیمات اعلان گوشی») «کلاً» حذف شود. این بخش جلوی برگشتنش را می‌گیرد. */
+console.log('\n=== کادر وضعیت اعلان (حذف‌شده) برنمی‌گردد ===');
+const indexHtmlNow = fs.readFileSync(`${ROOT}/index.html`, 'utf8');
+const liveJsNow = fs.readFileSync(`${ROOT}/modules/live.js`, 'utf8');
+ok('index.html دیگر عنصر notifDeviceNotice را ندارد', !indexHtmlNow.includes('notifDeviceNotice'));
+ok('صفحه‌ی اعلان‌ها فقط فهرست اعلان‌هاست (notifListWrap سر جایش است)', indexHtmlNow.includes('id="notifListWrap"'));
+ok('live.js دیگر کادر را رندر نمی‌کند (renderDeviceNotice / notifDeviceNotice نیست)',
+  !liveJsNow.includes('renderDeviceNotice') && !liveJsNow.includes('notifDeviceNotice'));
+ok('دکمه‌های «تست اعلان» و «تنظیمات اعلان گوشی» و متن کادر از کد اپ رفته‌اند',
+  !liveJsNow.includes('>تست اعلان<') && !liveJsNow.includes('>تنظیمات اعلان گوشی<')
+  && !liveJsNow.includes('اعلان‌های داخل برنامه فعال است') && !liveJsNow.includes('eplakTestPushClick')
+  && !liveJsNow.includes('eplakOpenNotificationSettings') && !liveJsNow.includes('notifPushTestBtn'));
 const s4 = buildSandbox({ android: true, fcmToken: 'T' });
-s4.renderDeviceNotice();
-const notice4 = s4.document.getElementById('notifDeviceNotice').innerHTML;
-ok('ادعای تأییدنشده‌ی «اعلان گوشی کامل فعال است» نوشته نمی‌شود',
-  !notice4.includes('کامل فعال است') && !notice4.includes('حتی وقتی برنامه بسته باشد'), notice4.slice(0, 90));
-ok('به کاربر می‌گوید اعلان داخل برنامه کار می‌کند', notice4.includes('داخل برنامه'));
-ok('راهنمای واقعی تنظیمات گوشی به کاربر داده می‌شود',
-  notice4.includes('تنظیمات گوشی') && notice4.includes('ای‌پلاک'));
+await s4.syncLiveContent();
+ok('اپ اندروید: هیچ‌جا سراغ عنصر notifDeviceNotice نمی‌رود (نه هنگام شروع، نه هنگام همگام‌سازی)',
+  !askedIds.has('notifDeviceNotice'), [...askedIds].join(','));
+ok('توابعی که فقط برای آن کادر بودند دیگر روی window نیستند',
+  typeof s4.renderDeviceNotice === 'undefined' && typeof s4.eplakTestPushClick === 'undefined'
+  && typeof s4.eplakOpenNotificationSettings === 'undefined');
+/* آنچه باید بماند: اجازه‌ی اعلان با اولین لمس (promptPerm)، پاسخ اندروید به
+   نتیجه‌ی اجازه، و وضعیت عیب‌یابی */
+ok('درخواست اجازه‌ی اعلان با اولین لمس کاربر هنوز در کد هست (promptPerm → requestPushPermission)',
+  /function promptPerm\(\)[\s\S]{0,300}requestPushPermission\(\)/.test(liveJsNow)
+  && /addEventListener\('touchstart', promptPerm\)/.test(liveJsNow));
+calls.length = 0;
+const s4b = buildSandbox({ android: true, fcmToken: 'T', notificationsEnabled: false });
+await s4b.requestPushPermission();
+ok('اپ اندروید بدون اجازه‌ی اعلان: requestPushPermission همچنان اجازه را از اندروید می‌خواهد',
+  calls.includes('requestPermission'), JSON.stringify(calls.slice(-3)));
+ok('eplakNativePermissionResult (که اندروید صدا می‌زند) هنوز هست و بی‌خطا اجرا می‌شود',
+  typeof s4b.eplakNativePermissionResult === 'function' && (s4b.eplakNativePermissionResult(true), true));
+ok('eplakPushState برای عیب‌یابی در دسترس است و وضعیت سرور را هم دارد',
+  typeof s4.eplakPushState === 'function' && 'serverReady' in s4.eplakPushState() && 'serverNotice' in s4.eplakPushState());
 
 /* ---------- ۶) مرورگر ---------- */
 console.log('\n=== مرورگر/دستگاه بدون اعلان پس‌زمینه ===');
 const s5 = buildSandbox({});
-s5.renderDeviceNotice();
-const notice5 = s5.document.getElementById('notifDeviceNotice').innerHTML;
-ok('متن دستگاه بدون اعلان پس‌زمینه صادقانه است و ادعای صفحه‌ی قفل نمی‌کند',
-  notice5.includes('اعلان‌های تازه در فهرست') && !notice5.includes('صفحه‌ی قفل'), notice5.slice(0, 90));
+await s5.syncLiveContent();
+ok('مرورگر/PWA: هیچ کادر وضعیتی ساخته نمی‌شود و خطایی هم رخ نمی‌دهد',
+  !askedIds.has('notifDeviceNotice') && typeof s5.renderDeviceNotice === 'undefined');
+ok('مرورگر/PWA: پیام سرور (اگر باشد) فقط برای عیب‌یابی نگه داشته می‌شود، نه نمایش',
+  typeof s5.setServerNotificationNotice === 'function'
+  && (s5.setServerNotificationNotice('ساختار جدول قدیمی است'), s5.eplakPushState().serverNotice === 'ساختار جدول قدیمی است')
+  && !askedIds.has('notifDeviceNotice'));
 
 /* ---------- ۷) حذف اعلان ---------- */
 console.log('\n=== حذف اعلان از فهرست کاربر ===');

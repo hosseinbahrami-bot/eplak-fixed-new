@@ -507,7 +507,7 @@ for (const f of adminFiles) {
 ok('در پنل ادمین هیچ تاریخِ خامی چاپ نمی‌شود (همه با eplakFaDate…)', rawSites.length === 0, rawSites.join(', '));
 ok('کش‌باسترها بالا رفتند تا گوشی‌ها کد تازه را بگیرند',
   /core\/state\.js\?v=15/.test(indexHtml) && /modules\/reports\.js\?v=30/.test(indexHtml)
-  && /modules\/live\.js\?v=19/.test(indexHtml) && /modules\/dashboard\.js\?v=17/.test(indexHtml)
+  && /modules\/live\.js\?v=22/.test(indexHtml) && /modules\/dashboard\.js\?v=19/.test(indexHtml)
   && /modules\/city-live\.js\?v=15/.test(indexHtml) && /modules\/clock-lux\.js\?v=7/.test(indexHtml));
 ok('تنظیم منطقه‌ی زمانیِ دیتابیس مستند و قابل تغییر است',
   /EPLAK_DB_TIMEZONE/.test(faPhp) && /EPLAK_DISPLAY_TIMEZONE/.test(faPhp));

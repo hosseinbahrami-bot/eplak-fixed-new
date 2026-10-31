@@ -400,6 +400,21 @@ if ($existingId > 0) {
        دیده می‌شود (eplakReportCode) — پیش‌تر این‌جا id خالی به‌کار می‌رفت و
        کدی که در اعلان «ثبت درخواست» به شهروند داده می‌شد با کد واقعی فرق داشت. */
     $dupCode = eplakReportCode((int) $existingId);
+
+    /* ── اعلان «درخواست ثبت شد» برای مسیر «تکراری» ────────────────────────
+       اگر همین درخواست قبلاً ساخته شده باشد، گزارش تازه‌ای ساخته نمی‌شود؛ ولی
+       ممکن بود همان لحظه‌ی اول، درج اعلان ناموفق مانده باشد (خطای دیتابیس/قید)
+       و کاربر هیچ اعلانی در فهرستش نبیند. این‌جا فقط در همان حالتِ «اعلان
+       وجود ندارد» ساخته می‌شود؛ پس اعلان تکراری هم ساخته نمی‌شود. */
+    try {
+        require_once __DIR__ . '/../shared/notify_events.php';
+        if (function_exists('eplakNotifyExistsForCode') && !eplakNotifyExistsForCode($pdo, $phone, $dupCode)) {
+            eplakNotifyRequestCreated($pdo, $phone, 'درخواست', $dupCode);
+        }
+    } catch (Throwable $e) {
+        error_log('[eplak-api:reports.dedupe-notify] ' . $e->getMessage());
+    }
+
     eplakJson([
         'success'       => true,
         'deduped'       => true,          /* اپ می‌فهمد گزارش تازه ساخته نشده */
