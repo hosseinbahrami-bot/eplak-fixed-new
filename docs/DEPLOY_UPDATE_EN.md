@@ -50,7 +50,10 @@ videos), `shared/config.php` (your server settings).
 - `index.html`, `app.js`, `sw.js`
 - `core/storage.js`, `core/i18n.js`
 - `modules/reports.js`, `modules/live.js`, `modules/dashboard.js`
-- `router_admin.php`
+- `setup.php` — host setup/diagnostic page (config, database, tables, SMS panel)
+- `api/ping.php` (`?full=1`) · `admin/includes/db.php` (JSON + readable reason for API calls)
+- `docs/NEW_HOST_FA.md` — moving to a new host, step by step
+- Removed: `router_admin.php`, `preview-hub.html` (dev-only), `.vscode/`, `backend/package.json`
 
 ---
 

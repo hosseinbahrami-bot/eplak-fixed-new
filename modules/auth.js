@@ -123,11 +123,19 @@
         }
       }, 300);
     } catch (error) {
+      /* اگر سرور دلیلِ واقعی را فرستاده باشد (data.error) همان را نشان می‌دهیم.
+         وقتی پاسخ اصلاً JSON نباشد (صفحه‌ی خطای HTML یا ۴۰۴) یعنی سایت روی آن
+         هاست راه‌اندازی نشده — پس به‌جای پیامِ کلی، راه‌حل گفته می‌شود.
+         (ریشه‌ی شکایت «هاست تازه گرفتم، می‌گوید ارسال کد تایید انجام نشد».) */
+      const reason = String((error && error.message) || '');
+      const serverSaid = reason !== '' && reason !== 'request_failed' && reason !== 'invalid_response';
       const message = isEn
-        ? 'Could not send the verification code. Please check the number and try again.'
-        : (error.message && error.message !== 'request_failed' && error.message !== 'invalid_response'
-          ? error.message
-          : 'ارسال کد تایید انجام نشد؛ لطفاً دوباره تلاش کنید.');
+        ? (serverSaid
+          ? reason
+          : 'The server did not return a valid response. If this is a new host, open setup.php at the site root to configure the database and SMS panel.')
+        : (serverSaid
+          ? reason
+          : 'ارسال کد تایید انجام نشد: سرور پاسخ معتبر نداد. اگر هاست تازه است، نشانی «setup.php» در ریشه‌ی سایت را باز کنید تا دیتابیس و پنل پیامک تنظیم شود (راهنما: docs/NEW_HOST_FA.md).');
       showToast(message);
     } finally {
       otpRequestPending = false;

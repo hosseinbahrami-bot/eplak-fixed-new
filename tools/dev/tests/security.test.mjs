@@ -174,6 +174,41 @@ ok('راهنمای فارسی و انگلیسی می‌گویند نسخه‌ی 
 ok('راه جایگزین (ساخت دستیِ shared/config.php از روی config.example.php) در هر دو راهنما هست',
   /config\.example\.php/.test(fa) && /config\.example\.php/.test(en) && fs.existsSync(path.join(ROOT, 'shared/config.example.php')));
 
+/* ── ۶) پاک‌سازی مخزن و امنیتِ setup.php ─────────────────────────────────── */
+console.log('— ۶) فایل‌های فقط-توسعه و setup.php');
+const DEV_ONLY = ['router_admin.php', 'preview-hub.html', '.vscode/settings.json',
+                  'backend/package.json', 'backend/package-lock.json'];
+const devPresent = DEV_ONLY.filter((f) => fs.existsSync(path.join(ROOT, f)));
+ok('فایل‌های فقط-توسعه از مخزن حذف شده‌اند و برنگشته‌اند', devPresent.length === 0, devPresent.join(', '));
+ok('.htaccess نسخه‌ی قدیمیِ باقی‌مانده روی هاست را می‌بندد (router_admin/preview-hub)',
+  htaccess.includes('router_admin\\.php') && htaccess.includes('preview-hub\\.html'));
+ok('اسکریپت ساخت بسته، ورود دوباره‌ی آن‌ها به بسته را رد می‌کند',
+  read('tools/build-update-package.sh').includes('router_admin.php preview-hub.html backend/package.json'));
+ok('ورک‌فلوی FTP هم آن‌ها را از پوشه‌ی آپلود پاک می‌کند',
+  read('.github/workflows/deploy.yml').includes('rm -f router_admin.php preview-hub.html'));
+
+/* setup.php جایگزین rescue-db.php نیست: فقط در «اجرای اول» یا با ورود مدیر می‌نویسد */
+const setup = read('setup.php');
+ok('setup.php فقط وقتی config.php نیست (یا مدیر وارد شده) می‌نویسد',
+  setup.includes('if (eplak_setup_config_exists() && !eplak_setup_admin())')
+    && setup.includes("!$canWrite"),
+  '');
+ok('setup.php هر کنش POST را با توکن CSRF نشست می‌سنجد (hash_equals)',
+  setup.includes('hash_equals(eplak_setup_token(), $token)') && setup.includes("$_POST['_token']"));
+ok('setup.php هیچ رمزی را در صفحه چاپ نمی‌کند (فقط «هست/نیست»)',
+  setup.includes("'pass_set'") && !/eplak_setup_h\([^)]*pass[^)]*\)/.test(setup)
+    && !setup.includes("echo $values['pass']"));
+ok('setup.php فایل تنظیمات را 0600 می‌کند و ممیزیِ نوشتن در error_log دارد',
+  setup.includes('@chmod(EPLAK_SETUP_CONFIG, 0600)') && setup.includes('[eplak-setup]'));
+ok('حذفِ setup.php فقط با ورود مدیر انجام می‌شود',
+  /action === 'delete_setup'[\s\S]{0,200}eplak_setup_admin\(\)/.test(setup));
+ok('setup.php با noindex از نتایج جست‌وجو بیرون می‌ماند', setup.includes('noindex, nofollow'));
+ok('اجرای فایل SQL در setup.php فقط از فهرست مجاز و با ورود مدیر/اجرای اول است',
+  setup.includes("$allowed = ['backend/eplak-db.sql', 'backend/fix-news-db.sql', 'backend/fix-notifications-db.sql']")
+    && setup.includes("in_array($file, $allowed, true)"));
+ok('دامپ‌های دیتابیس (داده‌ی شهروندان) داخل بسته‌ی هاست نمی‌روند',
+  read('tools/build-update-package.sh').includes('"backend/*"'));
+
 console.log('\n' + '='.repeat(52));
 console.log(`SECURITY: ${pass} passed, ${fail} failed`);
 console.log('='.repeat(52));

@@ -53,7 +53,10 @@ CI همان فایل به‌عنوان **Artifact** هم برای شاخه‌ه�
 - `index.html` · `app.js` · `sw.js`
 - `core/storage.js` · `core/i18n.js`
 - `modules/reports.js` · `modules/live.js` · `modules/dashboard.js`
-- `router_admin.php`
+- `setup.php` — راه‌انداز/عیب‌یاب هاست (وضعیت config/دیتابیس/جدول‌ها/پنل پیامک)
+- `api/ping.php` (حالت `?full=1`) · `admin/includes/db.php` (پاسخ JSON و دلیلِ خوانا برای API)
+- `docs/NEW_HOST_FA.md` — راهنمای انتقال به هاست تازه
+- حذف‌شده‌ها: `router_admin.php` و `preview-hub.html` (فقط-توسعه) · `.vscode/` · `backend/package.json`
 
 > **مهم:** پوشه‌های `data/` و `uploads/` و فایل `shared/config.php` روی هاست شما
 > وجود دارند و نباید پاک شوند (دیتابیس و تنظیمات و فایل‌های آپلودی شهروندان).

@@ -42,10 +42,11 @@ echo "بررسی سریع محتوای بسته:"
 LIST="$(unzip -Z1 "$OUT")"
 has() { printf '%s\n' "$LIST" | grep -Fxq "$1"; }
 
-for f in .htaccess index.html index.php sw.js manifest.json shared/bootstrap.php \
+for f in .htaccess index.html index.php setup.php sw.js manifest.json shared/bootstrap.php \
+         shared/config.example.php docs/NEW_HOST_FA.md \
          shared/webpush.php shared/media.php shared/notification_reads.php shared/fcm.php \
          shared/notify_events.php shared/fa_datetime.php shared/tiles.php shared/app_heartbeat.php \
-         api/_common.php api/ping.php api/push.php api/media.php api/tiles.php api/reports.php api/notifications.php \
+         api/_common.php api/ping.php api/status.php api/push.php api/media.php api/tiles.php api/reports.php api/notifications.php \
          admin/settings.php admin/login.php admin/report_detail.php admin/notification_view.php \
          admin/version.php \
          assets/js/ep-map.js assets/js/ep-camera.js assets/js/icons.js \
@@ -77,3 +78,21 @@ case "$HTACCESS" in
   *) echo "   ❌ قاعده‌ی بستن rescue-db.php در .htaccess بسته نیست!"; exit 1 ;;
 esac
 echo "   ✅ ابزار ناامن rescue-db.php داخل بسته نیست و در .htaccess بسته شده است"
+
+# فایل‌های فقط-توسعه (روتِر پیش‌نمایش محلی و صفحه‌ی پیش‌نمایش) از مخزن حذف شده‌اند؛
+# اگر روزی برگردند، نباید داخل بسته‌ی هاست بروند (روی دامنه‌ی عمومی خطرناک‌اند).
+for f in router_admin.php preview-hub.html backend/package.json; do
+  if has "$f"; then echo "   ❌ $f فایلِ فقط-توسعه است و نباید داخل بسته باشد!"; exit 1; fi
+done
+case "$HTACCESS" in
+  *'router_admin\.php'*) ;;
+  *) echo "   ❌ قاعده‌ی بستن router_admin.php در .htaccess بسته نیست!"; exit 1 ;;
+esac
+echo "   ✅ فایل‌های فقط-توسعه داخل بسته نیستند و در .htaccess بسته شده‌اند"
+
+# «ارسال کد تایید انجام نشد» روی هاست تازه یعنی shared/config.php نیست؛ بسته باید
+# راه‌انداز (setup.php)، نقطه‌ی تشخیص (api/status.php) و راهنمای هاست تازه را
+# داشته باشد تا کاربر خودش بتواند درستش کند.
+for f in setup.php api/status.php docs/NEW_HOST_FA.md; do
+  if has "$f"; then echo "   ✅ $f (راه‌اندازی روی هاست تازه)"; else echo "   ❌ $f گم شده!"; exit 1; fi
+done
