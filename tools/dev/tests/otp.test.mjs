@@ -21,9 +21,9 @@ const index = read('index.html');
 const css = read('assets/css/style.css');
 const configGuide = read('INSTALL_GUIDE_FA.md');
 
-ok('درخواست Payamak فقط از API سمت سرور انجام می‌شود',
+ok('درخواست «ملی پیامک» فقط از API سمت سرور انجام می‌شود',
   api.includes('https://rest.payamak-panel.com/api/SendSMS/BaseServiceNumber') && !client.includes('payamak-panel.com'));
-ok('مشخصات Payamak از متغیر محیطی یا تنظیمات خصوصی سرور خوانده می‌شود',
+ok('مشخصات ملی پیامک از متغیر محیطی یا تنظیمات خصوصی سرور خوانده می‌شود',
   api.includes('PAYAMAK_USERNAME') && api.includes('PAYAMAK_PASSWORD') && api.includes('PAYAMAK_TEMPLATE_ID') &&
   api.includes("['payamak_username']") && api.includes("['payamak_password']") &&
   api.includes("['payamak_template_id']") && !index.includes('PAYAMAK_PASSWORD'));
@@ -31,7 +31,7 @@ ok('درخواست شامل شناسه متن، شماره مقصد و کد چه
   api.includes("'username' => $payamakUsername") && api.includes("'password' => $payamakPassword") &&
   api.includes("'to' => $phone") && api.includes("'bodyId' => $payamakTemplateId") &&
   api.includes("'text' => (string)random_int(1000, 9999)"));
-ok('موفقیت Payamak با RetStatus=1 تشخیص داده و TLS اعتبارسنجی می‌شود',
+ok('موفقیت ملی پیامک با RetStatus=1 تشخیص داده و TLS اعتبارسنجی می‌شود',
   api.includes("($providerPayload['RetStatus'] ?? '') === '1'") &&
   api.includes('CURLOPT_SSL_VERIFYPEER => true') && api.includes('CURLOPT_SSL_VERIFYHOST => 2'));
 ok('کد دریافتی از سرویس به صورت هش نگهداری می‌شود',
@@ -58,7 +58,7 @@ ok('کد صحیح و اشتباه بازخورد سبز و قرمز متمایز
   css.includes('#screen-otp .otp-inputs-row.otp-valid input.otp-box') &&
   css.includes('#screen-otp .otp-inputs-row.otp-invalid input.otp-box') &&
   css.includes('@keyframes otpInvalidShake'));
-ok('راهنما تنظیم Payamak و کد آزمایشی localhost را توضیح می‌دهد',
+ok('راهنما تنظیم ملی پیامک و کد آزمایشی localhost را توضیح می‌دهد',
   configGuide.includes('PAYAMAK_USERNAME') && configGuide.includes('payamak_template_id') &&
   configGuide.includes('bodyId') &&
   configGuide.includes('otp_test_code') && configGuide.includes('فقط درخواست‌هایی'));
@@ -73,6 +73,8 @@ const ping = read('api/ping.php');
 const statusApi = read('api/status.php');
 const example = read('shared/config.example.php');
 const setup = read('setup.php');
+const payamakLib = read('shared/payamak.php');
+const newHostGuide = read('docs/NEW_HOST_FA.md');
 
 ok('خطای دیتابیس برای همه‌ی اندپوینت‌های api/ همیشه JSON است (نه صفحه‌ی HTML)',
   /api\/\[\^\/\]\+/.test(dbFile) && dbFile.includes("'success'   => false,") && dbFile.includes('$wantsJson'));
@@ -90,16 +92,17 @@ ok('ping.php بی‌دیتابیس می‌ماند تا پرده‌ی «بدون
 ok('status.php هرگز ۵۰۰ نمی‌دهد: اتصال به دیتابیس داخل try/catch و بدون bootstrap است',
   /try \{[\s\S]*new PDO\([\s\S]*\} catch \(Throwable \$e\)/.test(statusApi)
     && !statusApi.includes('bootstrap.php'));
-ok('الگوی config کلیدهای پنل پیامک را دارد (Payamak و AmootSMS)',
+ok('الگوی config کلیدهای پنل «ملی پیامک» را دارد و شناسه‌ی متنِ پیش‌فرض 552115 است',
   example.includes("'payamak_username'") && example.includes("'payamak_password'")
-    && example.includes("'payamak_template_id'") && example.includes("'amootsms_token'"));
+    && example.includes("'payamak_template_id' => '552115'") && !/amoot/i.test(example));
 ok('setup.php اتصال را پیش از نوشتن آزمایش می‌کند و فقط در اجرای اول/با مدیر می‌نویسد',
   setup.includes('eplak_setup_try_pdo($values, $err)')
     && setup.includes('eplak_setup_config_exists() && !eplak_setup_admin()')
     && setup.includes('hash_equals(eplak_setup_token(), $token)')
     && setup.includes('@chmod(EPLAK_SETUP_CONFIG, 0600)'));
-ok('setup.php کلیدهای پنل پیامک را هم می‌گیرد (ریشه‌ی «کد تایید نمی‌آید»)',
-  setup.includes('payamak_username') && setup.includes('payamak_template_id') && setup.includes('amootsms_token'));
+ok('setup.php کلیدهای پنل «ملی پیامک» را هم می‌گیرد (ریشه‌ی «کد تایید نمی‌آید»)',
+  setup.includes('payamak_username') && setup.includes('payamak_template_id')
+    && setup.includes('eplakPayamakDefaultTemplate()') && !/amoot/i.test(setup));
 ok('راهنمای هاست تازه هست و از راهنمای نصب به آن ارجاع داده شده',
   read('docs/NEW_HOST_FA.md').includes('ارسال کد تایید انجام نشد')
     && configGuide.includes('docs/NEW_HOST_FA.md') && configGuide.includes('setup.php'));
@@ -110,6 +113,42 @@ ok('بسته‌ی آپلود هاست، راه‌انداز + نقطه‌ی تش
 ok('راهنمای هاست تازه به api/status.php ارجاع می‌دهد (نه ping)',
   read('docs/NEW_HOST_FA.md').includes('api/status.php')
     && !read('docs/NEW_HOST_FA.md').includes('ping.php?full=1'));
+
+/* ── تنها ارائه‌دهنده‌ی پیامک: ملی پیامک (شناسه‌ی متن 552115) ─────────────────
+   درخواست کارفرما: «از آموت رو کلا حذف کن، از ملی پیامک بخون — شناسه کد متن
+   552115 ملی پیامک». پس آموت نه در کد، نه در الگوی تنظیمات، نه در راه‌انداز،
+   نه در تشخیص و نه در راهنماها نباید بماند؛ وگرنه روی هاست دو مسیرِ پیامک
+   ساخته می‌شود و عیب‌یابیِ «کد تایید نمی‌آید» سخت می‌شود. */
+console.log('— ۴) تنها ملی پیامک، با شناسه‌ی متنِ پیش‌فرض 552115');
+ok('آموت‌اس‌ام‌اس از کد، الگوی تنظیمات، راه‌انداز و راهنماها کاملاً حذف شده',
+  [api, statusApi, setup, example, payamakLib, newHostGuide, configGuide]
+    .every((text) => !/amoot/i.test(text)));
+ok('نشانی و کلیدهای ملی پیامک در api/auth.php دست‌نخورده باقی مانده‌اند',
+  api.includes('https://rest.payamak-panel.com/api/SendSMS/BaseServiceNumber')
+    && api.includes("'bodyId' => $payamakTemplateId") && api.includes('PAYAMAK_USERNAME')
+    && api.includes("['payamak_template_id']"));
+ok('شناسه‌ی متنِ پیش‌فرض یک‌جا (shared/payamak.php) تعریف شده و هر سه مصرف‌کننده از آن می‌خوانند',
+  payamakLib.includes("define('EPLAK_PAYAMAK_TEMPLATE_DEFAULT', '552115')")
+    && api.includes('eplakPayamakDefaultTemplate()') && statusApi.includes('eplakPayamakDefaultTemplate()')
+    && setup.includes('eplakPayamakDefaultTemplate()')
+    && example.includes("'payamak_template_id' => '552115'"));
+ok('اگر شناسه‌ی متن خالی باشد، همان پیش‌فرض مؤثر است (api و status و setup یکی می‌گویند)',
+  api.includes("if ($payamakTemplateId === '') {")
+    && api.includes('$payamakTemplateId = eplakPayamakDefaultTemplate();')
+    && statusApi.includes("$payamakTplRaw !== '' ? $payamakTplRaw : eplakPayamakDefaultTemplate()")
+    && setup.includes('eplakPayamakTemplateId($cfg)'));
+ok('status.php دیگر ارائه‌دهنده‌ی دوم ندارد: provider یا payamak است یا null',
+  statusApi.includes("'provider' => $payamakReady ? 'payamak' : null")
+    && statusApi.includes('$otpReady = $dbOk && $payamakReady && function_exists(\'curl_init\')'));
+ok('setup.php اگر نام کاربری/رمز ملی پیامک نیمه‌کاره باشد، چیزی نمی‌نویسد',
+  setup.includes("($values['payamak_username'] === '') !== ($values['payamak_password'] === '')")
+    && setup.includes('ملی پیامک — نام کاربری'));
+ok('بسته‌ی آپلود هاست shared/payamak.php را دارد و ارجاع به آموت را رد می‌کند',
+  read('tools/build-update-package.sh').includes('shared/payamak.php')
+    && read('tools/build-update-package.sh').includes("grep -qi 'amoot'"));
+ok('راهنماها فقط ملی پیامک و شناسه‌ی 552115 را می‌گویند',
+  newHostGuide.includes('552115') && configGuide.includes('552115')
+    && newHostGuide.includes('ملی پیامک') && configGuide.includes('ملی پیامک'));
 
 console.log(`\nنتیجهٔ OTP: ${pass} موفق، ${fail} ناموفق`);
 if (fail) process.exitCode = 1;
