@@ -6,7 +6,7 @@
      ping.php   → فقط «سرور/اینترنت زنده است؟» و هرگز دیتابیس را لمس نمی‌کند
                   (پرده‌ی «بدون اینترنت» اپ به آن وابسته است؛ باید همیشه جواب دهد).
      status.php → تشخیصِ «چرا سایت کار نمی‌کند»: وجود shared/config.php، رسیدن به
-                  دیتابیس، ساختِ جدول‌ها، پیکربندی پنل پیامک، اکستنشن‌های PHP،
+                  دیتابیس، ساختِ جدول‌ها، پیکربندی پنل ملی پیامک، اکستنشن‌های PHP،
                   پوشه‌های نوشتنی و منطقه‌ی زمانی.
 
    چرا لازم شد؟ شکایت واقعی: «هاست تازه گرفتم؛ موقع وارد کردن شماره می‌گوید
@@ -20,6 +20,9 @@
    ============================================================================ */
 
 require_once __DIR__ . '/../shared/fa_datetime.php';
+/* «ملی پیامک» تنها ارائه‌دهنده‌ی پیامک است؛ شناسه‌ی متنِ پیش‌فرض و سنجش‌ها
+   یک‌جا در shared/payamak.php تعریف شده‌اند تا این گزارش با api/auth.php یکی باشد. */
+require_once __DIR__ . '/../shared/payamak.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -55,11 +58,13 @@ $dbPass = (string) (getenv('DB_PASS') !== false && getenv('DB_PASS') !== ''
 
 $payamakUser = trim((string) (getenv('PAYAMAK_USERNAME') ?: ($fileCfg['payamak_username'] ?? '')));
 $payamakPass = trim((string) (getenv('PAYAMAK_PASSWORD') ?: ($fileCfg['payamak_password'] ?? '')));
-$payamakTpl  = trim((string) (getenv('PAYAMAK_TEMPLATE_ID') ?: ($fileCfg['payamak_template_id'] ?? '')));
-$amootToken  = trim((string) (getenv('AMOOTSMS_TOKEN') ?: ($fileCfg['amootsms_token'] ?? '')));
+/* اگر «شناسه‌ی متن تأییدشده» در تنظیمات خالی باشد، همان پیش‌فرضِ پروژه مؤثر است —
+   چون api/auth.php هم دقیقاً همین کار را می‌کند، این گزارش هم باید همان را بگوید. */
+$payamakTplRaw = trim((string) (getenv('PAYAMAK_TEMPLATE_ID') ?: ($fileCfg['payamak_template_id'] ?? '')));
+$payamakTpl    = $payamakTplRaw !== '' ? $payamakTplRaw : eplakPayamakDefaultTemplate();
 
 $payamakReady = $payamakUser !== '' && $payamakPass !== '' && preg_match('/^\d+$/', $payamakTpl) === 1;
-$payamakPartial = !$payamakReady && ($payamakUser !== '' || $payamakPass !== '' || $payamakTpl !== '');
+$payamakPartial = !$payamakReady && ($payamakUser !== '' || $payamakPass !== '' || $payamakTplRaw !== '');
 
 /* ── اتصال به دیتابیس (بدون bootstrap تا هیچ‌وقت ۵۰۰ نشود) ─────────────── */
 $dbOk = false;
@@ -120,10 +125,10 @@ if ($driver === 'mysql' && !extension_loaded('pdo_mysql')) {
 if (!function_exists('curl_init')) {
     $problems[] = 'اکستنشن cURL فعال نیست ⇒ ارسال پیامک ممکن نیست.';
 }
-if (!$payamakReady && $amootToken === '') {
-    $problems[] = 'پنل پیامک تنظیم نشده ⇒ «کد تایید» ارسال نمی‌شود. کلیدهای Payamak (نام کاربری/رمز/شناسه‌ی متن) یا توکن AmootSMS را در shared/config.php یا setup.php وارد کنید.';
-} elseif ($payamakPartial) {
-    $problems[] = 'تنظیمات Payamak ناقص است ⇒ نام کاربری، رمز و «شناسه‌ی متن تأییدشده» (bodyId، فقط رقم) هر سه لازم‌اند.';
+if ($payamakPartial) {
+    $problems[] = 'تنظیمات ملی پیامک ناقص است ⇒ نام کاربری و رمز پنل ملی پیامک هر دو لازم‌اند (شناسه‌ی متن پیش‌فرض: ' . eplakPayamakDefaultTemplate() . ').';
+} elseif (!$payamakReady) {
+    $problems[] = 'پنل ملی پیامک تنظیم نشده ⇒ «کد تایید» ارسال نمی‌شود. نام کاربری و رمز ملی پیامک را در shared/config.php یا setup.php وارد کنید (شناسه‌ی متن تأییدشده به‌صورت پیش‌فرض ' . eplakPayamakDefaultTemplate() . ' است).';
 }
 foreach ($tables as $tableName => $exists) {
     if (!$exists) {
@@ -138,7 +143,7 @@ if (!is_writable($sharedDir) && !is_file($configPath)) {
     $problems[] = 'پوشه‌ی shared نوشتنی نیست ⇒ setup.php نمی‌تواند config.php را بسازد (دستی با FTP بسازیدش).';
 }
 
-$otpReady = $dbOk && ($payamakReady || $amootToken !== '') && function_exists('curl_init')
+$otpReady = $dbOk && $payamakReady && function_exists('curl_init')
     && ($tables['otp_challenges'] ?? false) && ($tables['users'] ?? false);
 
 echo json_encode([
@@ -168,10 +173,15 @@ echo json_encode([
         'tables' => $tables,
     ],
     'sms' => [
-        'ready'    => $payamakReady || $amootToken !== '',
-        'provider' => $payamakReady ? 'payamak' : ($amootToken !== '' ? 'amootsms' : null),
+        'ready'    => $payamakReady,
+        /* تنها ارائه‌دهنده: ملی پیامک ⇒ یا 'payamak' یا null */
+        'provider' => $payamakReady ? 'payamak' : null,
+        'provider_label' => 'ملی پیامک (rest.payamak-panel.com)',
+        'endpoint' => EPLAK_PAYAMAK_ENDPOINT,
         'username' => $payamakUser !== '' ? $payamakUser : null,
-        'template_id' => $payamakTpl !== '' ? $payamakTpl : null,
+        'template_id' => $payamakTpl,
+        /* true یعنی شناسه را خودتان وارد نکرده‌اید و پیش‌فرضِ 552115 مؤثر است */
+        'template_id_is_default' => $payamakTplRaw === '',
     ],
     'writable' => [
         'shared'  => is_writable($sharedDir),

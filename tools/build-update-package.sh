@@ -45,7 +45,8 @@ has() { printf '%s\n' "$LIST" | grep -Fxq "$1"; }
 for f in .htaccess index.html index.php setup.php sw.js manifest.json shared/bootstrap.php \
          shared/config.example.php docs/NEW_HOST_FA.md \
          shared/webpush.php shared/media.php shared/notification_reads.php shared/fcm.php \
-         shared/notify_events.php shared/fa_datetime.php shared/tiles.php shared/app_heartbeat.php \
+         shared/notify_events.php shared/fa_datetime.php shared/payamak.php \
+         shared/tiles.php shared/app_heartbeat.php \
          api/_common.php api/ping.php api/status.php api/push.php api/media.php api/tiles.php api/reports.php api/notifications.php \
          admin/settings.php admin/login.php admin/report_detail.php admin/notification_view.php \
          admin/version.php \
@@ -96,3 +97,19 @@ echo "   ✅ فایل‌های فقط-توسعه داخل بسته نیستند 
 for f in setup.php api/status.php docs/NEW_HOST_FA.md; do
   if has "$f"; then echo "   ✅ $f (راه‌اندازی روی هاست تازه)"; else echo "   ❌ $f گم شده!"; exit 1; fi
 done
+
+# تنها ارائه‌دهنده‌ی پیامکِ بسته باید «ملی پیامک» باشد. آموت‌اس‌ام‌اس حذف شده و
+# اگر روزی دوباره برگردد، روی هاست دو مسیرِ پیامک ساخته می‌شود که عیب‌یابی‌اش سخت است.
+if unzip -p "$OUT" api/auth.php | grep -qi 'amoot'; then
+  echo "   ❌ ارجاع به آموت‌اس‌ام‌اس داخل بسته هست (باید فقط ملی پیامک باشد)!"; exit 1
+fi
+if unzip -p "$OUT" api/auth.php | grep -qF 'rest.payamak-panel.com/api/SendSMS/BaseServiceNumber'; then
+  echo "   ✅ تنها ارائه‌دهنده‌ی پیامکِ بسته: ملی پیامک"
+else
+  echo "   ❌ نشانی ملی پیامک در api/auth.php بسته نیست!"; exit 1
+fi
+if unzip -p "$OUT" shared/payamak.php | grep -qF "'552115'"; then
+  echo "   ✅ شناسه‌ی متنِ پیش‌فرض (552115) داخل بسته است"
+else
+  echo "   ❌ شناسه‌ی متنِ پیش‌فرض در shared/payamak.php بسته نیست!"; exit 1
+fi

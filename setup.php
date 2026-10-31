@@ -12,9 +12,9 @@
    این صفحه چه کار می‌کند؟
      ۱) وضعیتِ سرور را بدون افشای هیچ رمزی گزارش می‌کند (PHP، pdo_mysql، cURL،
         وجود config، رسیدن به دیتابیس، جدول‌ها، پوشه‌های نوشتنی، ساعت تهران،
-        پیکربندی پنل پیامک).
+        پیکربندی پنل ملی پیامک).
      ۲) در «اجرای اول» (وقتی shared/config.php وجود ندارد) فرمِ ساختِ آن را
-        نشان می‌دهد: اطلاعات دیتابیس + پنل پیامک + منطقه‌ی زمانی. پیش از نوشتن،
+        نشان می‌دهد: اطلاعات دیتابیس + پنل ملی پیامک + منطقه‌ی زمانی. پیش از نوشتن،
         اتصال را با همان اطلاعات «آزمایش» می‌کند تا تنظیم خراب ذخیره نشود.
      ۳) ساختار دیتابیس خودکار است: به‌محض برقراری اتصال، bootstrap جدول‌ها و
         کاربر پیش‌فرض ادمین (admin / admin123) را می‌سازد. دکمه‌ی «ساخت/ترمیم
@@ -35,6 +35,11 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 define('EPLAK_SETUP_ROOT', __DIR__);
 define('EPLAK_SETUP_CONFIG', EPLAK_SETUP_ROOT . '/shared/config.php');
+
+/* پنل پیامک: تنها «ملی پیامک». شناسه‌ی متنِ پیش‌فرض (552115) و سنجش‌ها یک‌جا
+   در shared/payamak.php هستند تا این صفحه، api/auth.php و api/status.php
+   هیچ‌وقت دو حرف نزنند. */
+require_once EPLAK_SETUP_ROOT . '/shared/payamak.php';
 
 function eplak_setup_h($value): string
 {
@@ -83,10 +88,11 @@ function eplak_setup_effective(): array
         'name'     => (string) (getenv('DB_NAME') ?: ($cfg['name'] ?? '')),
         'db_tz'    => (string) ($cfg['db_timezone'] ?? 'Asia/Tehran'),
         'disp_tz'  => (string) ($cfg['display_timezone'] ?? 'Asia/Tehran'),
-        'payamak_user'     => (string) (getenv('PAYAMAK_USERNAME') ?: ($cfg['payamak_username'] ?? '')),
-        'payamak_pass_set' => ((getenv('PAYAMAK_PASSWORD') ?: ($cfg['payamak_password'] ?? '')) !== ''),
-        'payamak_template' => (string) (getenv('PAYAMAK_TEMPLATE_ID') ?: ($cfg['payamak_template_id'] ?? '')),
-        'amootsms_set'     => ((getenv('AMOOTSMS_TOKEN') ?: ($cfg['amootsms_token'] ?? '')) !== ''),
+        'payamak_user'     => eplakPayamakUsername($cfg),
+        'payamak_pass_set' => eplakPayamakPasswordSet($cfg),
+        /* شناسه‌ی مؤثرِ متن: اگر خالی باشد، همان پیش‌فرضِ 552115 */
+        'payamak_template' => eplakPayamakTemplateId($cfg),
+        'payamak_template_default' => eplakPayamakDefaultTemplate(),
         'otp_test_code'    => (string) ($cfg['otp_test_code'] ?? ''),
     ];
 }
@@ -181,7 +187,7 @@ function eplak_setup_status(): array
         'payamak_user'     => $eff['payamak_user'],
         'payamak_ready'    => $eff['payamak_user'] !== '' && $eff['payamak_pass_set'] && preg_match('/^\d+$/', $eff['payamak_template']) === 1,
         'payamak_template' => $eff['payamak_template'],
-        'amootsms_ready'   => $eff['amootsms_set'],
+        'payamak_template_default' => $eff['payamak_template_default'],
         'otp_test_code'    => $eff['otp_test_code'],
         'admin_logged_in'  => eplak_setup_admin(),
     ];
@@ -223,8 +229,14 @@ function eplak_setup_write_config(array $values): array
         . "    'otp_test_code' => " . var_export((string) ($values['otp_test_code'] ?? ''), true) . ",\n"
         . "    'payamak_username' => " . var_export((string) ($values['payamak_username'] ?? ''), true) . ",\n"
         . "    'payamak_password' => " . var_export((string) ($values['payamak_password'] ?? ''), true) . ",\n"
-        . "    'payamak_template_id' => " . var_export((string) ($values['payamak_template_id'] ?? ''), true) . ",\n"
-        . "    'amootsms_token' => " . var_export((string) ($values['amootsms_token'] ?? ''), true) . ",\n"
+        /* شناسه‌ی متن: اگر خالی بماند، همان پیش‌فرضِ 552115 نوشته می‌شود تا روی
+           هاست تازه «کد تایید» بی‌دلیل از کار نیفتد. */
+        . "    'payamak_template_id' => " . var_export(
+            (string) (($values['payamak_template_id'] ?? '') !== ''
+                ? $values['payamak_template_id']
+                : eplakPayamakDefaultTemplate()),
+            true
+        ) . ",\n"
         . "];\n";
 
     /* ممیزی: چه کسی/کی تنظیمات را ساخت (برای بررسی امنیتی در error_log هاست) */
@@ -272,10 +284,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'payamak_username'    => trim((string) ($_POST['payamak_username'] ?? '')),
                     'payamak_password'    => (string) ($_POST['payamak_password'] ?? ''),
                     'payamak_template_id' => trim((string) ($_POST['payamak_template_id'] ?? '')),
-                    'amootsms_token'      => trim((string) ($_POST['amootsms_token'] ?? '')),
                 ];
                 if ($values['driver'] === 'mysql' && ($values['name'] === '' || $values['user'] === '')) {
                     $flash = ['error', 'نام دیتابیس و نام کاربری MySQL الزامی است.'];
+                } elseif (($values['payamak_username'] === '') !== ($values['payamak_password'] === '')) {
+                    /* نیمه‌تنظیم‌شده از تنظیم‌نشده بدتر است: کاربر فکر می‌کند کار تمام است */
+                    $flash = ['error', 'برای پنل ملی پیامک، نام کاربری و رمز هر دو لازم‌اند (یا هر دو را خالی بگذارید).'];
+                } elseif ($values['payamak_template_id'] !== '' && preg_match('/^\d+$/', $values['payamak_template_id']) !== 1) {
+                    $flash = ['error', '«شناسه‌ی متن تأییدشده» (bodyId) ملی پیامک باید فقط رقم باشد؛ یا خالی بگذارید تا پیش‌فرضِ ' . eplakPayamakDefaultTemplate() . ' استفاده شود.'];
                 } else {
                     /* پیش از نوشتن، اتصال را با همان اطلاعات آزمایش می‌کنیم */
                     $err = null;
@@ -284,7 +300,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         $flash = ['error', 'اتصال با این اطلاعات برقرار نشد، پس چیزی نوشته نشد: ' . $err];
                     } else {
                         list($okWrite, $msg) = eplak_setup_write_config($values);
-                        $flash = $okWrite ? ['ok', $msg . ' جدول‌ها در اولین اجرای سایت خودکار ساخته می‌شوند.'] : ['error', $msg];
+                        if ($okWrite) {
+                            $msg .= ' جدول‌ها در اولین اجرای سایت خودکار ساخته می‌شوند.';
+                            if ($values['payamak_username'] === '' || $values['payamak_password'] === '') {
+                                $msg .= ' ⚠️ نام کاربری/رمز «ملی پیامک» وارد نشده، پس «کد تایید» ارسال نمی‌شود؛'
+                                    . ' بعد از ورودِ مدیر، همین فرم را دوباره پر کنید.';
+                            }
+                        }
+                        $flash = $okWrite ? ['ok', $msg] : ['error', $msg];
                     }
                 }
             }
@@ -415,10 +438,11 @@ foreach (['backend/eplak-db.sql', 'backend/fix-news-db.sql', 'backend/fix-notifi
           <?php endforeach; ?>
         <?php endif; ?></td></tr>
       <tr><td class="k">پنل پیامک (برای کد تایید)</td>
-        <td class="<?= ($status['payamak_ready'] || $status['amootsms_ready']) ? 'ok' : 'bad' ?>">
-          <?php if ($status['payamak_ready']): ?>✅ Payamak (کاربری: <code><?= eplak_setup_h($status['payamak_user']) ?></code> · شناسه‌ی متن: <code><?= eplak_setup_h($status['payamak_template']) ?></code>)
-          <?php elseif ($status['amootsms_ready']): ?>✅ AmootSMS
-          <?php else: ?>❌ هیچ پنل پیامکی تنظیم نشده ⇒ کد تایید ارسال نمی‌شود<?php endif; ?></td></tr>
+        <td class="<?= $status['payamak_ready'] ? 'ok' : 'bad' ?>">
+          <?php if ($status['payamak_ready']): ?>✅ ملی پیامک (کاربری: <code><?= eplak_setup_h($status['payamak_user']) ?></code> · شناسه‌ی متن: <code><?= eplak_setup_h($status['payamak_template']) ?></code>)
+          <?php else: ?>❌ ملی پیامک تنظیم نشده ⇒ کد تایید ارسال نمی‌شود
+            <div class="note">نام کاربری و رمز پنل ملی پیامک لازم است؛ «شناسه‌ی متن تأییدشده» (bodyId)
+              به‌صورت پیش‌فرض <code><?= eplak_setup_h($status['payamak_template_default']) ?></code> است.</div><?php endif; ?></td></tr>
       <tr><td class="k">PHP / اکستنشن‌ها</td>
         <td class="<?= ($status['php_ok'] && $status['pdo_mysql'] && $status['curl']) ? 'ok' : 'bad' ?>">
           <?= eplak_setup_h($status['php_version']) ?> ·
@@ -468,13 +492,17 @@ foreach (['backend/eplak-db.sql', 'backend/fix-news-db.sql', 'backend/fix-notifi
         </div>
         <label>منطقه‌ی زمانی نمایش</label><input type="text" name="display_timezone" value="Asia/Tehran">
 
-        <h2 style="margin-top:22px">پنل پیامک (برای ارسال کد تایید — حداقل یکی)</h2>
+        <h2 style="margin-top:22px">پنل ملی پیامک (برای ارسال کد تایید)</h2>
+        <p class="note">تنها سرویس پیامکی که پروژه استفاده می‌کند <b>ملی پیامک</b>
+          (<code>rest.payamak-panel.com</code>) است. نام کاربری و رمز را از پنل ملی
+          پیامک بردارید؛ «شناسه‌ی متن تأییدشده» (bodyId) به‌صورت پیش‌فرض
+          <code><?= eplak_setup_h($status['payamak_template_default']) ?></code> است و اگر شناسه‌ی
+          دیگری دارید، همان را بنویسید (فقط رقم).</p>
         <div class="row">
-          <div><label>Payamak — نام کاربری</label><input type="text" name="payamak_username"></div>
-          <div><label>Payamak — رمز</label><input type="password" name="payamak_password"></div>
-          <div><label>Payamak — شناسه‌ی متن تأییدشده (bodyId)</label><input type="text" name="payamak_template_id"></div>
+          <div><label>ملی پیامک — نام کاربری</label><input type="text" name="payamak_username" value="<?= eplak_setup_h($status['payamak_user']) ?>"></div>
+          <div><label>ملی پیامک — رمز</label><input type="password" name="payamak_password" autocomplete="new-password"></div>
+          <div><label>ملی پیامک — شناسه‌ی متن تأییدشده (bodyId)</label><input type="text" name="payamak_template_id" inputmode="numeric" value="<?= eplak_setup_h($status['payamak_template']) ?>"></div>
         </div>
-        <label>یا AmootSMS — توکن</label><input type="text" name="amootsms_token">
 
         <label>کد آزمایشی محلی (در تولید خالی بگذارید)</label>
         <input type="text" name="otp_test_code" placeholder="مثلاً 1111 — فقط روی localhost">

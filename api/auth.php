@@ -1,5 +1,8 @@
 <?php
 require_once __DIR__ . '/_common.php';
+/* تنها ارائه‌دهنده‌ی پیامکِ پروژه: «ملی پیامک» (shared/payamak.php).
+   آموت‌اس‌ام‌اس به درخواست کارفرما کاملاً حذف شده است. */
+require_once __DIR__ . '/../shared/payamak.php';
 
 eplakApiHeaders();
 
@@ -93,18 +96,24 @@ if ($action === 'send') {
 
     $payamakUsername = trim((string)(getenv('PAYAMAK_USERNAME') ?: ($fileConfig['payamak_username'] ?? '')));
     $payamakPassword = trim((string)(getenv('PAYAMAK_PASSWORD') ?: ($fileConfig['payamak_password'] ?? '')));
+    /* شناسه‌ی «متن تأییدشده» (bodyId) ملی پیامک. اگر در تنظیمات خالی باشد،
+       شناسه‌ی پیش‌فرضِ پروژه (552115) استفاده می‌شود تا روی هاست تازه
+       «کد تایید» بی‌دلیل از کار نیفتد. */
     $payamakTemplateId = trim((string)(getenv('PAYAMAK_TEMPLATE_ID') ?: ($fileConfig['payamak_template_id'] ?? '')));
+    if ($payamakTemplateId === '') {
+        $payamakTemplateId = eplakPayamakDefaultTemplate();
+    }
     $hasPayamakCredentials = $payamakUsername !== '' && $payamakPassword !== '';
     $payamakEnabled = $hasPayamakCredentials && preg_match('/^\d+$/', $payamakTemplateId) === 1;
 
     if (!$isLocalTest && ($payamakUsername !== '') !== ($payamakPassword !== '')) {
-        error_log('[eplak-otp] Payamak username and password must both be configured.');
-        eplakJsonError('تنظیمات پنل پیامک کامل نیست.', 503);
+        error_log('[eplak-otp] Melli Payamak username and password must both be configured.');
+        eplakJsonError('تنظیمات پنل ملی پیامک کامل نیست.', 503);
     }
 
     if (!$isLocalTest && $hasPayamakCredentials && !$payamakEnabled) {
-        error_log('[eplak-otp] A numeric Payamak template ID must be configured.');
-        eplakJsonError('شناسه متن تأییدشده پنل پیامک تنظیم نشده است.', 503);
+        error_log('[eplak-otp] A numeric Melli Payamak template ID (bodyId) must be configured.');
+        eplakJsonError('شناسه متن تأییدشده پنل ملی پیامک باید رقمی باشد.', 503);
     }
 
     if (!$isLocalTest && !function_exists('curl_init')) {
@@ -112,12 +121,12 @@ if ($action === 'send') {
         eplakJsonError('امکان اتصال به سامانه پیامک روی سرور فعال نیست.', 503);
     }
 
+    /* تنها مسیرِ ارسال، ملی پیامک است؛ پس اگر آماده نباشد دلیلش صریح گفته
+       می‌شود (نه پیامِ کلی «پیکربندی نشده») تا هم در اپ و هم در api/status.php
+       و هم در setup.php همان یک جمله دیده شود. */
     if (!$isLocalTest && !$payamakEnabled) {
-        $token = trim((string)(getenv('AMOOTSMS_TOKEN') ?: ($fileConfig['amootsms_token'] ?? '')));
-        if ($token === '') {
-            error_log('[eplak-otp] AMOOTSMS_TOKEN is not configured.');
-            eplakJsonError('ارسال پیامک فعلاً پیکربندی نشده است.', 503);
-        }
+        error_log('[eplak-otp] Melli Payamak is not configured (username/password missing).');
+        eplakJsonError('پنل ملی پیامک تنظیم نشده است؛ نام کاربری و رمز را در setup.php وارد کنید.', 503);
     }
 
     $challengeId = bin2hex(random_bytes(32));
@@ -148,6 +157,7 @@ if ($action === 'send') {
         ]);
     }
 
+    /* ارسال با ملی پیامک: کد چهاررقمی در text و شناسه‌ی متن تأییدشده در bodyId */
     $providerCode = '';
     if ($payamakEnabled) {
         $payamakData = [
@@ -191,54 +201,11 @@ if ($action === 'send') {
             eplakJsonError('سامانه پیامک نتوانست کد را ارسال کند؛ شماره و وضعیت خط پیامکی را بررسی کنید.', 502);
         }
     } else {
-        $mobile = '98' . substr($phone, 1);
-        $fields = http_build_query([
-            'Token' => $token,
-            'SendDateTime' => (new DateTimeImmutable('now', new DateTimeZone('Asia/Tehran')))->format('n/j/Y g:i:s A'),
-            'SMSMessageText' => 'کد تایید شما:',
-            'LineNumber' => 'public',
-            'Mobile' => $mobile,
-            'CodeLength' => '4',
-        ]);
-
-        $curl = curl_init('https://portal.amootsms.com/rest/SendOTP');
-        curl_setopt_array($curl, [
-            CURLOPT_POST => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $token,
-                'Content-Type: application/x-www-form-urlencoded',
-            ],
-            CURLOPT_POSTFIELDS => $fields,
-            CURLOPT_TIMEOUT => 15,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_SSL_VERIFYHOST => 2,
-        ]);
-        $responseBody = curl_exec($curl);
-        $curlError = curl_error($curl);
-        $httpStatus = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
-        curl_close($curl);
-
-        if ($responseBody === false || $httpStatus < 200 || $httpStatus >= 300) {
-            error_log('[eplak-otp] AmootSMS request failed; HTTP ' . $httpStatus . ($curlError !== '' ? ', cURL error: ' . $curlError : ''));
-            eplakJsonError('ارسال کد پیامکی انجام نشد؛ لطفاً کمی بعد دوباره تلاش کنید.', 502);
-        }
-
-        $providerResponse = json_decode((string)$responseBody, true);
-        $providerStatus = is_array($providerResponse) ? strtolower(trim((string)($providerResponse['Status'] ?? ''))) : '';
-        $providerData = is_array($providerResponse) && is_array($providerResponse['Data'] ?? null)
-            ? $providerResponse['Data']
-            : [];
-        $providerDataStatus = strtolower(trim((string)($providerData['Status'] ?? '')));
-        $providerCodeValue = $providerData['Code'] ?? '';
-        $providerCode = is_int($providerCodeValue)
-            ? str_pad((string)$providerCodeValue, 4, '0', STR_PAD_LEFT)
-            : trim((string)$providerCodeValue);
-        if ($providerStatus !== 'success' || $providerDataStatus !== 'success' || !preg_match('/^\d{4}$/', $providerCode)) {
-            error_log('[eplak-otp] AmootSMS rejected OTP request; status=' . ($providerStatus !== '' ? $providerStatus : 'invalid_response'));
-            eplakJsonError('سامانه پیامک نتوانست کد را ارسال کند؛ شماره و وضعیت خط پیامکی را بررسی کنید.', 502);
-        }
+        /* به این شاخه نمی‌رسیم: اگر ملی پیامک آماده نباشد، چند خط بالاتر
+           پاسخ خطا داده شده و اجرا تمام شده است. این فقط برای اطمینان است که
+           هرگز «بی‌کد» جلو نرویم و چیزی در دیتابیس ننویسیم. */
+        error_log('[eplak-otp] Melli Payamak was not enabled; OTP was not sent.');
+        eplakJsonError('پنل ملی پیامک تنظیم نشده است؛ نام کاربری و رمز را در setup.php وارد کنید.', 503);
     }
 
     $pdo->prepare('UPDATE otp_challenges SET expires_at = :now WHERE phone = :phone AND challenge_id <> :id')
