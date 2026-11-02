@@ -2,15 +2,29 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
+/* دسترسی و دامنه: مدیرِ حوزه/معاونت فقط گزارش‌های همان حوزه را می‌بیند و
+   گزارشِ خارج از حوزه‌اش مثل «پیدا نشد» رفتار می‌کند (بدون افشای وجودش). */
+eplakRequirePermission('reports.view');
+$eplakScope = eplakAdminScope($pdo);
+
 $id = (int)($_GET['id'] ?? 0);
-$report = getReportById($pdo, $id);
+$report = getScopedReportById($pdo, $id, $eplakScope);
 $message = '';
 $messageType = '';
+
+/* گزارش پیدا نشد «یا» بیرون از حوزه‌ی این مدیر است — هر دو یک رفتار دارند تا
+   وجودِ گزارشِ حوزه‌ی دیگر افشا نشود (بدون پیام، بدون شناسه). */
+if (!$report) {
+    eplakRedirect('reports.php');
+    exit;
+}
 
 require_once __DIR__ . '/../shared/notify_events.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $report) {
     eplakRequireCsrf();
+    /* ثبت پاسخ/وضعیت نیازمند مجوز ویرایش است */
+    eplakRequirePermission('reports.edit');
     $formAction = (string) ($_POST['form_action'] ?? 'reply');
     $reportCode = reportCodeFor((int) $report['id']);
     $reportPhone = eplakNotifyNormalizePhone((string) ($report['user_phone'] ?? ''));
@@ -56,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $report) {
             $messageType = 'info';
         }
     }
-    $report = getReportById($pdo, $id);
+    $report = getScopedReportById($pdo, $id, $eplakScope);
 }
 
 if ($report && !isset($report['code'])) {
@@ -126,19 +140,9 @@ if ($report && !empty($report['user_phone'])) {
         <img class="logo-light" src="assets/img/logo.png" alt="ای‌پلاک">
         <img class="logo-dark" src="assets/img/logo-light.png" alt="ای‌پلاک">
       </div>
-      <nav>
-        <a href="index.php"><i class="fas fa-chart-pie"></i> <span>داشبورد</span></a>
-        <a href="reports.php"><i class="fas fa-flag"></i> <span>گزارش‌ها</span></a>
-        <a href="tickets.php"><i class="fas fa-ticket-alt"></i> <span>تیکت‌ها</span></a>
-        <a href="users.php"><i class="fas fa-users"></i> <span>کاربران</span></a>
-        <a href="departments.php"><i class="fas fa-sitemap"></i> <span>واحدها</span></a>
-                <a href="news.php"><i class="fas fa-newspaper"></i> <span>اخبار و دانستنی‌ها</span></a>
-                <a href="places.php"><i class="fas fa-map-location-dot"></i> <span>اماکن شهری</span></a>
-        <a href="notifications.php"><i class="fas fa-bell"></i> <span>ارسال اعلان</span></a>
-<a href="export.php"><i class="fas fa-file-excel"></i> <span>خروجی اکسل</span></a>
-<a href="settings.php"><i class="fas fa-cog"></i> <span>تنظیمات</span></a>
-<a href="version.php"><i class="fas fa-clipboard-check"></i> <span>بررسی نسخه</span></a>
-      </nav>
+      <nav data-testid="admin-sidebar">
+<?php /* منوی آگاه از دسترسی — admin/includes/acl.php */ ?>
+<?= eplakAdminSidebar('reports') ?>      </nav>
     </aside>
     <main class="main">
       <header class="topbar">
@@ -416,9 +420,11 @@ if ($report && !empty($report['user_phone'])) {
             <?= nl2br(htmlspecialchars($report['reply'])) ?>
           </div>
           <div style="margin-top: 16px;">
+            <?php if (eplakAdminCan('reports.delete')): ?>
             <a href="actions.php?type=report_reply_delete&id=<?= (int)$report['id'] ?><?= eplakCsrfQuery() ?>" class="btn btn-danger" onclick="return confirm('آیا از حذف پاسخ این گزارش اطمینان دارید؟')">
               <i class="fas fa-trash"></i> حذف پاسخ
             </a>
+            <?php endif; ?>
           </div>
         <?php else: ?>
           <div class="empty-state">
@@ -566,6 +572,8 @@ if ($report && !empty($report['user_phone'])) {
               </tbody>
             </table>
           <?php endif; ?>
+          <?php /* ارسال/آزمایش اعلان فقط برای مدیر کل (مدیرِ حوزه دسترسی «اعلان» ندارد) */ ?>
+          <?php if (eplakAdminCan('notifications')): ?>
           <div style="display:flex; flex-wrap:wrap; gap:10px;">
             <form method="post" style="margin:0;">
               <?= eplakCsrfField() ?>
@@ -579,6 +587,7 @@ if ($report && !empty($report['user_phone'])) {
             </form>
             <a href="settings.php#fcm-section" class="btn btn-outline"><i class="fas fa-stethoscope"></i> بررسی اتصال به گوگل</a>
           </div>
+          <?php endif; ?>
         <?php endif; ?>
       </section>
       <?php endif; ?>

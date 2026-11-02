@@ -2,6 +2,11 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
+/* دسترسی و دامنه: مدیرِ حوزه/معاونت فقط گزارش‌های همان حوزه را می‌بیند
+   (admin/includes/acl.php). مدیر کل بدون محدودیت. */
+eplakRequirePermission('reports.view');
+$eplakScope = eplakAdminScope($pdo);
+
 /* تغییر سریع وضعیت از خود فهرست گزارش‌ها:
    مدیر از همان جدول، وضعیت را عوض می‌کند و روی همین صفحه می‌ماند. */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quick_status_id'])) {
@@ -10,7 +15,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quick_status_id'])) {
     $quickStatus = (string) ($_POST['status'] ?? 'pending');
     $quickReply = trim((string) ($_POST['reply'] ?? ''));
     $quickNotify = [];
-    $quickFound = $quickId > 0 && getReportById($pdo, $quickId);
+    /* گزارشِ خارج از حوزه‌ی مدیر مثل «پیدا نشد» رفتار می‌کند: نه تغییر می‌کند،
+       نه وجودش افشا می‌شود. */
+    $quickFound = $quickId > 0 && getScopedReportById($pdo, $quickId, $eplakScope);
     if ($quickFound) {
         $quickNotify = saveReportReply($pdo, $quickId, $quickReply, $quickStatus);
     }
@@ -33,7 +40,7 @@ if (isset($_GET['status_saved']) && isset($_SESSION['eplak_flash']) && is_array(
 }
 unset($_SESSION['eplak_flash']);
 
-$reports = getAllReports($pdo);
+$reports = getScopedReports($pdo, $eplakScope);
 
 /* تعداد عکس/فیلم هر گزارش — برای نشان دادن پیوست‌های ارسالی شهروند در فهرست */
 $reportIds = array_map(static fn($r) => (int) $r['id'], $reports);
@@ -58,18 +65,9 @@ $mediaCounts = getReportMediaCounts($pdo, $reportIds);
         <img class="logo-light" src="assets/img/logo.png" alt="ای‌پلاک">
         <img class="logo-dark" src="assets/img/logo-light.png" alt="ای‌پلاک">
       </div>
-      <nav>
-        <a href="index.php"><i class="fas fa-chart-pie"></i> <span>داشبورد</span></a>
-        <a class="active" href="reports.php"><i class="fas fa-flag"></i> <span>گزارش‌ها</span></a>
-        <a href="users.php"><i class="fas fa-users"></i> <span>کاربران</span></a>
-        <a href="departments.php"><i class="fas fa-sitemap"></i> <span>واحدها</span></a>
-                <a href="news.php"><i class="fas fa-newspaper"></i> <span>اخبار و دانستنی‌ها</span></a>
-                <a href="places.php"><i class="fas fa-map-location-dot"></i> <span>اماکن شهری</span></a>
-        <a href="notifications.php"><i class="fas fa-bell"></i> <span>ارسال اعلان</span></a>
-<a href="export.php"><i class="fas fa-file-excel"></i> <span>خروجی اکسل</span></a>
-<a href="settings.php"><i class="fas fa-cog"></i> <span>تنظیمات</span></a>
-<a href="version.php"><i class="fas fa-clipboard-check"></i> <span>بررسی نسخه</span></a>
-      </nav>
+      <nav data-testid="admin-sidebar">
+<?php /* منوی آگاه از دسترسی — admin/includes/acl.php */ ?>
+<?= eplakAdminSidebar('reports') ?>      </nav>
     </aside>
     <main class="main">
       <header class="topbar">
@@ -78,9 +76,12 @@ $mediaCounts = getReportMediaCounts($pdo, $reportIds);
           <p>مشاهده و بروزرسانی وضعیت گزارش‌های ثبت‌شده</p>
         </div>
         <div class="topbar-right">
+          <?= eplakAdminScopeBadge($pdo) ?>
+          <?php if (eplakAdminCan('reports.create')): ?>
           <a href="report_add.php" class="btn btn-primary">
             <i class="fas fa-plus"></i> گزارش جدید
           </a>
+          <?php endif; ?>
         </div>
       </header>
 
@@ -225,9 +226,11 @@ $mediaCounts = getReportMediaCounts($pdo, $reportIds);
                       <a href="report_edit.php?id=<?= (int)$report['id'] ?>" class="btn-action edit" title="ویرایش گزارش">
                         <i class="fas fa-pen"></i>
                       </a>
+                      <?php if (eplakAdminCan('reports.delete')): ?>
                       <a href="actions.php?type=report_delete&id=<?= (int)$report['id'] ?><?= eplakCsrfQuery() ?>" class="btn-action delete" title="حذف" onclick="return confirm('آیا از حذف این گزارش اطمینان دارید؟')">
                         <i class="fas fa-trash"></i>
                       </a>
+                      <?php endif; ?>
                     </div>
                   </td>
                 </tr>

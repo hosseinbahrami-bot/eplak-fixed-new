@@ -734,8 +734,23 @@ function eplakSqliteBootstrap(PDO $pdo): void {
         username VARCHAR(100) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(50) NOT NULL DEFAULT 'admin',
+        full_name VARCHAR(255) NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        last_login_at VARCHAR(30) NOT NULL DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
+
+    /* مدیرانِ حوزه/معاونت: هر مدیر به یک یا چند «واحد سطح اول» (حوزه شهردار یا
+       یکی از معاونت‌ها) منتسب است و فقط گزارش‌ها و تیکت‌های همان واحد(ها) را
+       می‌بیند. مدیر کل (super_admin) به همه‌چیز دسترسی دارد و ردیفی این‌جا ندارد.
+       چندبه‌چند است: یک واحد می‌تواند چند مدیر داشته باشد. */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS admin_departments (
+        admin_id INTEGER NOT NULL,
+        department_id INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (admin_id, department_id)
+    )");
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_admin_departments_dept ON admin_departments(department_id)');
 
     eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS tickets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1028,7 +1043,9 @@ function eplakUsersUpsertSql(PDO $pdo, bool $keepDefaultName = false): string {
    یک پله بالا ببرید؛ بقیه‌اش خودکار انجام می‌شود.
    ============================================================================ */
 if (!defined('EPLAK_SCHEMA_VERSION')) {
-    define('EPLAK_SCHEMA_VERSION', '2026-10-03.1');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
+    /* + ستون‌های full_name/is_active/last_login_at روی admin_users و جدول admin_departments
+       (مدیرانِ حوزه/معاونت) + جدول ads (تبلیغات داخل اپ) */
+    define('EPLAK_SCHEMA_VERSION', '2026-11-02.1');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
 }
 
 /* تعریف جداول (همان متن CREATE TABLE) برای مقایسه با دیتابیس.
@@ -2076,8 +2093,24 @@ function eplakGetPdo(): PDO {
         username VARCHAR(100) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(50) NOT NULL DEFAULT 'admin',
+        full_name VARCHAR(255) NOT NULL DEFAULT '',
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        last_login_at VARCHAR(30) NOT NULL DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
+
+    /* مدیرانِ حوزه/معاونت (همان توضیحِ نسخه‌ی SQLite): انتساب مدیر به واحدهای سطح اول */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS admin_departments (
+        admin_id INT NOT NULL,
+        department_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (admin_id, department_id)
+    )");
+    try {
+        $pdo->exec('CREATE INDEX idx_admin_departments_dept ON admin_departments(department_id)');
+    } catch (\Throwable $e) {
+        /* ایندکس تکراری یا نبودِ اجازه — بی‌ضرر */
+    }
 
     eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS tickets (
         id INT AUTO_INCREMENT PRIMARY KEY,

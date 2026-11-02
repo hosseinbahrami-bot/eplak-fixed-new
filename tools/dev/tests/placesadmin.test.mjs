@@ -396,9 +396,15 @@ section('هشدار و خطای PHP');
 ok('در هیچ‌یک از پاسخ‌های پنل و API هشدار/اخطار/خطای PHP دیده نشد (display_errors روشن، E_ALL)', phpNoise.length === 0, phpNoise.slice(0, 3).join(' | '));
 
 section('پیوند منو و فایل‌ها');
-const adminPages = fs.readdirSync(`${ROOT}/admin`).filter((n) => n.endsWith('.php') && /href="notifications\.php"/.test(read(`admin/${n}`)));
-const missingNav = adminPages.filter((n) => !/href="places\.php"/.test(read(`admin/${n}`)));
-ok(`پیوند «اماکن شهری» در منوی همه‌ی ${adminPages.length} صفحه‌ی پنل هست`, adminPages.length >= 25 && missingNav.length === 0, missingNav.join(', '));
+/* منوی پنل از نسخه‌ی «مدیرانِ حوزه‌محدود» یک منبعِ واحد دارد (admin/includes/acl.php)
+   و صفحه‌ها آن را با eplakAdminSidebar() صدا می‌زنند؛ پس «اماکن شهری» باید هم در آن
+   منبع باشد و هم همه‌ی صفحه‌های دارای نوارِ کنار، همان منو را بخوانند. */
+const menuSrc = read('admin/includes/acl.php');
+const adminPages = fs.readdirSync(`${ROOT}/admin`).filter((n) => n.endsWith('.php') && /<aside class="sidebar">/.test(read(`admin/${n}`)));
+const missingNav = adminPages.filter((n) => !/eplakAdminSidebar\(/.test(read(`admin/${n}`)));
+ok(`پیوند «اماکن شهری» در منوی واحدِ پنل هست و همه‌ی ${adminPages.length} صفحه همان منو را صدا می‌زنند`,
+  /'href' => 'places\.php'/.test(menuSrc) && /'href' => 'notifications\.php'/.test(menuSrc)
+  && adminPages.length >= 25 && missingNav.length === 0, missingNav.join(', '));
 ok('shared/places_store.php از وب بسته است (پوشه‌ی shared در .htaccess)', /RedirectMatch 404 \^\/\.\*\/\(data\|shared\|/.test(read('.htaccess')));
 ok('هیچ‌جا از توابع PHP 8 به بعد (str_contains/match/?->) استفاده نشده — هاست‌های PHP 7.4 هم کار می‌کنند',
   ['shared/places_store.php', 'api/places.php', 'admin/places.php'].every((rel) => !/\bstr_contains\(|\bstr_starts_with\(|\bstr_ends_with\(|\bmatch\s*\(|\?->/.test(read(rel).replace(/\/\*[\s\S]*?\*\//g, ''))));

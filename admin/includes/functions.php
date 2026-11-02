@@ -1528,3 +1528,612 @@ function getPushLastErrors(PDO $pdo, int $limit = 5): array {
         return [];
     }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   داده‌های «حوزه‌محدود» برای مدیرانِ حوزه/معاونت (admin/includes/acl.php)
+   ----------------------------------------------------------------------------
+   چرا فیلتر در PHP و نه در SQL؟
+     ۱) نامِ واحد در reports/tickets به‌صورت «متن» ذخیره می‌شود و در داده‌های
+        قدیمی نیم‌فاصله/ی-ک/فاصله‌ی اضافی دارد؛ تطبیقِ دقیقِ آن در SQL برای هر دو
+        درایور (MySQL و SQLite) یکسان درنمی‌آید، ولی eplakScopeKey() یک قانونِ
+        واحد در PHP است و eplakScopeSqlExpr() دقیقاً همان قانون را با
+        REPLACE/LOWER (که در هر دو دیتابیس هست) در SQL می‌سازد ⇒ فهرست‌ها و
+        آمارِ زنده هیچ‌وقت با هم نمی‌جنگند.
+     ۲) این صفحه‌ها هم‌اکنون هم «همه‌ی» ردیف‌ها را می‌خوانند (بدون صفحه‌بندی)،
+        پس هزینه‌ی اضافه‌ای تحمیل نمی‌شود.
+     ۳) تابع‌های موجود (getAllReports و …) دست‌نخورده می‌مانند ⇒ رفتار مدیر کل
+        و آزمون‌های موجود دقیقاً مثل قبل است.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/** ردیف‌هایی که در دامنه‌ی مدیر هستند (کلیدها پیوسته می‌شوند) */
+function eplakScopeFilterRows(array $rows, array $scope): array
+{
+    if (!empty($scope['is_super'])) {
+        return $rows;
+    }
+    $out = [];
+    foreach ($rows as $row) {
+        if (is_array($row) && eplakScopeAllowsRow($row, $scope)) {
+            $out[] = $row;
+        }
+    }
+    return $out;
+}
+
+/**
+ * ردیف‌های گزارش، بدونِ تابعِ مخصوصِ یک دیتابیس.
+ * getAllReports از CONCAT/LPAD استفاده می‌کند که فقط در MySQL هست؛ اینجا ستونِ
+ * «code» در خودِ PHP ساخته می‌شود تا همان داده هم روی MySQLِ هاست و هم روی
+ * SQLite (آزمون‌ها/نصب‌های سبک) درست خوانده شود و قالبِ صفحه چیزی کم نداشته باشد.
+ */
+function eplakFetchReportsRows(PDO $pdo): array
+{
+    try {
+        $rows = $pdo->query('SELECT * FROM reports ORDER BY created_at DESC')->fetchAll() ?: [];
+    } catch (Throwable $e) {
+        return [];
+    }
+    foreach ($rows as $index => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        if (trim((string) ($row['code'] ?? '')) === '') {
+            $rows[$index]['code'] = reportCodeFor((int) ($row['id'] ?? 0));
+        }
+    }
+    return $rows;
+}
+
+/** کدِ نمایشی تیکت — دقیقاً همان قالبی که CONCAT/LPAD در MySQL می‌ساخت */
+function eplakTicketCodeFor(int $id): string
+{
+    return 'TC-' . str_pad((string) ($id + 1000), 4, '0', STR_PAD_LEFT);
+}
+
+/** گزارش‌های در دامنه‌ی مدیر */
+function getScopedReports(PDO $pdo, array $scope): array
+{
+    return eplakScopeFilterRows(eplakFetchReportsRows($pdo), $scope);
+}
+
+/** تیکت‌های در دامنه‌ی مدیر (با همان فیلتر وضعیت/جست‌وجوی صفحه) */
+function getScopedTickets(PDO $pdo, array $scope, string $statusFilter = 'all', string $search = ''): array
+{
+    $rows = eplakScopeFilterRows(getTickets($pdo, $statusFilter, $search), $scope);
+    foreach ($rows as $index => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        if (trim((string) ($row['code'] ?? '')) === '') {
+            $rows[$index]['code'] = eplakTicketCodeFor((int) ($row['id'] ?? 0));
+        }
+    }
+    return $rows;
+}
+
+/** تازه‌ترین گزارش‌های در دامنه (برای داشبورد) */
+function getScopedLatestReports(array $scopedReports, int $limit = 5): array
+{
+    return array_slice($scopedReports, 0, max(0, $limit));
+}
+
+/** تازه‌ترین تیکت‌های در دامنه (برای داشبورد) */
+function getScopedLatestTickets(array $scopedTickets, int $limit = 5): array
+{
+    return array_slice($scopedTickets, 0, max(0, $limit));
+}
+
+/**
+ * یک گزارش فقط اگر در دامنه‌ی مدیر باشد.
+ * ⚠️ «پیدا نشد» و «خارج از حوزه» عمداً یکی برگردانده می‌شوند تا وجودِ گزارشِ
+ *    حوزه‌ی دیگر برای مدیرِ حوزه افشا نشود (هیچ شماره/شناسه‌ای نشت نمی‌کند).
+ */
+function getScopedReportById(PDO $pdo, int $id, array $scope): ?array
+{
+    $row = getReportById($pdo, $id);
+    if (!is_array($row)) {
+        return null;
+    }
+    return eplakScopeAllowsRow($row, $scope) ? $row : null;
+}
+
+/** یک تیکت فقط اگر در دامنه‌ی مدیر باشد (همان قاعده‌ی عدم افشا) */
+function getScopedTicketById(PDO $pdo, int $id, array $scope): ?array
+{
+    $row = getTicketById($pdo, $id);
+    if (!is_array($row)) {
+        return null;
+    }
+    return eplakScopeAllowsRow($row, $scope) ? $row : null;
+}
+
+/** آمار وضعیتِ گزارش‌های در دامنه (همان شکلِ خروجیِ getReportsStatusStats) */
+function getScopedReportsStatusStats(array $scopedReports): array
+{
+    $stats = ['pending' => 0, 'in_progress' => 0, 'done' => 0];
+    $total = 0;
+    foreach ($scopedReports as $row) {
+        $key = reportStatusOf(is_array($row) ? $row : []);
+        if (!isset($stats[$key])) {
+            $stats[$key] = 0;
+        }
+        $stats[$key]++;
+        $total++;
+    }
+    return ['total' => $total, 'counts' => $stats];
+}
+
+/** نمودار «بر اساس واحد» فقط با ردیف‌های در دامنه (همان شکلِ getReportsByDepartment) */
+function getScopedReportsByDepartment(array $scopedReports, int $limit = 8): array
+{
+    $buckets = [];
+    foreach ($scopedReports as $row) {
+        $name = trim((string) ($row['department'] ?? ''));
+        if ($name === '') {
+            $name = trim((string) ($row['sub_department'] ?? ''));
+        }
+        $key = $name !== '' ? $name : 'واحد نامشخص';
+        $buckets[$key] = (int) ($buckets[$key] ?? 0) + 1;
+    }
+    arsort($buckets);
+    $out = [];
+    foreach ($buckets as $label => $count) {
+        $out[] = ['label' => (string) $label, 'count' => $count];
+    }
+    if ($limit > 0 && count($out) > $limit) {
+        $top = array_slice($out, 0, $limit);
+        $rest = 0;
+        foreach (array_slice($out, $limit) as $row) {
+            $rest += (int) $row['count'];
+        }
+        $top[] = ['label' => 'سایر', 'count' => $rest];
+        return $top;
+    }
+    return $out;
+}
+
+/**
+ * روند ماهانه از ردیف‌های در دامنه — در PHP حساب می‌شود تا روی هر دو درایور
+ * (MySQL و SQLite) یکسان باشد؛ getReportsMonthly از DATE_FORMAT استفاده می‌کند
+ * که مخصوص MySQL است. شکلِ خروجی دقیقاً همان است.
+ */
+function getScopedReportsMonthly(array $scopedReports, int $months = 6): array
+{
+    $months = max(1, $months);
+    $map = [];
+    foreach ($scopedReports as $row) {
+        $raw = trim((string) ($row['created_at'] ?? ''));
+        if ($raw === '' || strpos($raw, '0001-01-01') === 0) {
+            continue;
+        }
+        $ts = strtotime($raw);
+        if ($ts === false) {
+            continue;
+        }
+        $key = date('Y-m', $ts);
+        $map[$key] = (int) ($map[$key] ?? 0) + 1;
+    }
+
+    $names = ['ژانویه', 'فوریه', 'مارس', 'آوریل', 'مه', 'ژوئن',
+              'ژوئیه', 'اوت', 'سپتامبر', 'اکتبر', 'نوامبر', 'دسامبر'];
+
+    $out = [];
+    $cursor = new DateTime('first day of this month');
+    $cursor->modify('-' . ($months - 1) . ' months');
+    for ($i = 0; $i < $months; $i++) {
+        $key = $cursor->format('Y-m');
+        $out[] = [
+            'key'   => $key,
+            'label' => $names[(int) $cursor->format('n') - 1],
+            'year'  => (int) $cursor->format('Y'),
+            'count' => (int) ($map[$key] ?? 0),
+        ];
+        $cursor->modify('+1 month');
+    }
+    return $out;
+}
+
+/**
+ * آمار داشبوردِ حوزه‌محدود.
+ * برای مدیر کل همان getDashboardStats است؛ برای مدیرِ حوزه، شمارش‌ها فقط از
+ * ردیف‌های در دامنه می‌آیند و کارت‌هایی که به او مربوط نیستند null می‌شوند
+ * (الگو آن‌ها را نشان نمی‌دهد) — نه صفر، تا «نداشتن دسترسی» با «صفر بودن»
+ * اشتباه گرفته نشود.
+ */
+function getScopedDashboardStats(PDO $pdo, array $scope, array $scopedReports, array $scopedTickets): array
+{
+    if (!empty($scope['is_super'])) {
+        return getDashboardStats($pdo);
+    }
+
+    $pendingReports = 0;
+    $doneReports = 0;
+    foreach ($scopedReports as $row) {
+        $status = reportStatusOf(is_array($row) ? $row : []);
+        if ($status === 'pending') {
+            $pendingReports++;
+        } elseif ($status === 'done') {
+            $doneReports++;
+        }
+    }
+    $pendingTickets = 0;
+    foreach ($scopedTickets as $row) {
+        if (normalizeStatusValue((string) ($row['status'] ?? '')) === 'pending') {
+            $pendingTickets++;
+        }
+    }
+
+    return [
+        'reports_count'         => count($scopedReports),
+        'tickets_count'         => count($scopedTickets),
+        'pending_reports_count' => $pendingReports,
+        'done_reports_count'    => $doneReports,
+        'pending_tickets_count' => $pendingTickets,
+        /* این‌ها به مدیرِ حوزه مربوط نیستند (تصمیم کارفرما) */
+        'users_count'           => null,
+        'news_count'            => null,
+        'reports_with_media'    => null,
+        'push_subscribers'      => null,
+    ];
+}
+
+/* ============================================================
+   مدیریت حساب‌های مدیر — صفحه‌ی admin/admins.php (فقط «مدیر کل»)
+   ------------------------------------------------------------
+   تصمیم کارفرما: مدیرِ هر حوزه/معاونت فقط «گزارش‌ها» و «تیکت‌ها»ی همان
+   حوزه را می‌بیند (مشاهده + پاسخ + تغییر وضعیت) و به کاربران، واحدها،
+   اخبار، اماکن، اعلان، خروجی و تنظیمات دسترسی ندارد.
+   حوزه‌ها فقط از «واحدهای سطح اول» انتخاب می‌شوند (حوزه شهردار و معاونت‌ها)؛
+   زیرمجموعه‌های هر واحد به‌صورت خودکار در دامنه‌ی همان مدیر قرار می‌گیرند
+   (eplakAdminScopeNames در admin/includes/acl.php).
+   ============================================================ */
+
+/** واحدهای سطح اول (parent_id تهی/صفر) — همان‌هایی که می‌شود به یک مدیر سپرد */
+function eplakTopLevelDepartments(PDO $pdo, bool $onlyActive = true): array
+{
+    $sql = 'SELECT id, name, slug, parent_id, is_active, description FROM departments
+             WHERE (parent_id IS NULL OR parent_id = 0)';
+    if ($onlyActive) {
+        $sql .= ' AND is_active = 1';
+    }
+    $sql .= ' ORDER BY sort_order ASC, name ASC';
+    try {
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll() ?: [];
+    } catch (Throwable $e) {
+        /* ستون is_active/sort_order در دیتابیس خیلی قدیمی نباشد */
+        try {
+            $stmt = $pdo->query('SELECT id, name FROM departments WHERE (parent_id IS NULL OR parent_id = 0) ORDER BY name ASC');
+            return $stmt->fetchAll() ?: [];
+        } catch (Throwable $e2) {
+            return [];
+        }
+    }
+}
+
+/** شناسه‌ی حوزه‌های سپرده‌شده به یک مدیر */
+function eplakAdminDepartmentIds(PDO $pdo, int $adminId): array
+{
+    if ($adminId <= 0) {
+        return [];
+    }
+    try {
+        $stmt = $pdo->prepare('SELECT department_id FROM admin_departments WHERE admin_id = :id');
+        $stmt->execute([':id' => $adminId]);
+        $ids = [];
+        foreach ($stmt->fetchAll() ?: [] as $row) {
+            $id = (int) ($row['department_id'] ?? 0);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+        return $ids;
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+/** فهرست حساب‌های مدیر + حوزه‌هایشان + آخرین ورود (بدون هش رمز!) */
+function getAdminUsers(PDO $pdo): array
+{
+    $admins = [];
+    try {
+        $stmt = $pdo->query('SELECT id, username, full_name, role, is_active, last_login_at, created_at
+                               FROM admin_users ORDER BY id ASC');
+        $rows = $stmt->fetchAll() ?: [];
+    } catch (Throwable $e) {
+        /* ستون‌های تازه (full_name/is_active/last_login_at) روی دیتابیس قدیمی نباشد */
+        try {
+            $stmt = $pdo->query('SELECT id, username, role, created_at FROM admin_users ORDER BY id ASC');
+            $rows = $stmt->fetchAll() ?: [];
+        } catch (Throwable $e2) {
+            return [];
+        }
+    }
+
+    foreach ($rows as $row) {
+        $id = (int) ($row['id'] ?? 0);
+        $deptIds = eplakAdminDepartmentIds($pdo, $id);
+        $deptNames = [];
+        if ($deptIds) {
+            $placeholders = implode(',', array_fill(0, count($deptIds), '?'));
+            try {
+                $q = $pdo->prepare("SELECT name FROM departments WHERE id IN ($placeholders) ORDER BY sort_order ASC, name ASC");
+                $q->execute($deptIds);
+                foreach ($q->fetchAll() ?: [] as $d) {
+                    $name = trim((string) ($d['name'] ?? ''));
+                    if ($name !== '') {
+                        $deptNames[] = $name;
+                    }
+                }
+            } catch (Throwable $e) {
+            }
+        }
+        $admins[] = [
+            'id'             => $id,
+            'username'       => (string) ($row['username'] ?? ''),
+            'full_name'      => trim((string) ($row['full_name'] ?? '')),
+            'role'           => (string) ($row['role'] ?? 'admin'),
+            'is_active'      => array_key_exists('is_active', $row) ? (int) $row['is_active'] : 1,
+            'last_login_at'  => (string) ($row['last_login_at'] ?? ''),
+            'created_at'     => (string) ($row['created_at'] ?? ''),
+            'department_ids' => $deptIds,
+            'departments'    => $deptNames,
+            'messages'       => eplakDepartmentMessageCounts($pdo, $deptIds),
+        ];
+    }
+    return $admins;
+}
+
+/** بازنویسی حوزه‌های یک مدیر (فقط واحدهای سطح اول پذیرفته می‌شوند) */
+function eplakSetAdminDepartments(PDO $pdo, int $adminId, array $departmentIds): array
+{
+    $result = ['added' => 0, 'removed' => 0, 'error' => ''];
+    if ($adminId <= 0) {
+        $result['error'] = 'حساب مدیر پیدا نشد.';
+        return $result;
+    }
+
+    /* فقط واحدهای سطحِ اولِ موجود در جدول واحدها — شناسه‌ی دلخواه پذیرفته نمی‌شود */
+    $valid = [];
+    foreach (eplakTopLevelDepartments($pdo, false) as $dept) {
+        $valid[(int) ($dept['id'] ?? 0)] = true;
+    }
+    $wanted = [];
+    foreach ($departmentIds as $id) {
+        $id = (int) $id;
+        if ($id > 0 && isset($valid[$id])) {
+            $wanted[$id] = true;
+        }
+    }
+    $wanted = array_keys($wanted);
+
+    $current = eplakAdminDepartmentIds($pdo, $adminId);
+    $toAdd = array_values(array_diff($wanted, $current));
+    $toRemove = array_values(array_diff($current, $wanted));
+
+    try {
+        $now = function_exists('eplakDbNowString') ? eplakDbNowString($pdo) : date('Y-m-d H:i:s');
+        foreach ($toAdd as $deptId) {
+            $stmt = $pdo->prepare('INSERT INTO admin_departments (admin_id, department_id, created_at) VALUES (:a, :d, :t)');
+            $stmt->execute([':a' => $adminId, ':d' => $deptId, ':t' => $now]);
+            $result['added']++;
+        }
+        foreach ($toRemove as $deptId) {
+            $stmt = $pdo->prepare('DELETE FROM admin_departments WHERE admin_id = :a AND department_id = :d');
+            $stmt->execute([':a' => $adminId, ':d' => $deptId]);
+            $result['removed']++;
+        }
+    } catch (Throwable $e) {
+        $result['error'] = 'ذخیره‌ی حوزه‌ها ناموفق بود: ' . $e->getMessage();
+    }
+    return $result;
+}
+
+/** ساختن حساب مدیر تازه — رمز همان‌جا هش می‌شود و هرگز بازگردانده/نمایش داده نمی‌شود */
+function eplakCreateAdminUser(PDO $pdo, string $username, string $password, string $fullName, string $role): array
+{
+    $out = ['id' => 0, 'error' => ''];
+    $username = trim($username);
+    $fullName = trim($fullName);
+    $role = $role === 'super_admin' ? 'super_admin' : 'admin';
+
+    if ($username === '') {
+        $out['error'] = 'نام کاربری نمی‌تواند خالی باشد.';
+        return $out;
+    }
+    if (mb_strlen($username) < 3) {
+        $out['error'] = 'نام کاربری باید حداقل ۳ کاراکتر باشد.';
+        return $out;
+    }
+    if (mb_strlen($username) > 60) {
+        $out['error'] = 'نام کاربری بیش از حد بلند است (حداکثر ۶۰ کاراکتر).';
+        return $out;
+    }
+    if (!preg_match('/^[A-Za-z0-9._\\-@\\x{0600}-\\x{06FF}]+$/u', $username)) {
+        $out['error'] = 'نام کاربری فقط می‌تواند شامل حروف فارسی/انگلیسی، عدد و علامت‌های . _ - @ باشد.';
+        return $out;
+    }
+    if (function_exists('adminUsernameTaken') && adminUsernameTaken($pdo, $username, 0)) {
+        $out['error'] = 'این نام کاربری قبلاً استفاده شده است.';
+        return $out;
+    }
+    if (mb_strlen($fullName) > 255) {
+        $out['error'] = 'نام و نام خانوادگی بیش از حد بلند است.';
+        return $out;
+    }
+    if (mb_strlen($password) < 8) {
+        $out['error'] = 'رمز عبور باید حداقل ۸ کاراکتر باشد.';
+        return $out;
+    }
+    if (!preg_match('/[A-Za-z]/', $password) || !preg_match('/[0-9]/', $password)) {
+        $out['error'] = 'رمز عبور باید ترکیبی از حرف و عدد باشد.';
+        return $out;
+    }
+
+    try {
+        $now = function_exists('eplakDbNowString') ? eplakDbNowString($pdo) : date('Y-m-d H:i:s');
+        $stmt = $pdo->prepare('INSERT INTO admin_users (username, password_hash, role, full_name, is_active, last_login_at, created_at)
+                               VALUES (:u, :p, :r, :f, 1, \'\', :t)');
+        $stmt->execute([
+            ':u' => $username,
+            ':p' => password_hash($password, PASSWORD_DEFAULT),
+            ':r' => $role,
+            ':f' => $fullName,
+            ':t' => $now,
+        ]);
+        $out['id'] = (int) $pdo->lastInsertId();
+    } catch (Throwable $e) {
+        /* دیتابیس قدیمی بدون ستون‌های تازه: تلاش با ستون‌های پایه */
+        try {
+            $stmt = $pdo->prepare('INSERT INTO admin_users (username, password_hash, role) VALUES (:u, :p, :r)');
+            $stmt->execute([':u' => $username, ':p' => password_hash($password, PASSWORD_DEFAULT), ':r' => $role]);
+            $out['id'] = (int) $pdo->lastInsertId();
+            if ($fullName !== '' && $out['id'] > 0) {
+                try {
+                    $pdo->prepare('UPDATE admin_users SET full_name = :f WHERE id = :id')->execute([':f' => $fullName, ':id' => $out['id']]);
+                } catch (Throwable $e2) {
+                }
+            }
+        } catch (Throwable $e3) {
+            $out['id'] = 0;
+            $out['error'] = 'ساختن حساب ناموفق بود: ' . $e3->getMessage();
+        }
+    }
+    return $out;
+}
+
+/** فعال/غیرفعال کردن حساب مدیر؛ خروجی: پیام خطا یا رشته‌ی خالی */
+function eplakSetAdminActive(PDO $pdo, int $adminId, bool $active, int $currentAdminId = 0): string
+{
+    $admin = function_exists('getAdminById') ? getAdminById($pdo, $adminId) : null;
+    if (!$admin) {
+        return 'حساب مدیر یافت نشد.';
+    }
+    /* قفل‌نشدنِ پنل: مدیر نمی‌تواند حساب خودش را غیرفعال کند */
+    if ($currentAdminId > 0 && $adminId === $currentAdminId && !$active) {
+        return 'نمی‌توانید حساب خودتان را غیرفعال کنید.';
+    }
+    /* و نمی‌تواند آخرین «مدیر کل» فعال را از کار بیندازد */
+    if (!$active && (string) ($admin['role'] ?? '') === 'super_admin' && eplakCountActiveSupers($pdo) <= 1) {
+        return 'این حساب آخرین مدیر کلِ فعال است؛ غیرفعال کردنش پنل را بی‌مدیر می‌کند.';
+    }
+    try {
+        $stmt = $pdo->prepare('UPDATE admin_users SET is_active = :a WHERE id = :id');
+        $stmt->execute([':a' => $active ? 1 : 0, ':id' => $adminId]);
+        return '';
+    } catch (Throwable $e) {
+        return 'تغییر وضعیت حساب ناموفق بود: ' . $e->getMessage();
+    }
+}
+
+/** تغییر نقشِ یک مدیر (فقط super_admin/admin) با محافظِ قفل‌نشدن */
+function eplakSetAdminRole(PDO $pdo, int $adminId, string $role, int $currentAdminId = 0): string
+{
+    $role = $role === 'super_admin' ? 'super_admin' : 'admin';
+    $admin = function_exists('getAdminById') ? getAdminById($pdo, $adminId) : null;
+    if (!$admin) {
+        return 'حساب مدیر یافت نشد.';
+    }
+    if ($currentAdminId > 0 && $adminId === $currentAdminId && $role !== 'super_admin') {
+        return 'نمی‌توانید دسترسی مدیر کلِ خودتان را بگیرید.';
+    }
+    if ($role !== 'super_admin' && (string) ($admin['role'] ?? '') === 'super_admin' && eplakCountActiveSupers($pdo) <= 1) {
+        return 'این حساب آخرین مدیر کلِ فعال است.';
+    }
+    try {
+        $pdo->prepare('UPDATE admin_users SET role = :r WHERE id = :id')->execute([':r' => $role, ':id' => $adminId]);
+        return '';
+    } catch (Throwable $e) {
+        return 'تغییر نقش ناموفق بود: ' . $e->getMessage();
+    }
+}
+
+/** حذف حساب مدیر؛ خروجی: پیام خطا یا رشته‌ی خالی */
+function eplakDeleteAdminUser(PDO $pdo, int $adminId, int $currentAdminId = 0): string
+{
+    $admin = function_exists('getAdminById') ? getAdminById($pdo, $adminId) : null;
+    if (!$admin) {
+        return 'حساب مدیر یافت نشد.';
+    }
+    if ($currentAdminId > 0 && $adminId === $currentAdminId) {
+        return 'نمی‌توانید حساب خودتان را حذف کنید.';
+    }
+    if ((string) ($admin['role'] ?? '') === 'super_admin' && eplakCountActiveSupers($pdo) <= 1) {
+        return 'این حساب آخرین مدیر کلِ فعال است؛ حذفش پنل را بی‌مدیر می‌کند.';
+    }
+    try {
+        $pdo->prepare('DELETE FROM admin_departments WHERE admin_id = :id')->execute([':id' => $adminId]);
+    } catch (Throwable $e) {
+        /* جدول admin_departments نباشد — حذف حساب ادامه پیدا می‌کند */
+    }
+    try {
+        $pdo->prepare('DELETE FROM admin_users WHERE id = :id')->execute([':id' => $adminId]);
+        return '';
+    } catch (Throwable $e) {
+        return 'حذف حساب ناموفق بود: ' . $e->getMessage();
+    }
+}
+
+/** شمار «مدیران کلِ فعال» — برای جلوگیری از بی‌مدیر ماندن پنل */
+function eplakCountActiveSupers(PDO $pdo): int
+{
+    try {
+        return (int) $pdo->query("SELECT COUNT(*) FROM admin_users WHERE role = 'super_admin' AND is_active = 1")->fetchColumn();
+    } catch (Throwable $e) {
+        /* ستون is_active نباشد */
+        try {
+            return (int) $pdo->query("SELECT COUNT(*) FROM admin_users WHERE role = 'super_admin'")->fetchColumn();
+        } catch (Throwable $e2) {
+            return 0;
+        }
+    }
+}
+
+/**
+ * تعداد پیام‌های یک حوزه (گزارش + تیکت) — برای نمایش کنار نام هر مدیر.
+ * همان «کلیدِ حوزه» استفاده می‌شود که دامنه‌ی دسترسی می‌سازد، پس این عدد
+ * دقیقاً همان چیزی است که آن مدیر در فهرست‌هایش می‌بیند.
+ */
+function eplakDepartmentMessageCounts(PDO $pdo, array $topLevelIds): array
+{
+    $out = ['reports' => 0, 'tickets' => 0, 'total' => 0];
+    $ids = [];
+    foreach ($topLevelIds as $id) {
+        $id = (int) $id;
+        if ($id > 0) {
+            $ids[$id] = true;
+        }
+    }
+    $ids = array_keys($ids);
+    if (!$ids || !function_exists('eplakAdminScopeNames') || !function_exists('eplakScopeSql')) {
+        return $out;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    try {
+        $stmt = $pdo->prepare("SELECT id, name FROM departments WHERE id IN ($placeholders)");
+        $stmt->execute($ids);
+        $depts = $stmt->fetchAll() ?: [];
+    } catch (Throwable $e) {
+        return $out;
+    }
+    if (!$depts) {
+        return $out;
+    }
+
+    $names = eplakAdminScopeNames($pdo, $depts);
+    $fakeScope = ['is_super' => false, 'names_key' => $names['key'] ?? []];
+    foreach (['reports', 'tickets'] as $table) {
+        $scopeSql = eplakScopeSql($fakeScope, $table);
+        try {
+            $q = $pdo->prepare('SELECT COUNT(*) FROM ' . $table . ' WHERE 1=1' . $scopeSql['sql']);
+            $q->execute($scopeSql['params']);
+            $out[$table] = (int) $q->fetchColumn();
+        } catch (Throwable $e) {
+            /* جدول نباشد ⇒ همان صفر */
+        }
+    }
+    $out['total'] = $out['reports'] + $out['tickets'];
+    return $out;
+}
