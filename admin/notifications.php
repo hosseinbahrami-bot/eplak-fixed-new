@@ -175,17 +175,34 @@ $fcmProjectMismatch = $fcmReady && ($fcmConfigN['project_match'] ?? null) === fa
           <i class="fas fa-triangle-exclamation"></i>
           <strong>اعلانِ اپ اندروید (APK) نمی‌رسد: کلید سرویس فایربیس از پروژه‌ی دیگری است</strong> —
           کلید فعلی برای پروژه‌ی <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['project_id']) ?></code> است،
-          ولی APK با پروژه‌ی <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['app_project']) ?></code> ساخته شده؛
+          ولی APK با پروژه‌ی <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['app_project']) ?></code>
+          <?php if (trim((string) ($fcmConfigN['app_sender'] ?? '')) !== ''): ?>
+            (شناسه‌ی فرستنده / Project number: <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['app_sender']) ?></code>)
+          <?php endif; ?>
+          ساخته شده؛
           گوگل هر ارسال را با <code dir="ltr">HTTP 403 PERMISSION_DENIED SenderId mismatch</code> رد می‌کند
           (همان خطایی که در ستون «آخرین خطا»ی گوشی‌ها دیده می‌شود).
+          ساختنِ کلیدِ تازه از همان پروژه‌ی کلید فعلی، این مشکل را حل نمی‌کند.
           <ol style="margin:8px 0 0; padding-inline-start:20px; font-size:13px;">
             <li>در <span dir="ltr">console.firebase.google.com</span> پروژه‌ی
-                <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['app_project']) ?></code> را باز کنید.</li>
+                <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['app_project']) ?></code> را باز کنید.
+                <br><span style="color:var(--dark-500);">⚠️ «Project ID» با «Project name» فرق دارد؛ ملاک
+                <strong>Project ID</strong> و <strong>Project number</strong> در صفحه‌ی Project settings است
+                (فایربیس گاهی پسوندی مثل <code dir="ltr">-fb72c</code> به شناسه می‌چسباند).</span></li>
             <li><strong>Project settings ← Service accounts ← Generate new private key</strong> را بزنید و فایل JSON را دانلود کنید.</li>
             <li>محتوای کاملِ همان فایل را در
                 <a href="settings.php#fcm-section"><strong>تنظیمات ← اعلان گوشی برای اپ اندروید (فایربیس)</strong></a>
                 به‌جای کلید فعلی بچسبانید و ذخیره کنید؛ سپس «بررسی اتصال» و «ارسال آزمایشی» را بزنید.</li>
           </ol>
+          <p style="margin:8px 0 0; font-size:13px;">
+            <strong>اگر به پروژه‌ی <code dir="ltr"><?= htmlspecialchars((string) $fcmConfigN['app_project']) ?></code> دسترسی ندارید</strong>
+            (راه دوم): در همان پروژه‌ای که کلید فعلی از آن است، اپ اندروید را با نام بسته‌ی
+            <code dir="ltr"><?= htmlspecialchars((string) ($fcmConfigN['package'] ?? 'com.eplak')) ?></code> ثبت کنید
+            (Project settings ← Your apps ← Add app ← Android)، فایل <code dir="ltr">google-services.json</code> را
+            دانلود کنید و با <code dir="ltr">node tools/dev/apply-google-services.mjs &lt;file&gt;</code> در مخزن
+            جایگزین کنید تا APK با پروژه‌ی تازه دوباره ساخته شود؛ آن‌وقت همین کلیدِ فعلی معتبر می‌شود و کاربران
+            باید APK جدید را نصب و یک‌بار باز کنند.
+          </p>
           <p style="margin:8px 0 0; font-size:13px;">
             تا آن زمان اعلان‌ها فقط در وب/PWA و داخل خودِ اپ (وقتی باز است) دیده می‌شوند.
           </p>

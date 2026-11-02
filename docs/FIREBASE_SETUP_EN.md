@@ -137,6 +137,21 @@ Install that APK on the phone (it updates over the previous version; if you get
 > steps, but Google rejects every send with `HTTP 403 PERMISSION_DENIED SenderId mismatch`,
 > so nothing ever reaches the APK. The admin panel now detects this (“service-account key
 > belongs to a different project”) on the Notifications and Settings pages.
+>
+> 🧭 **“Project name” is not “Project ID”.** A project can be *named* `eplak` while its **ID**
+> is something else — when the requested ID is taken, Firebase appends a suffix (e.g. `…-fb72c`).
+> Always compare the **Project ID** and **Project number** shown under *Project settings* with the
+> sender ID above (the panel now prints the app’s Project number too).
+>
+> 🔁 **If you no longer have access to the app’s project**, generating more keys from the project
+> you do have will never fix this — move the app to the reachable project instead:
+> 1) Console → your project → *Project settings* → **Your apps** → **Add app** → **Android** →
+> package name exactly `com.eplak` → **Register app**;
+> 2) download **`google-services.json`** (it holds no private key);
+> 3) in the repository run `node tools/dev/apply-google-services.mjs <file>` — it updates the file,
+> the `shared/fcm.php` constants and the docs together; then `bash tools/dev/run-regression.sh push`
+> and commit/push so CI builds a **new APK**. The service-account key of that project then matches,
+> and users must install the new APK and open it once so a token registers with the new sender ID.
 
 Open it in a text editor (do **not** change anything). Note the two useful values:
 
