@@ -129,19 +129,26 @@ Install that APK on the phone (it updates over the previous version; if you get
 > The repository’s `.gitignore` already blocks `*firebase-adminsdk*.json`.
 
 > ⚠️ **The key must come from the same Firebase project as the app’s `google-services.json`.**
-> The repository’s APK is built against project **`eplak-7e6ed`** (sender ID `221915268820`,
-> package name `com.eplak`). *(Up to v2.0 it was project `eplak-63c74` with package
-> `com.example.eplakfixed`; since v2.1 the app uses the package name registered in Firebase.
-> Uninstall v2.0 — Android treats it as a separate app and pushes only reach the new one.)*
+> The repository’s APK is built against project **`eplak-7e6ed-fb72c`** (sender ID `775593554513`,
+> package name `com.eplak`, app version **2.2**+). *(Up to v2.0 it was project `eplak-63c74` with
+> package `com.example.eplakfixed`; since v2.1 the app uses the package name registered in Firebase.
+> Uninstall v2.0 — Android treats it as a separate app and pushes only reach the new one.
+> v2.1 and older were built against the project **name** (`eplak-7e6ed`) instead of its **ID**, a
+> project that does not exist in the owner’s console, so no key was ever accepted; since v2.2 the
+> repository holds the real `google-services.json` of the owner’s project. The package name is still
+> `com.eplak`, so v2.2 installs as an **update** — only the old FCM tokens become invalid and a new
+> one registers the first time the app is opened.)*
 > A key from any other project is accepted by the panel and even passes the “check connection”
 > steps, but Google rejects every send with `HTTP 403 PERMISSION_DENIED SenderId mismatch`,
 > so nothing ever reaches the APK. The admin panel now detects this (“service-account key
 > belongs to a different project”) on the Notifications and Settings pages.
 >
-> 🧭 **“Project name” is not “Project ID”.** A project can be *named* `eplak` while its **ID**
-> is something else — when the requested ID is taken, Firebase appends a suffix (e.g. `…-fb72c`).
+> 🧭 **“Project name” is not “Project ID”.** Real example from this very project: the console shows
+> the project **name** `eplak-7e6ed`, while its **ID** is `eplak-7e6ed-fb72c` and its **Project
+> number** is `775593554513` — when the requested ID is taken, Firebase appends a suffix.
 > Always compare the **Project ID** and **Project number** shown under *Project settings* with the
-> sender ID above (the panel now prints the app’s Project number too).
+> sender ID above (the panel now prints the app’s Project number too). To be sure without calling
+> Google, run `node tools/dev/check-firebase-key.mjs <key.json>` before pasting a key.
 >
 > 🔁 **If you no longer have access to the app’s project**, generating more keys from the project
 > you do have will never fix this — move the app to the reachable project instead:

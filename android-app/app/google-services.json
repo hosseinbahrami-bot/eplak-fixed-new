@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "221915268820",
-    "project_id": "eplak-7e6ed",
-    "storage_bucket": "eplak-7e6ed.firebasestorage.app"
+    "project_number": "775593554513",
+    "project_id": "eplak-7e6ed-fb72c",
+    "storage_bucket": "eplak-7e6ed-fb72c.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:221915268820:android:78adb17e55f9ae7ae91d41",
+        "mobilesdk_app_id": "1:775593554513:android:fb81bda4816871f93c3e70",
         "android_client_info": {
           "package_name": "com.eplak"
         }
@@ -15,7 +15,26 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDALWp1eL1vk-0eU9LJDkDDxYhmYS-RRpc"
+          "current_key": "AIzaSyBzqT8Jg_NePhFRNZTRuKJO1ixhXaqn5Fw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:775593554513:android:ed4e19b61301b77f3c3e70",
+        "android_client_info": {
+          "package_name": "com.eplak2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzqT8Jg_NePhFRNZTRuKJO1ixhXaqn5Fw"
         }
       ],
       "services": {

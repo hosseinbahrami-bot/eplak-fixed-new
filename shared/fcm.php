@@ -27,8 +27,8 @@ require_once __DIR__ . '/webpush.php';   /* استفاده از eplakHttpPost و
    گام‌های «توکن دسترسی» و «اعتبارسنجی پیام» سبز می‌مانند.
    (آزمون push.test.mjs هم‌خوانیِ این مقدارها با google-services.json را می‌سنجد.)
    در محیط آزمون با EPLAK_APP_FCM_PROJECT یا تنظیم app_fcm_project قابل تغییر است. */
-if (!defined('EPLAK_APP_FCM_PROJECT_ID')) define('EPLAK_APP_FCM_PROJECT_ID', 'eplak-7e6ed');
-if (!defined('EPLAK_APP_FCM_SENDER_ID'))  define('EPLAK_APP_FCM_SENDER_ID', '221915268820');
+if (!defined('EPLAK_APP_FCM_PROJECT_ID')) define('EPLAK_APP_FCM_PROJECT_ID', 'eplak-7e6ed-fb72c');
+if (!defined('EPLAK_APP_FCM_SENDER_ID'))  define('EPLAK_APP_FCM_SENDER_ID', '775593554513');
 if (!defined('EPLAK_APP_PACKAGE'))        define('EPLAK_APP_PACKAGE', 'com.eplak');
 
 /** پروژه‌ای که اپ اندروید (APK) با آن ساخته شده است */
