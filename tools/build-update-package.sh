@@ -55,6 +55,8 @@ for f in .htaccess index.html index.php setup.php sw.js manifest.json shared/boo
          modules/reports.js modules/live.js modules/auth.js modules/dashboard.js modules/online-guard.js \
          core/places-data.js core/places.js modules/city-map.js \
          api/places.php admin/places.php shared/places_store.php \
+         admin/includes/acl.php admin/admins.php \
+         shared/ads.php api/ads.php admin/ads.php modules/ads.js assets/css/ads.css \
          docs/DEPLOY_UPDATE_FA.md docs/DEPLOY_UPDATE_EN.md docs/CITY_MAP_FA.md docs/CITY_MAP_EN.md \
          docs/REPORT_MEDIA_GPS_FA.md docs/REPORT_MEDIA_GPS_EN.md \
          docs/FIREBASE_SETUP_FA.md docs/FIREBASE_SETUP_EN.md docs/NOTIFICATIONS_FA.md docs/NEWS_FA.md docs/JALALI_FA.md \

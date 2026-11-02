@@ -1,0 +1,106 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   assets/css/ads.css — بنرهای تبلیغاتیِ «چرخشی» داخل اپ
+   ----------------------------------------------------------------------------
+   این فایل فقط برای modules/ads.js است: سه جای بنرِ موجود در index.html
+   (.haji-banner، .home-ad-banner.home-ad-half، .dash-ad-slim) دست‌نخورده
+   می‌مانند و فقط «تصویرِ ثابتِ» داخلشان با یک ریلِ چندتصویری عوض می‌شود.
+   پس اندازه، گوشه‌ها، حاشیه، بجِ «تبلیغات» و همان افکتِ نورِ متحرک دقیقاً مثل
+   قبل می‌ماند و فقط تصویرها به ترتیب عوض می‌شوند.
+
+   جدا از assets/css/style.css نگه داشته شد تا بالا بردنِ نسخه‌ی این بخش،
+   کشِ کلِ پوسته‌ی اپ را باطل نکند.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ریلِ تصویرها: هر اسلاید دقیقاً یک عرضِ کامل */
+.ead-track {
+  position: relative;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* هنگام کشیدنِ انگشت، انیمیشن خاموش می‌شود تا حرکت ۱:۱ با نوک انگشت باشد */
+.ead-track.ead-dragging {
+  transition: none;
+}
+
+.ead-slide {
+  position: relative;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  overflow: hidden;
+}
+
+/* همان رفتارِ تصویرهای ثابتِ قبلی: پوششِ کامل، بدون دفرمه شدن */
+.ead-slide img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* نقطه‌های ناوبری — سمتِ راستِ بنر، تا با بجِ «تبلیغات» (چپ) برخورد نکنند */
+.ead-dots {
+  position: absolute;
+  right: 10px;
+  left: auto;
+  bottom: 9px;
+  display: flex;
+  gap: 5px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.ead-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.ead-dot.active {
+  width: 16px;
+  background: #ffd76a;
+}
+
+/* بنر باریک خیلی کوتاه است؛ نقطه‌ها کوچک‌تر و چسبیده‌تر */
+.dash-ad-slim .ead-dots {
+  right: 8px;
+  bottom: 6px;
+  gap: 4px;
+}
+.dash-ad-slim .ead-dot {
+  width: 5px;
+  height: 5px;
+}
+.dash-ad-slim .ead-dot.active {
+  width: 12px;
+}
+
+/* تصویرِ ثابتِ اولیه وقتی تبلیغِ سرور آمد پنهان می‌شود (نه حذف — تا اگر
+   سرور رفت، همان بنرِ داخل بسته برگردد) */
+.ead-fallback-hidden {
+  display: none !important;
+}
+
+/* اگر کاربر «کاهش حرکت» خواسته باشد، جابه‌جایی آنی می‌شود */
+@media (prefers-reduced-motion: reduce) {
+  .ead-track {
+    transition: none !important;
+  }
+}

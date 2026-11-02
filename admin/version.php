@@ -34,6 +34,13 @@ $fileChecks = [
     'admin/places.php'                => 'مدیریت اماکن شهری از پنل',
     'api/places.php'                  => 'اماکن شهری برای اپ (اصلاح‌های ادمین)',
     'shared/places_store.php'         => 'منطق و جدول اماکن شهری',
+    'admin/includes/acl.php'          => 'لایه‌ی دسترسی مدیرانِ حوزه/معاونت',
+    'admin/admins.php'                => 'ساخت و مدیریت حساب‌های مدیر',
+    'shared/ads.php'                  => 'منطق تبلیغاتِ اپ (سرور)',
+    'api/ads.php'                     => 'تبلیغات برای اپ + ثبتِ کلیک',
+    'admin/ads.php'                   => 'مدیریت تبلیغات از پنل',
+    'modules/ads.js'                  => 'نمایش چرخشی تبلیغ‌ها در اپ',
+    'assets/css/ads.css'              => 'پوسته‌ی بنرهای چرخشی اپ',
 ];
 $files = [];
 foreach ($fileChecks as $rel => $label) {

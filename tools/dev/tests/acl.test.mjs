@@ -126,7 +126,7 @@ const whoAmI = (html) => (String(html).match(/حساب فعلی شما:\s*<stron
    ══════════════════════════════════════════════════════════════════ */
 section('۱) ساختار دیتابیس (هر دو درایور)');
 const boot = read('shared/bootstrap.php');
-ok('نسخه‌ی ساختار دیتابیس بالا رفته است (2026-11-02.1)', /'2026-11-02\.1'/.test(boot));
+ok('نسخه‌ی ساختار دیتابیس بالا رفته است (2026-11-02.2)', /'2026-11-02\.2'/.test(boot));
 ok('جدول admin_departments در شاخه‌ی SQLite ساخته می‌شود',
   /CREATE TABLE IF NOT EXISTS admin_departments \(\s*\n\s*admin_id INTEGER NOT NULL/.test(boot));
 ok('جدول admin_departments در شاخه‌ی MySQL هم هست (کلید اصلیِ ترکیبی + ایندکس)',
