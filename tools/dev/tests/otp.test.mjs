@@ -92,9 +92,9 @@ ok('ping.php بی‌دیتابیس می‌ماند تا پرده‌ی «بدون
 ok('status.php هرگز ۵۰۰ نمی‌دهد: اتصال به دیتابیس داخل try/catch و بدون bootstrap است',
   /try \{[\s\S]*new PDO\([\s\S]*\} catch \(Throwable \$e\)/.test(statusApi)
     && !statusApi.includes('bootstrap.php'));
-ok('الگوی config کلیدهای پنل «ملی پیامک» را دارد و شناسه‌ی متنِ پیش‌فرض 552115 است',
+ok('الگوی config کلیدهای پنل «ملی پیامک» را دارد و شناسه‌ی متنِ پیش‌فرض 573639 است',
   example.includes("'payamak_username'") && example.includes("'payamak_password'")
-    && example.includes("'payamak_template_id' => '552115'") && !/amoot/i.test(example));
+    && example.includes("'payamak_template_id' => '573639'") && !/amoot/i.test(example));
 ok('setup.php اتصال را پیش از نوشتن آزمایش می‌کند و فقط در اجرای اول/با مدیر می‌نویسد',
   setup.includes('eplak_setup_try_pdo($values, $err)')
     && setup.includes('eplak_setup_config_exists() && !eplak_setup_admin()')
@@ -114,12 +114,14 @@ ok('راهنمای هاست تازه به api/status.php ارجاع می‌ده�
   read('docs/NEW_HOST_FA.md').includes('api/status.php')
     && !read('docs/NEW_HOST_FA.md').includes('ping.php?full=1'));
 
-/* ── تنها ارائه‌دهنده‌ی پیامک: ملی پیامک (شناسه‌ی متن 552115) ─────────────────
+/* ── تنها ارائه‌دهنده‌ی پیامک: ملی پیامک (شناسه‌ی متن 573639) ─────────────────
    درخواست کارفرما: «از آموت رو کلا حذف کن، از ملی پیامک بخون — شناسه کد متن
-   552115 ملی پیامک». پس آموت نه در کد، نه در الگوی تنظیمات، نه در راه‌انداز،
+   573639 ملی پیامک». (شناسه اول 552115 داده شد و بعد به 573639 اصلاح
+   شد؛ مقدارِ مؤثر همیشه یک‌جا از shared/payamak.php می‌آید.)
+   پس آموت نه در کد، نه در الگوی تنظیمات، نه در راه‌انداز،
    نه در تشخیص و نه در راهنماها نباید بماند؛ وگرنه روی هاست دو مسیرِ پیامک
    ساخته می‌شود و عیب‌یابیِ «کد تایید نمی‌آید» سخت می‌شود. */
-console.log('— ۴) تنها ملی پیامک، با شناسه‌ی متنِ پیش‌فرض 552115');
+console.log('— ۴) تنها ملی پیامک، با شناسه‌ی متنِ پیش‌فرض 573639');
 ok('آموت‌اس‌ام‌اس از کد، الگوی تنظیمات، راه‌انداز و راهنماها کاملاً حذف شده',
   [api, statusApi, setup, example, payamakLib, newHostGuide, configGuide]
     .every((text) => !/amoot/i.test(text)));
@@ -128,10 +130,10 @@ ok('نشانی و کلیدهای ملی پیامک در api/auth.php دست‌ن
     && api.includes("'bodyId' => $payamakTemplateId") && api.includes('PAYAMAK_USERNAME')
     && api.includes("['payamak_template_id']"));
 ok('شناسه‌ی متنِ پیش‌فرض یک‌جا (shared/payamak.php) تعریف شده و هر سه مصرف‌کننده از آن می‌خوانند',
-  payamakLib.includes("define('EPLAK_PAYAMAK_TEMPLATE_DEFAULT', '552115')")
+  payamakLib.includes("define('EPLAK_PAYAMAK_TEMPLATE_DEFAULT', '573639')")
     && api.includes('eplakPayamakDefaultTemplate()') && statusApi.includes('eplakPayamakDefaultTemplate()')
     && setup.includes('eplakPayamakDefaultTemplate()')
-    && example.includes("'payamak_template_id' => '552115'"));
+    && example.includes("'payamak_template_id' => '573639'"));
 ok('اگر شناسه‌ی متن خالی باشد، همان پیش‌فرض مؤثر است (api و status و setup یکی می‌گویند)',
   api.includes("if ($payamakTemplateId === '') {")
     && api.includes('$payamakTemplateId = eplakPayamakDefaultTemplate();')
@@ -146,8 +148,11 @@ ok('setup.php اگر نام کاربری/رمز ملی پیامک نیمه‌ک�
 ok('بسته‌ی آپلود هاست shared/payamak.php را دارد و ارجاع به آموت را رد می‌کند',
   read('tools/build-update-package.sh').includes('shared/payamak.php')
     && read('tools/build-update-package.sh').includes("grep -qi 'amoot'"));
-ok('راهنماها فقط ملی پیامک و شناسه‌ی 552115 را می‌گویند',
-  newHostGuide.includes('552115') && configGuide.includes('552115')
+ok('شناسه‌ی قدیمیِ 552115 هیچ‌جای کد/راهنماها نمانده (فقط 573639 مؤثر است)',
+  [api, statusApi, setup, example, payamakLib, newHostGuide, configGuide]
+    .every((text) => !text.includes('552115')));
+ok('راهنماها فقط ملی پیامک و شناسه‌ی 573639 را می‌گویند',
+  newHostGuide.includes('573639') && configGuide.includes('573639')
     && newHostGuide.includes('ملی پیامک') && configGuide.includes('ملی پیامک'));
 
 console.log(`\nنتیجهٔ OTP: ${pass} موفق، ${fail} ناموفق`);

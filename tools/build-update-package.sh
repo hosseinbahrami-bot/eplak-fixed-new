@@ -108,8 +108,8 @@ if unzip -p "$OUT" api/auth.php | grep -qF 'rest.payamak-panel.com/api/SendSMS/B
 else
   echo "   ❌ نشانی ملی پیامک در api/auth.php بسته نیست!"; exit 1
 fi
-if unzip -p "$OUT" shared/payamak.php | grep -qF "'552115'"; then
-  echo "   ✅ شناسه‌ی متنِ پیش‌فرض (552115) داخل بسته است"
+if unzip -p "$OUT" shared/payamak.php | grep -qF "'573639'"; then
+  echo "   ✅ شناسه‌ی متنِ پیش‌فرض (573639) داخل بسته است"
 else
   echo "   ❌ شناسه‌ی متنِ پیش‌فرض در shared/payamak.php بسته نیست!"; exit 1
 fi
