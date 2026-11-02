@@ -16,6 +16,10 @@
    ============================================================================ */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/includes/functions.php';
+
+/* دسترسی: notifications — مدیرِ حوزه/معاونت به این صفحه نمی‌رسد (admin/includes/acl.php) */
+eplakRequirePermission('notifications');
+
 require_once __DIR__ . '/../shared/app_heartbeat.php';
 
 /* فقط خواندن: هر کوئری‌ای که این‌جا اجرا می‌شود SELECT است. */

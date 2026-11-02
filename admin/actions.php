@@ -8,6 +8,38 @@ $id = (int)($_GET['id'] ?? 0);
 // همه‌ی عملیات این فایل تغییردهنده‌اند → توکن CSRF الزامی است
 eplakRequireCsrf();
 
+/* ── مجوز هر عملیات، سمت سرور (admin/includes/acl.php) ─────────────────────
+   پنهان‌کردنِ دکمه در صفحه کافی نیست: هر کس می‌تواند نشانی actions.php را
+   دستی بسازد. برای همین اینجا دوباره بررسی می‌شود.
+   • حذف‌ها فقط برای «مدیر کل» است (تصمیم کارفرما).
+   • «پاسخ» و «تغییر وضعیت» از صفحه‌های گزارش/تیکت می‌گذرند و همان‌جا هم
+     مجوز و هم دامنه‌ی حوزه بررسی می‌شود. */
+$eplakScope = eplakAdminScope($pdo);
+$eplakActionPerms = [
+    'report_delete'       => 'reports.delete',
+    'report_reply_delete' => 'reports.delete',
+    'ticket_delete'       => 'tickets.delete',
+    'ticket_reply_delete' => 'tickets.delete',
+    'user_delete'         => 'users.delete',
+    'news_delete'         => 'news.delete',
+    'news_toggle'         => 'news.edit',
+    'news_repair'         => 'news.edit',
+    'department_delete'   => 'departments.delete',
+];
+if (isset($eplakActionPerms[(string) $type])) {
+    eplakRequirePermission($eplakActionPerms[(string) $type]);
+}
+
+/* لایه‌ی دوم دفاع: حتی با مجوزِ درست، سطرِ خارج از حوزه‌ی مدیر دست‌نخوردنی است. */
+if (in_array((string) $type, ['report_delete', 'report_reply_delete'], true) && $id > 0
+    && getScopedReportById($pdo, $id, $eplakScope) === null) {
+    eplakAdminForbidden('این گزارش در حوزه‌ی دسترسی شما نیست');
+}
+if (in_array((string) $type, ['ticket_delete', 'ticket_reply_delete'], true) && $id > 0
+    && getScopedTicketById($pdo, $id, $eplakScope) === null) {
+    eplakAdminForbidden('این تیکت در حوزه‌ی دسترسی شما نیست');
+}
+
 if ($type === 'report_delete') {
     deleteReport($pdo, $id);
     eplakRedirect('reports.php');

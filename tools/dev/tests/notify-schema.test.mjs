@@ -542,8 +542,11 @@ ok('صفحه‌ی عیب‌یابی به ورود مدیر وابسته است',
   /require_once __DIR__ \. '\/auth\.php'/.test(diagSrc));
 ok('صفحه‌ی عیب‌یابی، «ضربان اپ‌ها» و بررسی یک شماره را نشان می‌دهد',
   /eplakHeartbeatList/.test(diagSrc) && /eplakPhoneVariants/.test(diagSrc));
+/* منوی پنل از نسخه‌ی «مدیرانِ حوزه‌محدود» یک منبع دارد (admin/includes/acl.php) و
+   صفحه‌ها آن را با eplakAdminSidebar() صدا می‌زنند؛ پس لینک عیب‌یابی هم همان‌جاست. */
 ok('لینک صفحه‌ی عیب‌یابی در منوی «ارسال اعلان» پنل هست',
-  fs.readFileSync(path.join(APP, 'admin/notifications.php'), 'utf8').includes('notif_diag.php'));
+  fs.readFileSync(path.join(APP, 'admin/includes/acl.php'), 'utf8').includes("notif_diag.php")
+  && /eplakAdminSidebar\('notifications'\)/.test(fs.readFileSync(path.join(APP, 'admin/notifications.php'), 'utf8')));
 
 console.log('\n====================================================');
 console.log('NOTIFY-SCHEMA: ' + pass + ' passed, ' + fail + ' failed');

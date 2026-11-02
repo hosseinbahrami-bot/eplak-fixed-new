@@ -48,7 +48,9 @@ ok('بذرها اجرا شدند (۶ خبر/دانستنی + ۶۵ واحد)', db
 const wanted = ['notifications', 'notification_reads', 'notification_deletes', 'device_tokens', 'push_subscriptions', 'report_media', 'app_settings'];
 const missing = wanted.filter((t) => !(db?.tables || []).includes(t));
 ok('همه‌ی جدول‌های لازم ساخته شدند', missing.length === 0, 'گم‌شده: ' + missing.join(', '));
-ok('نسخه‌ی ساختار دیتابیس تازه ثبت شد', /^2026-(09-30|10-0[123])\./.test(String(db?.schema)), String(db?.schema));
+/* 2026-11-02.1 = افزودن ستون‌های full_name/is_active/last_login_at به admin_users
+   و جدول admin_departments (مدیرانِ حوزه‌محدود) */
+ok('نسخه‌ی ساختار دیتابیس تازه ثبت شد', /^2026-(09-30|10-0[123]|11-02)\./.test(String(db?.schema)), String(db?.schema));
 ok('ستون شناسه‌ی یکتای درخواست به جدول گزارش‌ها اضافه شد (پایه‌ی جلوگیری از تکرار)',
   (db?.report_cols || []).includes('client_ref'), JSON.stringify(db?.report_cols || []));
 ok('ستون‌های شمارش فایربیس ساخته شدند', (db?.send_cols || []).includes('fcm_sent') && (db?.send_cols || []).includes('fcm_failed'), JSON.stringify(db?.send_cols));
@@ -393,16 +395,22 @@ console.log('\n=== هم‌خوانی منوی پنل ===');
 const fsx = await import('fs');
 const adminDir = `${APP}/admin`;
 const navPages = fsx.readdirSync(adminDir).filter((f) => f.endsWith('.php'));
+/* منوی پنل دیگر در هر صفحه کپی نمی‌شود: یک منبعِ واحد دارد
+   (eplakAdminSidebar() در admin/includes/acl.php) که بر پایه‌ی دسترسیِ مدیر
+   ساخته می‌شود. پس هم آن منبع باید لینک «تنظیمات» و «بررسی نسخه» را داشته باشد
+   و هم هر صفحه‌ی دارای نوارِ کنار باید همان را صدا بزند. */
+const menuSrc = fsx.readFileSync(`${adminDir}/includes/acl.php`, 'utf8');
 let navCount = 0, missingLink = [];
 for (const f of navPages) {
   const html = fsx.readFileSync(`${adminDir}/${f}`, 'utf8');
-  const hasSidebar = /href="settings\.php"><i class="fas fa-cog"><\/i> <span>تنظیمات<\/span>/.test(html);
+  const hasSidebar = /<aside class="sidebar">/.test(html);
   if (!hasSidebar) continue;
   navCount++;
-  if (!html.includes('href="version.php"')) missingLink.push(f);
+  if (!/eplakAdminSidebar\(/.test(html)) missingLink.push(f);
 }
-ok('صفحات پنل با منوی کنار، لینک «بررسی نسخه» دارند', navCount >= 20 && missingLink.length === 0,
-   `صفحات دارای منو: ${navCount} • بدون لینک: ${missingLink.join(', ') || 'هیچ'}`);
+ok('صفحات پنل با منوی کنار، لینک «بررسی نسخه» دارند', navCount >= 20 && missingLink.length === 0
+   && /'href' => 'settings\.php'/.test(menuSrc) && /'href' => 'version\.php'/.test(menuSrc),
+   `صفحات دارای منو: ${navCount} • بدون منوی واحد: ${missingLink.join(', ') || 'هیچ'}`);
 
 console.log('\n=== پنل ادمین: تغییر وضعیت ← دیده شدن در اپ ===');
 

@@ -2,9 +2,13 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
+/* دسترسی و دامنه: مدیرِ حوزه/معاونت فقط تیکت‌های همان حوزه را می‌بیند */
+eplakRequirePermission('tickets.view');
+$eplakScope = eplakAdminScope($pdo);
+
 $statusFilter = $_GET['status'] ?? 'all';
 $search = trim($_GET['search'] ?? '');
-$tickets = getTickets($pdo, $statusFilter, $search);
+$tickets = getScopedTickets($pdo, $eplakScope, (string) $statusFilter, $search);
 
 // محاسبه آمار
 $totalTickets = count($tickets);
@@ -30,19 +34,9 @@ $doneTickets = count(array_filter($tickets, fn($t) => normalizeStatusValue($t['s
         <img class="logo-light" src="assets/img/logo.png" alt="ای‌پلاک">
         <img class="logo-dark" src="assets/img/logo-light.png" alt="ای‌پلاک">
       </div>
-      <nav>
-        <a href="index.php"><i class="fas fa-chart-pie"></i> <span>داشبورد</span></a>
-        <a href="reports.php"><i class="fas fa-flag"></i> <span>گزارش‌ها</span></a>
-        <a class="active" href="tickets.php"><i class="fas fa-ticket-alt"></i> <span>تیکت‌ها</span></a>
-        <a href="users.php"><i class="fas fa-users"></i> <span>کاربران</span></a>
-        <a href="departments.php"><i class="fas fa-sitemap"></i> <span>واحدها</span></a>
-                <a href="news.php"><i class="fas fa-newspaper"></i> <span>اخبار و دانستنی‌ها</span></a>
-                <a href="places.php"><i class="fas fa-map-location-dot"></i> <span>اماکن شهری</span></a>
-        <a href="notifications.php"><i class="fas fa-bell"></i> <span>ارسال اعلان</span></a>
-<a href="export.php"><i class="fas fa-file-excel"></i> <span>خروجی اکسل</span></a>
-<a href="settings.php"><i class="fas fa-cog"></i> <span>تنظیمات</span></a>
-<a href="version.php"><i class="fas fa-clipboard-check"></i> <span>بررسی نسخه</span></a>
-      </nav>
+      <nav data-testid="admin-sidebar">
+<?php /* منوی آگاه از دسترسی — admin/includes/acl.php */ ?>
+<?= eplakAdminSidebar('tickets') ?>      </nav>
     </aside>
     <main class="main">
       <header class="topbar">
@@ -54,9 +48,12 @@ $doneTickets = count(array_filter($tickets, fn($t) => normalizeStatusValue($t['s
           <p>جست‌وجو، فیلتر، پاسخ و مدیریت تیکت‌ها</p>
         </div>
         <div class="topbar-right">
+          <?= eplakAdminScopeBadge($pdo) ?>
+          <?php if (eplakAdminCan('tickets.create')): ?>
           <a href="ticket_add.php" class="btn btn-primary">
             <i class="fas fa-plus"></i> تیکت جدید
           </a>
+          <?php endif; ?>
         </div>
       </header>
 
@@ -191,9 +188,11 @@ $doneTickets = count(array_filter($tickets, fn($t) => normalizeStatusValue($t['s
                         <a href="ticket_edit.php?id=<?= (int)$ticket['id'] ?>" class="btn-action edit" title="ویرایش">
                           <i class="fas fa-pen"></i>
                         </a>
+                        <?php if (eplakAdminCan('tickets.delete')): ?>
                         <a href="actions.php?type=ticket_delete&id=<?= (int)$ticket['id'] ?><?= eplakCsrfQuery() ?>" class="btn-action delete" title="حذف" onclick="return confirm('آیا از حذف این تیکت اطمینان دارید؟')">
                           <i class="fas fa-trash"></i>
                         </a>
+                        <?php endif; ?>
                       </div>
                     </td>
                   </tr>
@@ -205,9 +204,11 @@ $doneTickets = count(array_filter($tickets, fn($t) => normalizeStatusValue($t['s
                       <i class="fas fa-inbox" style="font-size: 48px; color: var(--dark-300);"></i>
                       <h3>تیکتی یافت نشد</h3>
                       <p>هیچ تیکتی با شرایط جستجوی شما یافت نشد.</p>
+                      <?php if (eplakAdminCan('tickets.create')): ?>
                       <a href="ticket_add.php" class="btn btn-primary" style="margin-top: 12px;">
                         <i class="fas fa-plus"></i> ثبت تیکت جدید
                       </a>
+                      <?php endif; ?>
                     </div>
                   </td>
                 </tr>

@@ -128,6 +128,14 @@ jobs:
           check modules/live.js            'eplakNotificationStatus'      'وضعیت خوانا برای عیب‌یابی فهرست اعلان‌ها در بسته هست'
           check core/router.js             'refreshNotificationsNow'      'باز شدن صفحه‌ی اعلان‌ها فهرست را تازه می‌کند'
           check admin/notif_diag.php       'notif_diag'                   'صفحه‌ی عیب‌یابی اعلان‌ها در بسته هست'
+          check uploads/.htaccess          'eplak-media-guard-v2'             'نگهبانِ پوشه‌ی آپلود داخل بسته است (اجرای اسکریپت در uploads بسته می‌شود)'
+          check uploads/reports/.gitkeep   'پوشه باید روی هاست وجود داشته باشد' 'پوشه‌ی آپلودِ عکس گزارش‌ها داخل بسته است'
+          check data/.gitkeep              'پوشه باید روی هاست وجود داشته باشد' 'پوشه‌ی data (دیتابیس SQLite) داخل بسته است'
+          check shared/payamak.php         'payamak_api_key'                 'کلید API ملی پیامک (نه رمز عبورِ پنل) در بسته پشتیبانی می‌شود'
+          check shared/payamak.php         'eplakPayamakStatusText'          'ترجمه‌ی فارسیِ کدهای پاسخِ پیامک در بسته هست'
+          check admin/settings.php         'test_sms'                        '«ارسال پیامک آزمایشی» در پنل (فقط مدیر کل) داخل بسته است'
+          check setup.php                  'make_dirs'                       '«ساخت پوشه‌های نوشتنی» در راه‌انداز داخل بسته است'
+          check admin/includes/db.php      'Access-Control-Allow-Origin'     'خطای دیتابیس روی مسیرِ JSON هدر CORS می‌گیرد'
 
       - name: اثر انگشت و مشخصات بسته
         run: |
@@ -179,7 +187,7 @@ jobs:
             echo "۱. فایل \`$PACKAGE\` را دانلود کنید."
             echo "۲. در cPanel → File Manager، همان پوشه‌ای که سایت الان هست (مثلاً \`public_html/eplak-fixed\`)."
             echo "۳. zip را **Extract** کنید و **Overwrite/جایگزینی** را بزنید."
-            echo "   ⚠️ فایل‌ها را از قبل پاک نکنید و به \`shared/config.php\`، \`data/\` و \`uploads/\` دست نزنید — داخل بسته نیستند و پاکشان کنید داده‌ها می‌روند."
+            echo "   ⚠️ فایل‌ها را از قبل پاک نکنید. بسته «پوشه‌های خالیِ» \`data/\` و \`uploads/{reports,news,ads,tmp}\` را می‌برد تا بعد از Extract آپلود و دیتابیس کار کنند، ولی نه \`shared/config.php\` و نه عکس/فیلم/دیتابیسِ کاربران را ⇒ آن‌ها دست‌نخورده می‌مانند."
             echo "۴. اگر اعلان‌ها هنوز نمی‌آیند، یک‌بار \`backend/fix-notifications-db.sql\` را در phpMyAdmin اجرا کنید (کد خودش هم ترمیم می‌کند)."
             echo
             echo "راهنمای کامل: \`docs/DEPLOY_UPDATE_FA.md\`"

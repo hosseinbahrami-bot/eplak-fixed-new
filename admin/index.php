@@ -2,13 +2,23 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
-$stats = getDashboardStats($pdo);
-$latestReports = getLatestReports($pdo, 5);
-$latestTickets = getLatestTickets($pdo, 5);
-$latestUsers = getLatestUsers($pdo, 5);
+/* داشبوردِ «حوزه‌محدود»: مدیر کل همه‌چیز را می‌بیند و مدیرِ حوزه/معاونت فقط
+   آمار و آخرین پیام‌های همان حوزه را (تصمیم کارفرما، admin/includes/acl.php).
+   کارت‌هایی که به مدیرِ حوزه مربوط نیستند «null» می‌شوند و نمایش داده نمی‌شوند —
+   نه صفر، تا «نداشتن دسترسی» با «صفر بودن» اشتباه گرفته نشود. */
+eplakRequirePermission('dashboard');
+$eplakScope    = eplakAdminScope($pdo);
+$eplakIsSuper  = !empty($eplakScope['is_super']);
+$scopedReports = getScopedReports($pdo, $eplakScope);
+$scopedTickets = getScopedTickets($pdo, $eplakScope);
+
+$stats = getScopedDashboardStats($pdo, $eplakScope, $scopedReports, $scopedTickets);
+$latestReports = $eplakIsSuper ? getLatestReports($pdo, 5) : getScopedLatestReports($scopedReports, 5);
+$latestTickets = $eplakIsSuper ? getLatestTickets($pdo, 5) : getScopedLatestTickets($scopedTickets, 5);
+$latestUsers = $eplakIsSuper ? getLatestUsers($pdo, 5) : [];
 
 /* آمار وضعیت گزارش‌ها برای نمودار دایره‌ای */
-$statusStats = getReportsStatusStats($pdo);
+$statusStats = $eplakIsSuper ? getReportsStatusStats($pdo) : getScopedReportsStatusStats($scopedReports);
 $statusCounts = $statusStats['counts'];
 $statusTotal = (int)$statusStats['total'];
 
@@ -24,12 +34,12 @@ foreach ($statusCounts as $key => $cnt) {
     }
 }
 /* دو نمودار دیگر: بر اساس واحد اداری و روند ماهانه */
-$deptStats   = getReportsByDepartment($pdo, 8);
+$deptStats   = $eplakIsSuper ? getReportsByDepartment($pdo, 8) : getScopedReportsByDepartment($scopedReports, 8);
 $deptTotal   = array_sum(array_column($deptStats, 'count'));
 $deptMax     = 0;
 foreach ($deptStats as $d) { $deptMax = max($deptMax, (int)$d['count']); }
 
-$monthly     = getReportsMonthly($pdo, 6);
+$monthly     = $eplakIsSuper ? getReportsMonthly($pdo, 6) : getScopedReportsMonthly($scopedReports, 6);
 $monthlyMax  = 0;
 $monthlySum  = 0;
 foreach ($monthly as $m) { $monthlyMax = max($monthlyMax, (int)$m['count']); $monthlySum += (int)$m['count']; }
@@ -66,25 +76,14 @@ foreach ($chartSegments as $i => $seg) {
         <img class="logo-light" src="assets/img/logo.png" alt="ای‌پلاک">
         <img class="logo-dark" src="assets/img/logo-light.png" alt="ای‌پلاک">
       </div>
-      <nav>
-        <a class="active" href="index.php"><i class="fas fa-chart-pie"></i> <span>داشبورد</span></a>
-        <a href="reports.php"><i class="fas fa-flag"></i> <span>گزارش‌ها</span></a>
-        <a href="tickets.php"><i class="fas fa-ticket-alt"></i> <span>تیکت‌ها</span></a>
-        <a href="users.php"><i class="fas fa-users"></i> <span>کاربران</span></a>
-        <a href="departments.php"><i class="fas fa-sitemap"></i> <span>واحدها</span></a>
-        <a href="news.php"><i class="fas fa-newspaper"></i> <span>اخبار و دانستنی‌ها</span></a>
-        <a href="places.php"><i class="fas fa-map-location-dot"></i> <span>اماکن شهری</span></a>
-        <a href="notifications.php"><i class="fas fa-bell"></i> <span>ارسال اعلان</span></a>
-        <a href="export.php"><i class="fas fa-file-excel"></i> <span>خروجی اکسل</span></a>
-        <a href="settings.php"><i class="fas fa-cog"></i> <span>تنظیمات</span></a>
-        <a href="version.php"><i class="fas fa-clipboard-check"></i> <span>بررسی نسخه</span></a>
-        <a href="logout.php"><i class="fas fa-sign-out-alt"></i> <span>خروج</span></a>
-      </nav>
+      <nav data-testid="admin-sidebar">
+<?php /* منوی آگاه از دسترسی — admin/includes/acl.php */ ?>
+<?= eplakAdminSidebar('index') ?>      </nav>
     </aside>
     <main class="main">
       <header class="topbar">
-        <h1>داشبورد مدیریت</h1>
-        <p>نمایش خلاصه وضعیت پروژه، گزارش‌ها و کاربران</p>
+        <h1>داشبورد مدیریت <?= eplakAdminScopeBadge($pdo) ?></h1>
+        <p><?= $eplakIsSuper ? 'نمایش خلاصه وضعیت پروژه، گزارش‌ها و کاربران' : 'خلاصه‌ی گزارش‌ها و تیکت‌های حوزه‌ی دسترسی شما' ?></p>
       </header>
 
       <section class="cards">
@@ -92,10 +91,12 @@ foreach ($chartSegments as $i => $seg) {
           <h3>تعداد گزارش‌ها</h3>
           <p><?= $stats['reports_count'] ?></p>
         </div>
+        <?php if ($stats['users_count'] !== null): ?>
         <div class="card">
           <h3>تعداد کاربران</h3>
           <p><?= $stats['users_count'] ?></p>
         </div>
+        <?php endif; ?>
         <div class="card">
           <h3>تعداد تیکت‌ها</h3>
           <p><?= $stats['tickets_count'] ?></p>
@@ -104,20 +105,26 @@ foreach ($chartSegments as $i => $seg) {
           <h3>تیکت‌های در انتظار</h3>
           <p><?= $stats['pending_tickets_count'] ?></p>
         </div>
+        <?php if (($stats['reports_with_media'] ?? null) !== null): ?>
         <div class="card">
           <h3><i class="fas fa-paperclip"></i> گزارش‌های دارای عکس/فیلم</h3>
           <p><?= (int) ($stats['reports_with_media'] ?? 0) ?></p>
         </div>
+        <?php endif; ?>
+        <?php if (($stats['push_subscribers'] ?? null) !== null): ?>
         <div class="card">
           <h3><i class="fas fa-bell"></i> دستگاه‌های اعلان پس‌زمینه</h3>
           <p><?= (int) ($stats['push_subscribers'] ?? 0) ?></p>
           <a href="settings.php" style="font-size:12px;">تنظیمات و ارسال آزمایشی</a>
         </div>
+        <?php endif; ?>
+        <?php if (($stats['news_count'] ?? null) !== null): ?>
         <div class="card">
           <h3><i class="fas fa-newspaper"></i> مطالب اخبار و دانستنی‌ها</h3>
           <p><?= (int) ($stats['news_count'] ?? 0) ?></p>
           <a href="news.php" style="font-size:12px;">مدیریت مطالب</a>
         </div>
+        <?php endif; ?>
       </section>
 
       <section class="panel chart-panel">
@@ -222,6 +229,8 @@ foreach ($chartSegments as $i => $seg) {
 
       </section>
 
+      <?php /* خروجی اکسل فقط برای مدیر کل (مدیرِ حوزه دسترسی «خروجی» ندارد) */ ?>
+      <?php if ($eplakIsSuper): ?>
       <section class="panel export-panel">
         <h2><i class="fa-solid fa-file-excel"></i> دریافت خروجی اکسل</h2>
         <div class="export-grid">
@@ -267,6 +276,7 @@ foreach ($chartSegments as $i => $seg) {
           </a>
         </div>
       </section>
+      <?php endif; ?>
 
       <section class="panel">
         <h2>آخرین تیکت‌ها</h2>
@@ -308,6 +318,7 @@ foreach ($chartSegments as $i => $seg) {
         </table>
       </section>
 
+      <?php if ($eplakIsSuper): ?>
       <section class="panel">
         <h2>آخرین کاربران</h2>
         <table>
@@ -325,6 +336,7 @@ foreach ($chartSegments as $i => $seg) {
           </tbody>
         </table>
       </section>
+      <?php endif; ?>
     </main>
   </div>
 

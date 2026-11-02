@@ -2,6 +2,10 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
+/* دسترسی: users — مدیرِ حوزه/معاونت به این صفحه نمی‌رسد (admin/includes/acl.php) */
+eplakRequirePermission('users');
+
+
 $users = getAllUsers($pdo);
 
 // محاسبه آمار
@@ -33,18 +37,9 @@ $newUsers = count(array_filter($users, function ($u) use ($pdo, $weekSeconds) {
         <img class="logo-light" src="assets/img/logo.png" alt="ای‌پلاک">
         <img class="logo-dark" src="assets/img/logo-light.png" alt="ای‌پلاک">
       </div>
-      <nav>
-        <a href="index.php"><i class="fas fa-chart-pie"></i> <span>داشبورد</span></a>
-        <a href="reports.php"><i class="fas fa-flag"></i> <span>گزارش‌ها</span></a>
-        <a class="active" href="users.php"><i class="fas fa-users"></i> <span>کاربران</span></a>
-        <a href="departments.php"><i class="fas fa-sitemap"></i> <span>واحدها</span></a>
-                <a href="news.php"><i class="fas fa-newspaper"></i> <span>اخبار و دانستنی‌ها</span></a>
-                <a href="places.php"><i class="fas fa-map-location-dot"></i> <span>اماکن شهری</span></a>
-        <a href="notifications.php"><i class="fas fa-bell"></i> <span>ارسال اعلان</span></a>
-<a href="export.php"><i class="fas fa-file-excel"></i> <span>خروجی اکسل</span></a>
-<a href="settings.php"><i class="fas fa-cog"></i> <span>تنظیمات</span></a>
-<a href="version.php"><i class="fas fa-clipboard-check"></i> <span>بررسی نسخه</span></a>
-      </nav>
+      <nav data-testid="admin-sidebar">
+<?php /* منوی آگاه از دسترسی — admin/includes/acl.php */ ?>
+<?= eplakAdminSidebar('users') ?>      </nav>
     </aside>
     <main class="main">
       <header class="topbar">

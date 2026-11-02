@@ -6,6 +6,7 @@ require_once __DIR__ . '/paths.php';
 /* تاریخ و ساعت شمسی: هم برای متن اعلان‌ها و هم برای نمایش تاریخ‌ها در پنل
    مدیریت (پیش از این، تاریخ گزارش‌ها/کاربران/تیکت‌ها میلادی چاپ می‌شد). */
 require_once __DIR__ . '/fa_datetime.php';
+require_once __DIR__ . '/ads.php';
 /* ساعتِ PHP هم روی منطقه‌ی زمانیِ نمایش (پیش‌فرض: تهران) تا date()/strtotime() در
    کلِ پروژه یکسان باشند و به php.ini هاست بستگی نداشته باشند. */
 date_default_timezone_set(eplakDisplayTimezone()->getName());
@@ -734,8 +735,53 @@ function eplakSqliteBootstrap(PDO $pdo): void {
         username VARCHAR(100) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(50) NOT NULL DEFAULT 'admin',
+        full_name VARCHAR(255) NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        last_login_at VARCHAR(30) NOT NULL DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
+
+    /* مدیرانِ حوزه/معاونت: هر مدیر به یک یا چند «واحد سطح اول» (حوزه شهردار یا
+       یکی از معاونت‌ها) منتسب است و فقط گزارش‌ها و تیکت‌های همان واحد(ها) را
+       می‌بیند. مدیر کل (super_admin) به همه‌چیز دسترسی دارد و ردیفی این‌جا ندارد.
+       چندبه‌چند است: یک واحد می‌تواند چند مدیر داشته باشد. */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS admin_departments (
+        admin_id INTEGER NOT NULL,
+        department_id INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (admin_id, department_id)
+    )");
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_admin_departments_dept ON admin_departments(department_id)');
+
+    /* تبلیغاتِ داخل اپ: سه «جای بنر» که هرکدام می‌تواند چند تصویرِ مرتب داشته
+       باشد و هر تصویر یک لینک. shared/ads.php می‌خواندش، api/ads.php به اپ
+       می‌دهد و admin/ads.php مدیریتش می‌کند. */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS ads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        placement VARCHAR(30) NOT NULL DEFAULT 'home_top',
+        title VARCHAR(255) NOT NULL DEFAULT '',
+        alt_text VARCHAR(255) NOT NULL DEFAULT '',
+        image_path VARCHAR(500) NOT NULL DEFAULT '',
+        image_webp VARCHAR(500) NOT NULL DEFAULT '',
+        link_url VARCHAR(700) NOT NULL DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        click_count INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ads_placement ON ads(placement, is_active, sort_order)');
+
+    /* لاگِ کلیکِ تبلیغ‌ها: IP به‌صورت «هش» ذخیره می‌شود (نه خام)؛ هم برای آمارِ
+       پنل (تعداد، آخرین کلیک، IPِ یکتا) و هم تا یک IP آمار را باد نکند. */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS ads_clicks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ad_id INTEGER NOT NULL,
+        ip_hash VARCHAR(64) NOT NULL DEFAULT '',
+        user_agent VARCHAR(255) NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ads_clicks_ad ON ads_clicks(ad_id, ip_hash)');
 
     eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS tickets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -973,6 +1019,7 @@ function eplakSqliteBootstrap(PDO $pdo): void {
     eplakSeedDefaultDepartments($pdo);
     eplakSeedDefaultAdmin($pdo);
     eplakSeedDefaultNews($pdo);
+    eplakSeedDefaultAds($pdo);
 }
 
 /* افزودن ستون در صورت نبودن — مخصوص SQLite (برای دیتابیس‌های قبلی) */
@@ -1028,7 +1075,11 @@ function eplakUsersUpsertSql(PDO $pdo, bool $keepDefaultName = false): string {
    یک پله بالا ببرید؛ بقیه‌اش خودکار انجام می‌شود.
    ============================================================================ */
 if (!defined('EPLAK_SCHEMA_VERSION')) {
-    define('EPLAK_SCHEMA_VERSION', '2026-10-03.1');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
+    /* + جدول‌های ads و ads_clicks (تبلیغات داخل اپ: سه جای بنر، چند تصویرِ
+       چرخشی، لینک، آمار کلیک) — shared/ads.php و api/ads.php */
+    /* + ستون‌های full_name/is_active/last_login_at روی admin_users و جدول admin_departments
+       (مدیرانِ حوزه/معاونت) */
+    define('EPLAK_SCHEMA_VERSION', '2026-11-02.2');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
 }
 
 /* تعریف جداول (همان متن CREATE TABLE) برای مقایسه با دیتابیس.
@@ -1311,11 +1362,17 @@ function eplakMysqlLegacyAlters(PDO $pdo, array &$report): void {
    ============================================================================ */
 
 /**
- * خواندن یک کلید از shared/config.php (فقط یک‌بار در هر درخواست).
- * آن فایل در گیت نیست (رمز دیتابیس دارد)؛ نمونه‌اش shared/config.example.php است.
- * روی هاست‌های اشتراکی که امکان SetEnv ندارند، تنظیمات از همین فایل خوانده می‌شود.
+ * خواندنِ کلِ shared/config.php به‌صورت آرایه (فقط یک‌بار در هر درخواست).
+ * آن فایل در گیت نیست (رمز دیتابیس و کلید پیامک دارد)؛ نمونه‌اش
+ * shared/config.example.php است. روی هاست‌های اشتراکی که امکان SetEnv ندارند،
+ * تنظیمات از همین فایل خوانده می‌شود.
+ *
+ * چرا آرایه‌ی کامل؟ چون تابع‌های shared/payamak.php و shared/fcm.php «پیکربندی»
+ * را یک‌جا می‌گیرند (نه کلید به کلید) تا ترتیبِ «متغیر محیطی ← فایل» در همه‌ی
+ * مصرف‌کننده‌ها یکی بماند: پنل ادمین (پیامک آزمایشی)، api/auth.php (کد تایید)،
+ * api/status.php (تشخیص) و setup.php (راه‌انداز).
  */
-function eplakConfigValue(string $key, $default = null) {
+function eplakConfigArray(): array {
     static $cfg = null;
     if ($cfg === null) {
         $cfg = [];
@@ -1327,6 +1384,16 @@ function eplakConfigValue(string $key, $default = null) {
             }
         }
     }
+    return $cfg;
+}
+
+/**
+ * خواندن یک کلید از shared/config.php (فقط یک‌بار در هر درخواست).
+ * آن فایل در گیت نیست (رمز دیتابیس دارد)؛ نمونه‌اش shared/config.example.php است.
+ * روی هاست‌های اشتراکی که امکان SetEnv ندارند، تنظیمات از همین فایل خوانده می‌شود.
+ */
+function eplakConfigValue(string $key, $default = null) {
+    $cfg = eplakConfigArray();
     return array_key_exists($key, $cfg) ? $cfg[$key] : $default;
 }
 
@@ -2076,8 +2143,58 @@ function eplakGetPdo(): PDO {
         username VARCHAR(100) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(50) NOT NULL DEFAULT 'admin',
+        full_name VARCHAR(255) NOT NULL DEFAULT '',
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        last_login_at VARCHAR(30) NOT NULL DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
+
+    /* مدیرانِ حوزه/معاونت (همان توضیحِ نسخه‌ی SQLite): انتساب مدیر به واحدهای سطح اول */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS admin_departments (
+        admin_id INT NOT NULL,
+        department_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (admin_id, department_id)
+    )");
+    try {
+        $pdo->exec('CREATE INDEX idx_admin_departments_dept ON admin_departments(department_id)');
+    } catch (\Throwable $e) {
+        /* ایندکس تکراری یا نبودِ اجازه — بی‌ضرر */
+    }
+
+    /* تبلیغاتِ داخل اپ (همان توضیحِ نسخه‌ی SQLite) */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS ads (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        placement VARCHAR(30) NOT NULL DEFAULT 'home_top',
+        title VARCHAR(255) NOT NULL DEFAULT '',
+        alt_text VARCHAR(255) NOT NULL DEFAULT '',
+        image_path VARCHAR(500) NOT NULL DEFAULT '',
+        image_webp VARCHAR(500) NOT NULL DEFAULT '',
+        link_url VARCHAR(700) NOT NULL DEFAULT '',
+        sort_order INT NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        click_count INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    try {
+        $pdo->exec('CREATE INDEX idx_ads_placement ON ads(placement, is_active, sort_order)');
+    } catch (\Throwable $e) {
+        /* بی‌ضرر */
+    }
+
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS ads_clicks (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ad_id INT NOT NULL,
+        ip_hash VARCHAR(64) NOT NULL DEFAULT '',
+        user_agent VARCHAR(255) NOT NULL DEFAULT '',
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    try {
+        $pdo->exec('CREATE INDEX idx_ads_clicks_ad ON ads_clicks(ad_id, ip_hash)');
+    } catch (\Throwable $e) {
+        /* بی‌ضرر */
+    }
 
     eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS tickets (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -2294,6 +2411,7 @@ function eplakGetPdo(): PDO {
     eplakSeedDefaultDepartments($pdo);
     eplakSeedDefaultAdmin($pdo);
     eplakSeedDefaultNews($pdo);
+    eplakSeedDefaultAds($pdo);
 
     return $pdo;
 }

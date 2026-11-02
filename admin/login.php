@@ -14,14 +14,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $admin = $stmt->fetch();
 
     if ($admin && password_verify($password, $admin['password_hash'])) {
-        // جلوگیری از تثبیت نشست (Session Fixation) — شناسه پس از ورود نو می‌شود
-        session_regenerate_id(true);
-        $_SESSION['admin_logged_in'] = true;
-        $_SESSION['admin_id'] = (int)$admin['id'];
-        $_SESSION['admin_username'] = $admin['username'];
-        $_SESSION['admin_role'] = $admin['role'];
-        eplakRedirect('index.php');
-        exit;
+        /* حسابِ غیرفعال شده: همان پیامِ عمومی نشان داده می‌شود تا «وجودِ نام کاربری»
+           افشا نشود؛ دلیلِ واقعی فقط در لاگِ سرور می‌نشیند. */
+        if (array_key_exists('is_active', (array) $admin) && (int) $admin['is_active'] === 0) {
+            error_log('[eplak-admin] ورود رد شد: حساب «' . (string) $admin['username'] . '» غیرفعال است.');
+        } else {
+            // جلوگیری از تثبیت نشست (Session Fixation) — شناسه پس از ورود نو می‌شود
+            session_regenerate_id(true);
+            $_SESSION['admin_logged_in'] = true;
+            $_SESSION['admin_id'] = (int)$admin['id'];
+            $_SESSION['admin_username'] = $admin['username'];
+            $_SESSION['admin_role'] = $admin['role'];
+            $_SESSION['admin_full_name'] = (string) ($admin['full_name'] ?? '');
+            /* آخرین ورود (به وقت تهران، همان قالبی که بقیه‌ی پنل نشان می‌دهد).
+               اگر ستونش روی دیتابیس خیلی قدیمی نباشد، بی‌صدا رد می‌شود. */
+            try {
+                $upd = $pdo->prepare('UPDATE admin_users SET last_login_at = :t WHERE id = :id');
+                $upd->execute([':t' => eplakDbNowString($pdo), ':id' => (int) $admin['id']]);
+            } catch (Throwable $e) {
+            }
+            eplakRedirect('index.php');
+            exit;
+        }
     }
 
     $message = '❌ نام کاربری یا رمز عبور اشتباه است.';

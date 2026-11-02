@@ -2,8 +2,12 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
+/* دسترسی و دامنه: مدیرِ حوزه/معاونت فقط تیکت‌های حوزه‌ی خودش را می‌بیند (admin/includes/acl.php) */
+eplakRequirePermission('tickets.view');
+$eplakScope = eplakAdminScope($pdo);
+
 $id = (int)($_GET['id'] ?? 0);
-$ticket = getTicketById($pdo, $id);
+$ticket = getScopedTicketById($pdo, $id, $eplakScope);
 $message = '';
 $messageType = '';
 
@@ -27,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         saveTicketDetails($pdo, $id, $title, $description, $userPhone, $reply, $status, $category, $department, $priority);
         $message = '✅ اطلاعات تیکت با موفقیت به‌روزرسانی شد.';
         $messageType = 'success';
-        $ticket = getTicketById($pdo, $id);
+        $ticket = getScopedTicketById($pdo, $id, $eplakScope);
     }
 }
 
@@ -60,19 +64,9 @@ if (!isset($ticket['code'])) {
         <img class="logo-light" src="assets/img/logo.png" alt="ای‌پلاک">
         <img class="logo-dark" src="assets/img/logo-light.png" alt="ای‌پلاک">
       </div>
-      <nav>
-        <a href="index.php"><i class="fas fa-chart-pie"></i> <span>داشبورد</span></a>
-        <a href="reports.php"><i class="fas fa-flag"></i> <span>گزارش‌ها</span></a>
-        <a class="active" href="tickets.php"><i class="fas fa-ticket-alt"></i> <span>تیکت‌ها</span></a>
-        <a href="users.php"><i class="fas fa-users"></i> <span>کاربران</span></a>
-        <a href="departments.php"><i class="fas fa-sitemap"></i> <span>واحدها</span></a>
-                <a href="news.php"><i class="fas fa-newspaper"></i> <span>اخبار و دانستنی‌ها</span></a>
-                <a href="places.php"><i class="fas fa-map-location-dot"></i> <span>اماکن شهری</span></a>
-        <a href="notifications.php"><i class="fas fa-bell"></i> <span>ارسال اعلان</span></a>
-<a href="export.php"><i class="fas fa-file-excel"></i> <span>خروجی اکسل</span></a>
-<a href="settings.php"><i class="fas fa-cog"></i> <span>تنظیمات</span></a>
-<a href="version.php"><i class="fas fa-clipboard-check"></i> <span>بررسی نسخه</span></a>
-      </nav>
+      <nav data-testid="admin-sidebar">
+<?php /* منوی آگاه از دسترسی — admin/includes/acl.php */ ?>
+<?= eplakAdminSidebar('tickets') ?>      </nav>
     </aside>
     <main class="main">
       <header class="topbar">
@@ -256,9 +250,11 @@ if (!isset($ticket['code'])) {
             <?= nl2br(htmlspecialchars($ticket['reply'])) ?>
           </div>
           <div style="margin-top: 16px;">
+            <?php if (eplakAdminCan('tickets.delete')): ?>
             <a href="actions.php?type=ticket_reply_delete&id=<?= (int)$ticket['id'] ?><?= eplakCsrfQuery() ?>" class="btn btn-danger" onclick="return confirm('آیا از حذف پاسخ این تیکت اطمینان دارید؟')">
               <i class="fas fa-trash"></i> حذف پاسخ
             </a>
+            <?php endif; ?>
           </div>
         <?php else: ?>
           <div class="empty-state">
@@ -464,9 +460,11 @@ if (!isset($ticket['code'])) {
             <a href="tickets.php" class="btn btn-outline">
               <i class="fas fa-times"></i> انصراف
             </a>
+            <?php if (eplakAdminCan('tickets.delete')): ?>
             <a href="actions.php?type=ticket_delete&id=<?= (int)$ticket['id'] ?><?= eplakCsrfQuery() ?>" class="btn btn-danger" onclick="return confirm('آیا از حذف این تیکت اطمینان دارید؟')">
               <i class="fas fa-trash"></i> حذف تیکت
             </a>
+            <?php endif; ?>
           </div>
         </form>
       </section>

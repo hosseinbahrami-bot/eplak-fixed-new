@@ -45,6 +45,8 @@
 
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css?v=93">
+<!-- بنرهای تبلیغاتیِ چرخشی (modules/ads.js) — جدا از پوسته تا کشِ کلِ اپ باطل نشود -->
+<link rel="stylesheet" href="assets/css/ads.css?v=1">
 <script src="assets/js/icons.js?v=13"></script>
 
 <!-- اگر همین حالا اینترنت قطع است، پرده‌ی «بدون اینترنت» از همان لحظه‌ی اول
@@ -704,8 +706,13 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
         <div class="hwy-vignette"></div>
       </div>
 
-      <!-- بنر تبلیغاتی حاجی اعلا (بازار زعفران، پسته، مس، فرش دستباف و ترمه) -->
-      <div class="haji-banner" onclick="window.showToast ? showToast('بازار حاجی اعلا — به‌زودی در ای‌پلاک') : null" role="link" aria-label="حاجی اعلا — بازار زعفران، پسته، مس، فرش دستباف و ترمه">
+      <!-- بنر تبلیغاتی حاجی اعلا (بازار زعفران، پسته، مس، فرش دستباف و ترمه)
+           جای بنرِ home_top: modules/ads.js تصویرهای این جای بنر را از پنل ادمین
+           (admin/ads.php) می‌خواند و به‌صورت چرخشی نشان می‌دهد. اگر سرور در
+           دسترس نبود یا تبلیغی فعال نبود، همین تصویرِ ثابت دیده می‌شود. -->
+      <div class="haji-banner" id="adSlotHomeTop" data-ad-placement="home_top" data-ad-id="0"
+           onclick="if (window.EplakAds &amp;&amp; window.EplakAds.isActive('home_top')) { return; } window.showToast ? showToast('بازار حاجی اعلا — به‌زودی در ای‌پلاک') : null"
+           role="link" aria-label="حاجی اعلا — بازار زعفران، پسته، مس، فرش دستباف و ترمه">
         <div class="home-ad-badge">
           <span class="home-ad-badge-dot" style="background:#ffd76a; box-shadow:0 0 6px #ffd76a;"></span>
           <span data-i18n="ad_sponsored">تبلیغات</span>
@@ -803,8 +810,10 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
         </div>
       </div>
 
-      <!-- Home Ad Banner (تبلیغات آی‌باتری، صحنهٔ مسابقهٔ ماشین‌دار) — بالای میراث ورامین -->
-      <div class="home-ad-banner home-ad-half" onclick="handleHomeAdClick()">
+      <!-- Home Ad Banner (تبلیغات آی‌باتری، صحنهٔ مسابقهٔ ماشین‌دار) — بالای میراث ورامین
+           جای بنرِ home_mid: همان توضیحِ home_top (modules/ads.js + admin/ads.php) -->
+      <div class="home-ad-banner home-ad-half" id="adSlotHomeMid" data-ad-placement="home_mid" data-ad-id="0"
+           onclick="if (window.EplakAds &amp;&amp; window.EplakAds.isActive('home_mid')) { return; } handleHomeAdClick()">
         <div class="home-ad-badge">
           <span class="home-ad-badge-dot"></span>
           <span data-i18n="ad_sponsored">تبلیغات</span>
@@ -1561,8 +1570,11 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
         <div id="weatherCardBody"></div>
       </div>
 
-      <!-- بنر تبلیغاتی باریک (آی‌باتری) زیر دمای ورامین -->
-      <div class="dash-ad-slim" onclick="handleHomeAdClick()" role="link" aria-label="تبلیغات آی‌باتری">
+      <!-- بنر تبلیغاتی باریک (آی‌باتری) زیر دمای ورامین
+           جای بنرِ dash_slim: همان توضیحِ home_top (modules/ads.js + admin/ads.php) -->
+      <div class="dash-ad-slim" id="adSlotDashSlim" data-ad-placement="dash_slim" data-ad-id="0"
+           onclick="if (window.EplakAds &amp;&amp; window.EplakAds.isActive('dash_slim')) { return; } handleHomeAdClick()"
+           role="link" aria-label="تبلیغات آی‌باتری">
         <div class="home-ad-badge">
           <span class="home-ad-badge-dot"></span>
           <span data-i18n="ad_sponsored">تبلیغات</span>
@@ -3109,6 +3121,7 @@ title="شماره موبایل هویت حساب شماست و قابل تغیی
 <!-- ===== Modules ===== -->
 <script src="modules/auth.js?v=15"></script>
 <script src="modules/home.js?v=20"></script>
+<script src="modules/ads.js?v=1"></script>
 <script src="assets/js/ep-map.js?v=4"></script>
 <script src="assets/js/ep-camera.js?v=3"></script>
 <script src="modules/reports.js?v=30"></script>

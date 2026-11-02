@@ -1,5 +1,8 @@
 <?php
 require_once __DIR__ . '/includes/db.php';
+/* کنترل دسترسی (مدیر کل در برابر مدیرِ حوزه/معاونت) — باید پیش از هر صفحه‌ای بار شود
+   تا هم منو و هم فیلتر داده و هم محافظِ صفحه‌ها یک منبع داشته باشند. */
+require_once __DIR__ . '/includes/acl.php';
 eplakStartSession('eplak_admin');
 
 function isAdminLoggedIn(): bool {
@@ -53,4 +56,7 @@ function eplakRequireCsrf(): void {
 
 if (basename($_SERVER['PHP_SELF']) !== 'login.php' && basename($_SERVER['PHP_SELF']) !== 'logout.php') {
     requireAdmin();
+    /* نشست با دیتابیس همگام می‌شود: نقشِ واقعی خوانده می‌شود و حسابِ
+       «غیرفعال/حذف‌شده» همان لحظه از پنل بیرون می‌رود (admin/includes/acl.php). */
+    eplakRefreshAdminSession();
 }

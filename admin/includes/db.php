@@ -21,6 +21,25 @@ try {
             || (preg_match('#(^|/)api/[^/]+\\.php$#', $scriptName) === 1);
         if ($wantsJson) {
             header('Content-Type: application/json; charset=utf-8');
+            /* CORS روی «مسیرِ خطا» — دقیقاً همان هدرهایی که
+               api/_common.php → eplakApiHeaders() می‌گذارد.
+               چرا؟ چون اگر خطای دیتابیس بدونِ این هدرها برگردد، مرورگر/WebView
+               جلوی خواندنِ پاسخ را می‌گیرد و اپ به‌جای «دلیلِ واقعی» همان پیامِ
+               کلیِ «ارسال کد تایید انجام نشد» را نشان می‌دهد — یعنی درست در
+               لحظه‌ای که سایت به راه‌اندازی نیاز دارد، کاربر هیچ سرنخی نمی‌بیند.
+               eplakApiHeaders() را نمی‌توان صدا زد: api/_common.php خودش همین
+               فایل را require می‌کند و حلقه‌ی وابستگی ساخته می‌شود. */
+            header('Access-Control-Allow-Origin: *');
+            header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
+            header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+            header('Cache-Control: no-store, no-cache, must-revalidate');
+            header('X-Content-Type-Options: nosniff');
+            if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+                /* پیش‌درخواستِ CORS نباید ۵۰۰ بگیرد؛ وگرنه مرورگر درخواستِ اصلی
+                   را هرگز نمی‌فرستد و اپ «بدون اینترنت» می‌ماند. */
+                http_response_code(204);
+                exit;
+            }
             /* پیامِ فارسیِ actionable در «error» می‌آید؛ چون اپِ نصب‌شده (با کدِ قدیمی)
                همان data.error را در toast نشان می‌دهد ⇒ بدون نیاز به نصبِ نسخه‌ی تازه،
                دلیلِ واقعی روی گوشی کاربر دیده می‌شود. */

@@ -2,8 +2,12 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
+/* دسترسی و دامنه: مدیرِ حوزه/معاونت فقط گزارش‌های حوزه‌ی خودش را می‌بیند (admin/includes/acl.php) */
+eplakRequirePermission('reports.edit');
+$eplakScope = eplakAdminScope($pdo);
+
 $id = (int)($_GET['id'] ?? 0);
-$report = getReportById($pdo, $id);
+$report = getScopedReportById($pdo, $id, $eplakScope);
 $message = '';
 $messageType = '';
 
@@ -27,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($payload['user_phone'] !== '' && $payload['title'] !== '' && $payload['description'] !== '') {
         $notify = updateReport($pdo, $id, $payload);
-        $report = getReportById($pdo, $id);
+        $report = getScopedReportById($pdo, $id, $eplakScope);
         $message = '✅ گزارش با موفقیت بروزرسانی شد.';
         $messageType = 'success';
         /* اگر وضعیت عوض شده باشد، کاربر اعلان می‌گیرد؛ نتیجه‌ی ارسال را همین‌جا نشان بده */
@@ -69,19 +73,9 @@ if ($report && !isset($report['code'])) {
         <img class="logo-light" src="assets/img/logo.png" alt="ای‌پلاک">
         <img class="logo-dark" src="assets/img/logo-light.png" alt="ای‌پلاک">
       </div>
-      <nav>
-        <a href="index.php"><i class="fas fa-chart-pie"></i> <span>داشبورد</span></a>
-        <a class="active" href="reports.php"><i class="fas fa-flag"></i> <span>گزارش‌ها</span></a>
-        <a href="tickets.php"><i class="fas fa-ticket-alt"></i> <span>تیکت‌ها</span></a>
-        <a href="users.php"><i class="fas fa-users"></i> <span>کاربران</span></a>
-        <a href="departments.php"><i class="fas fa-sitemap"></i> <span>واحدها</span></a>
-                <a href="news.php"><i class="fas fa-newspaper"></i> <span>اخبار و دانستنی‌ها</span></a>
-                <a href="places.php"><i class="fas fa-map-location-dot"></i> <span>اماکن شهری</span></a>
-        <a href="notifications.php"><i class="fas fa-bell"></i> <span>ارسال اعلان</span></a>
-<a href="export.php"><i class="fas fa-file-excel"></i> <span>خروجی اکسل</span></a>
-<a href="settings.php"><i class="fas fa-cog"></i> <span>تنظیمات</span></a>
-<a href="version.php"><i class="fas fa-clipboard-check"></i> <span>بررسی نسخه</span></a>
-      </nav>
+      <nav data-testid="admin-sidebar">
+<?php /* منوی آگاه از دسترسی — admin/includes/acl.php */ ?>
+<?= eplakAdminSidebar('reports') ?>      </nav>
     </aside>
     <main class="main">
       <header class="topbar">

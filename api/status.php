@@ -57,7 +57,12 @@ $dbPass = (string) (getenv('DB_PASS') !== false && getenv('DB_PASS') !== ''
     : ($fileCfg['pass'] ?? ''));
 
 $payamakUser = trim((string) (getenv('PAYAMAK_USERNAME') ?: ($fileCfg['payamak_username'] ?? '')));
-$payamakPass = trim((string) (getenv('PAYAMAK_PASSWORD') ?: ($fileCfg['payamak_password'] ?? '')));
+/* «کلید API» ملی پیامک همان مقداری است که در فیلد passwordِ وب‌سرویس فرستاده
+   می‌شود؛ رمزِ عبورِ پنل با RetStatus=-110 رد می‌شود. ترتیبِ خواندن یک‌جا در
+   shared/payamak.php است: PAYAMAK_API_KEY ← payamak_api_key ← PAYAMAK_PASSWORD
+   ← payamak_password (تا تنظیمِ قدیمیِ هاست هم کار کند). */
+$payamakPass = eplakPayamakSecret($fileCfg);
+$payamakSecretSource = eplakPayamakSecretSource($fileCfg);
 /* اگر «شناسه‌ی متن تأییدشده» در تنظیمات خالی باشد، همان پیش‌فرضِ پروژه مؤثر است —
    چون api/auth.php هم دقیقاً همین کار را می‌کند، این گزارش هم باید همان را بگوید. */
 $payamakTplRaw = trim((string) (getenv('PAYAMAK_TEMPLATE_ID') ?: ($fileCfg['payamak_template_id'] ?? '')));
@@ -126,9 +131,13 @@ if (!function_exists('curl_init')) {
     $problems[] = 'اکستنشن cURL فعال نیست ⇒ ارسال پیامک ممکن نیست.';
 }
 if ($payamakPartial) {
-    $problems[] = 'تنظیمات ملی پیامک ناقص است ⇒ نام کاربری و رمز پنل ملی پیامک هر دو لازم‌اند (شناسه‌ی متن پیش‌فرض: ' . eplakPayamakDefaultTemplate() . ').';
+    $problems[] = 'تنظیمات ملی پیامک ناقص است ⇒ «نام کاربری» و «کلید API» هر دو لازم‌اند (شناسه‌ی متن پیش‌فرض: ' . eplakPayamakDefaultTemplate() . ').';
 } elseif (!$payamakReady) {
-    $problems[] = 'پنل ملی پیامک تنظیم نشده ⇒ «کد تایید» ارسال نمی‌شود. نام کاربری و رمز ملی پیامک را در shared/config.php یا setup.php وارد کنید (شناسه‌ی متن تأییدشده به‌صورت پیش‌فرض ' . eplakPayamakDefaultTemplate() . ' است).';
+    $problems[] = 'پنل ملی پیامک تنظیم نشده ⇒ «کد تایید» ارسال نمی‌شود. نام کاربری و «کلید API» ملی پیامک را در shared/config.php (کلیدهای payamak_username و payamak_api_key) یا از setup.php وارد کنید (شناسه‌ی متن تأییدشده به‌صورت پیش‌فرض ' . eplakPayamakDefaultTemplate() . ' است).';
+} elseif ($payamakSecretSource === 'password') {
+    /* تنظیم «هست» ولی از مسیرِ قدیمی خوانده می‌شود؛ ملی پیامک ممکن است با
+       RetStatus=-110 رد کند ⇒ صریح گفته می‌شود تا عیب‌یابی یک‌راست انجام شود. */
+    $problems[] = 'کلیدِ پیامک از payamak_password خوانده می‌شود (تنظیمِ قدیمی). اگر «کد تایید» نمی‌آید و پاسخ RetStatus=-110 است، «کلید API» را در payamak_api_key بگذارید (پنل ملی پیامک ← توسعه‌دهندگان ← تنظیمات وب‌سرویس).';
 }
 foreach ($tables as $tableName => $exists) {
     if (!$exists) {
@@ -182,11 +191,20 @@ echo json_encode([
         'template_id' => $payamakTpl,
         /* true یعنی شناسه را خودتان وارد نکرده‌اید و پیش‌فرضِ 573639 مؤثر است */
         'template_id_is_default' => $payamakTplRaw === '',
+        /* کلید از کجا آمده؟ 'api_key' (درست) | 'password' (قدیمی، ممکن است -110 بدهد)
+           | '' (تنظیم نشده). خودِ کلید هرگز در این گزارش نمی‌آید. */
+        'secret_source' => $payamakSecretSource !== '' ? $payamakSecretSource : null,
+        'secret_label'  => eplakPayamakSecretLabel($fileCfg),
     ],
     'writable' => [
         'shared'  => is_writable($sharedDir),
+        /* «هست؟» و «نوشتنی است؟» جدا گزارش می‌شوند: روی هاستِ تازه بیشترِ
+           «نوشتنی نیست»ها یعنی خودِ پوشه وجود ندارد (با setup.php ساخته می‌شود). */
         'uploads' => is_dir($uploadsDir) ? is_writable($uploadsDir) : false,
+        'uploads_exists' => is_dir($uploadsDir),
+        'uploads_guard'  => is_file($uploadsDir . '/.htaccess'),
         'data'    => is_dir($dataDir) ? is_writable($dataDir) : false,
+        'data_exists' => is_dir($dataDir),
     ],
     'timezone' => [
         'db'      => (string) ($fileCfg['db_timezone'] ?? 'Asia/Tehran'),

@@ -833,8 +833,8 @@ ok('پروژه‌ی APK پروژه‌ی واقعیِ مالک است (شناسه
     && String(gsJson.client?.[0]?.client_info?.mobilesdk_app_id || '').startsWith(`1:${gsSender}:android:`)
     && gsProject !== 'eplak-7e6ed',
   `${gsProject} · ${gsSender}`);
-ok('نام بسته‌ی تازه = نسخه‌ی تازه (versionCode 4 / 2.2) تا نصب روی گوشی قابل تشخیص باشد',
-  /versionCode 4\b/.test(gradleTxt) && gradleTxt.includes("versionName '2.2'"));
+ok('نام بسته‌ی تازه = نسخه‌ی تازه (versionCode 5 / 2.3) تا نصب روی گوشی قابل تشخیص باشد',
+  /versionCode 5\b/.test(gradleTxt) && gradleTxt.includes("versionName '2.3'"));
 ok('CI: بازرسی APK نام بسته‌ی مانیفستِ ادغام‌شده را با google-services.json مقایسه می‌کند',
   apkWf.includes('GS_PACKAGE=') && apkWf.includes('package=\\"$GS_PACKAGE\\"') && apkWf.includes('APK_PACKAGE='));
 ok('مستندات به پروژه و نام بسته‌ی تازه اشاره می‌کنند و مهاجرت از نسخه‌ی ۲.۰ را توضیح می‌دهند',
