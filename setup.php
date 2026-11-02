@@ -36,7 +36,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 define('EPLAK_SETUP_ROOT', __DIR__);
 define('EPLAK_SETUP_CONFIG', EPLAK_SETUP_ROOT . '/shared/config.php');
 
-/* پنل پیامک: تنها «ملی پیامک». شناسه‌ی متنِ پیش‌فرض (552115) و سنجش‌ها یک‌جا
+/* پنل پیامک: تنها «ملی پیامک». شناسه‌ی متنِ پیش‌فرض (573639) و سنجش‌ها یک‌جا
    در shared/payamak.php هستند تا این صفحه، api/auth.php و api/status.php
    هیچ‌وقت دو حرف نزنند. */
 require_once EPLAK_SETUP_ROOT . '/shared/payamak.php';
@@ -90,7 +90,7 @@ function eplak_setup_effective(): array
         'disp_tz'  => (string) ($cfg['display_timezone'] ?? 'Asia/Tehran'),
         'payamak_user'     => eplakPayamakUsername($cfg),
         'payamak_pass_set' => eplakPayamakPasswordSet($cfg),
-        /* شناسه‌ی مؤثرِ متن: اگر خالی باشد، همان پیش‌فرضِ 552115 */
+        /* شناسه‌ی مؤثرِ متن: اگر خالی باشد، همان پیش‌فرضِ 573639 */
         'payamak_template' => eplakPayamakTemplateId($cfg),
         'payamak_template_default' => eplakPayamakDefaultTemplate(),
         'otp_test_code'    => (string) ($cfg['otp_test_code'] ?? ''),
@@ -229,7 +229,7 @@ function eplak_setup_write_config(array $values): array
         . "    'otp_test_code' => " . var_export((string) ($values['otp_test_code'] ?? ''), true) . ",\n"
         . "    'payamak_username' => " . var_export((string) ($values['payamak_username'] ?? ''), true) . ",\n"
         . "    'payamak_password' => " . var_export((string) ($values['payamak_password'] ?? ''), true) . ",\n"
-        /* شناسه‌ی متن: اگر خالی بماند، همان پیش‌فرضِ 552115 نوشته می‌شود تا روی
+        /* شناسه‌ی متن: اگر خالی بماند، همان پیش‌فرضِ 573639 نوشته می‌شود تا روی
            هاست تازه «کد تایید» بی‌دلیل از کار نیفتد. */
         . "    'payamak_template_id' => " . var_export(
             (string) (($values['payamak_template_id'] ?? '') !== ''

@@ -97,7 +97,7 @@ if ($action === 'send') {
     $payamakUsername = trim((string)(getenv('PAYAMAK_USERNAME') ?: ($fileConfig['payamak_username'] ?? '')));
     $payamakPassword = trim((string)(getenv('PAYAMAK_PASSWORD') ?: ($fileConfig['payamak_password'] ?? '')));
     /* شناسه‌ی «متن تأییدشده» (bodyId) ملی پیامک. اگر در تنظیمات خالی باشد،
-       شناسه‌ی پیش‌فرضِ پروژه (552115) استفاده می‌شود تا روی هاست تازه
+       شناسه‌ی پیش‌فرضِ پروژه (573639) استفاده می‌شود تا روی هاست تازه
        «کد تایید» بی‌دلیل از کار نیفتد. */
     $payamakTemplateId = trim((string)(getenv('PAYAMAK_TEMPLATE_ID') ?: ($fileConfig['payamak_template_id'] ?? '')));
     if ($payamakTemplateId === '') {

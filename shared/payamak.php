@@ -30,7 +30,7 @@
    همان برنده است؛ این فقط پیش‌فرض است تا روی هاست تازه «کد تایید» بی‌دلیل از
    کار نیفتد (شکایت واقعی: «ارسال کد تایید انجام نشد»). */
 if (!defined('EPLAK_PAYAMAK_TEMPLATE_DEFAULT')) {
-    define('EPLAK_PAYAMAK_TEMPLATE_DEFAULT', '552115');
+    define('EPLAK_PAYAMAK_TEMPLATE_DEFAULT', '573639');
 }
 
 /* نشانیِ سرویس ارسالِ ملی پیامک. درخواستِ واقعی در api/auth.php ساخته می‌شود؛
@@ -40,7 +40,7 @@ if (!defined('EPLAK_PAYAMAK_ENDPOINT')) {
 }
 
 if (!function_exists('eplakPayamakDefaultTemplate')) {
-    /** شناسه‌ی متنِ پیش‌فرض (bodyId) — «552115» */
+    /** شناسه‌ی متنِ پیش‌فرض (bodyId) — «573639» */
     function eplakPayamakDefaultTemplate(): string
     {
         return (string) EPLAK_PAYAMAK_TEMPLATE_DEFAULT;
@@ -68,7 +68,7 @@ if (!function_exists('eplakPayamakPasswordSet')) {
 }
 
 if (!function_exists('eplakPayamakTemplateId')) {
-    /** شناسه‌ی مؤثرِ «متن تأییدشده»: محیطی ← config.php ← پیش‌فرضِ 552115 */
+    /** شناسه‌ی مؤثرِ «متن تأییدشده»: محیطی ← config.php ← پیش‌فرضِ 573639 */
     function eplakPayamakTemplateId(array $config = []): string
     {
         $template = trim((string) (getenv('PAYAMAK_TEMPLATE_ID') ?: ($config['payamak_template_id'] ?? '')));

@@ -180,7 +180,7 @@ echo json_encode([
         'endpoint' => EPLAK_PAYAMAK_ENDPOINT,
         'username' => $payamakUser !== '' ? $payamakUser : null,
         'template_id' => $payamakTpl,
-        /* true یعنی شناسه را خودتان وارد نکرده‌اید و پیش‌فرضِ 552115 مؤثر است */
+        /* true یعنی شناسه را خودتان وارد نکرده‌اید و پیش‌فرضِ 573639 مؤثر است */
         'template_id_is_default' => $payamakTplRaw === '',
     ],
     'writable' => [
