@@ -96,7 +96,9 @@ const GOOGLE_ENV = { EPLAK_TEST_TOKEN_URL: `http://127.0.0.1:${G_PORT}/token`, E
 const DEAD_ENV = { EPLAK_TEST_TOKEN_URL: 'http://127.0.0.1:1/token', EPLAK_TEST_FCM_BASE: 'http://127.0.0.1:1/v1/projects/', EPLAK_APP_FCM_PROJECT: 'eplak-test-project' };
 /* همان گوگلِ ساختگی، ولی APK «با پروژه‌ی دیگری» ساخته شده است */
 /* «پروژه‌ی دیگر» = پروژه‌ی قدیمی APK تا نسخه‌ی ۲.۰ (eplak-63c74) — همان نمونه‌ی واقعیِ «کلید از پروژه‌ی دیگر» */
-const MISMATCH_ENV = { ...GOOGLE_ENV, EPLAK_APP_FCM_PROJECT: 'eplak-63c74' };
+/* شناسه‌ی فرستنده هم تنظیم می‌شود تا پنل بتواند «Project number» اپ را نشان دهد
+   (بدون آن، eplakFcmAppProject() چون پروژه با ثابتِ APK فرق دارد، فرستنده را خالی می‌گذارد). */
+const MISMATCH_ENV = { ...GOOGLE_ENV, EPLAK_APP_FCM_PROJECT: 'eplak-63c74', EPLAK_APP_FCM_SENDER: '817151129705' };
 setEnv(GOOGLE_ENV);
 
 /* ══════════ نسخه‌ی آزمایشی کد (فقط نشانی گوگل عوض می‌شود؛ به مخزن دست نمی‌زنیم) ══════════ */
@@ -815,21 +817,37 @@ ok('ثابت‌های shared/fcm.php با google-services.json داخل APK یک
     && fcmPhp.includes(`define('EPLAK_APP_FCM_SENDER_ID', '${gsSender}')`)
     && fcmPhp.includes(`define('EPLAK_APP_PACKAGE', '${gsPackage}')`),
   `${gsProject} / ${gsSender} / ${gsPackage}`);
-/* پروژه‌ی تازه‌ی مالک (eplak-7e6ed) اپ اندروید را با نام بسته‌ی com.eplak ثبت کرده؛ پلاگین google-services
+/* پروژه‌ی واقعیِ مالک: نامِ نمایشی «eplak-7e6ed» ولی شناسه‌اش «eplak-7e6ed-fb72c» است
+   (فایربیس چون آن شناسه آزاد نبوده، پسوند چسبانده) — تا نسخه‌ی ۲.۱ فایل مخزن به‌اشتباه با
+   «نام» پروژه ساخته می‌شد (project_id=eplak-7e6ed، فرستنده‌ی 221915268820) و به همین دلیل
+   هر کلیدی که مالک از پروژه‌ی خودش می‌ساخت با SenderId mismatch رد می‌شد.
+   مالک اپ اندروید را در پروژه‌ی خودش با نام بسته‌ی com.eplak ثبت کرده؛ پلاگین google-services
    فقط client هم‌نام با applicationId را می‌پذیرد ⇒ applicationId اپ باید دقیقاً همان باشد. */
 const gradleTxt = read('android-app/app/build.gradle');
 ok('applicationId اپ اندروید = نام بسته‌ی ثبت‌شده در google-services.json (وگرنه ساخت APK یا توکن FCM می‌شکند)',
-  gradleTxt.includes(`applicationId '${gsPackage}'`) && gsPackage === 'com.eplak' && gsProject === 'eplak-7e6ed' && gsSender === '221915268820',
-  `applicationId=${(gradleTxt.match(/applicationId '([^']+)'/) || [])[1]} · gs=${gsPackage}`);
-ok('نام بسته‌ی تازه = نسخه‌ی تازه (versionCode 3 / 2.1) تا نصب روی گوشی قابل تشخیص باشد',
-  /versionCode 3\b/.test(gradleTxt) && gradleTxt.includes("versionName '2.1'"));
+  gradleTxt.includes(`applicationId '${gsPackage}'`) && gsPackage === 'com.eplak'
+    && gsProject === 'eplak-7e6ed-fb72c' && gsSender === '775593554513',
+  `applicationId=${(gradleTxt.match(/applicationId '([^']+)'/) || [])[1]} · gs=${gsPackage} · ${gsProject}/${gsSender}`);
+ok('پروژه‌ی APK پروژه‌ی واقعیِ مالک است (شناسه، نه نامِ نمایشی) — شناسه‌ی فرستنده هم همان Project number کنسول',
+  gsJson.project_info?.storage_bucket === 'eplak-7e6ed-fb72c.firebasestorage.app'
+    && String(gsJson.client?.[0]?.client_info?.mobilesdk_app_id || '').startsWith(`1:${gsSender}:android:`)
+    && gsProject !== 'eplak-7e6ed',
+  `${gsProject} · ${gsSender}`);
+ok('نام بسته‌ی تازه = نسخه‌ی تازه (versionCode 4 / 2.2) تا نصب روی گوشی قابل تشخیص باشد',
+  /versionCode 4\b/.test(gradleTxt) && gradleTxt.includes("versionName '2.2'"));
 ok('CI: بازرسی APK نام بسته‌ی مانیفستِ ادغام‌شده را با google-services.json مقایسه می‌کند',
   apkWf.includes('GS_PACKAGE=') && apkWf.includes('package=\\"$GS_PACKAGE\\"') && apkWf.includes('APK_PACKAGE='));
 ok('مستندات به پروژه و نام بسته‌ی تازه اشاره می‌کنند و مهاجرت از نسخه‌ی ۲.۰ را توضیح می‌دهند',
-  read('docs/FIREBASE_SETUP_FA.md').includes('`eplak-7e6ed`') && read('docs/FIREBASE_SETUP_FA.md').includes('`com.eplak`')
+  read('docs/FIREBASE_SETUP_FA.md').includes('`eplak-7e6ed-fb72c`') && read('docs/FIREBASE_SETUP_FA.md').includes('`com.eplak`')
     && read('docs/FIREBASE_SETUP_FA.md').includes('نسخه‌ی ۲.۰ را از گوشی حذف کنید')
     && read('docs/FIREBASE_SETUP_EN.md').includes('`com.eplak`') && read('docs/NOTIFICATIONS_FA.md').includes('`com.eplak`')
     && !read('docs/DEPLOY_UPDATE_FA.md').includes('com.example.eplakfixed'));
+ok('مستندات مهاجرت نسخه‌ی ۲.۲ (نامِ پروژه ≠ شناسه‌ی پروژه) و شناسه‌ی فرستنده‌ی تازه را ثبت کرده‌اند',
+  read('docs/FIREBASE_SETUP_FA.md').includes('775593554513') && read('docs/FIREBASE_SETUP_FA.md').includes('۲.۲')
+    && read('docs/FIREBASE_SETUP_EN.md').includes('775593554513')
+    && read('docs/NOTIFICATIONS_FA.md').includes('eplak-7e6ed-fb72c')
+    && !read('docs/FIREBASE_SETUP_FA.md').includes('221915268820'),
+  'شناسه‌ی فرستنده‌ی قدیمی یا یادکردِ مهاجرت در راهنماها نیست');
 
 /* الف) توضیح فارسیِ خطا: متن واقعی گوگل «SenderId mismatch» (نه فقط SENDER_ID_MISMATCH) */
 const explain = grab(await exec(`echo '<<<' . json_encode([
@@ -894,6 +912,31 @@ ok('پنل → تنظیمات: وضعیت کلید «کلید از پروژه‌
     && mmSettings.text.includes('data-testid="fcm-project-mismatch-text"'));
 ok('پنل → تنظیمات: جدول گوشی‌ها پروژه‌ی گزارش‌شده‌ی هر گوشی را با نشان «≠ کلید» نشان می‌دهد',
   mmSettings.text.includes('≠ کلید') && /<th>پروژه‌ی اپ<\/th>/.test(mmSettings.text));
+
+/* گزارش واقعی مالک (۲۰۲۶-۱۱): دو کلیدِ تازه از یک پروژه‌ی اشتباه ساخته شد و «باز قبول نمی‌کند»؛
+   ریشه‌اش این بود که «Project name» را با «Project ID» اشتباه گرفته بود و پیامِ پنل فقط راه حلِ
+   «کلید را از پروژه‌ی APK بسازید» را می‌گفت — بدون Project number (که با آن می‌شد در یک نگاه
+   مقایسه کرد) و بدون راه حلِ دوم (انتقال اپ به پروژه‌ی در دسترس با apply-google-services.mjs). */
+ok('پنل → اعلان‌ها: بنر، Project number اپ + هشدار «Project ID ≠ Project name» + راه حل دوم را نشان می‌دهد',
+  mmNotif.text.includes('817151129705') && mmNotif.text.includes('Project number')
+    && mmNotif.text.includes('Project ID') && mmNotif.text.includes('apply-google-services.mjs')
+    && mmNotif.text.includes('com.eplak') && /حل نمی‌کند/.test(mmNotif.text),
+  mmNotif.text.includes('817151129705') ? 'بخش دیگری از بنر پیدا نشد' : 'Project number در بنر نیست');
+ok('پنل → تنظیمات: ردیف «پروژه‌ی فایربیس اپ اندروید» شناسه‌ی فرستنده (Project number) را هم نشان می‌دهد',
+  mmSettings.text.includes('data-testid="fcm-app-sender"') && mmSettings.text.includes('817151129705'));
+const mmText = grab(await exec(`echo '<<<' . json_encode([
+  eplakFcmProjectMismatchText('eplak-test-project'),
+], JSON_UNESCAPED_UNICODE) . '>>>';`));
+ok('eplakFcmProjectMismatchText: هر دو راه حل + Project number + نام بسته + «کلیدِ تازه از همان پروژه فایده ندارد»',
+  /Generate new private key/.test(mmText[0]) && /apply-google-services\.mjs/.test(mmText[0])
+    && mmText[0].includes('817151129705') && mmText[0].includes('com.eplak')
+    && /SenderId mismatch/.test(mmText[0]) && /حل نمی‌کند/.test(mmText[0]) && mmText[0].includes('Project ID'),
+  mmText[0].slice(0, 260));
+ok('مستندات: هر دو راه حل و تله‌ی «Project name ≠ Project ID» در FA/EN/NOTIFICATIONS نوشته شده',
+  read('docs/FIREBASE_SETUP_FA.md').includes('Project ID') && read('docs/FIREBASE_SETUP_FA.md').includes('apply-google-services.mjs')
+    && read('docs/FIREBASE_SETUP_EN.md').includes('Project ID') && read('docs/FIREBASE_SETUP_EN.md').includes('apply-google-services.mjs')
+    && read('docs/NOTIFICATIONS_FA.md').includes('دو راه حل') && read('docs/NOTIFICATIONS_FA.md').includes('apply-google-services.mjs'));
+
 const tokenMm = csrfOf(mmSettings.text);
 const mmDiag = await admin.post('/admin/settings.php', { _token: tokenMm, action: 'diagnose_fcm' });
 ok('عیب‌یابی: گام «هم‌خوانی پروژه» ✖ با راه حل، در حالی که OAuth و سرویس ارسال سبزند (همان الگوی گزارش مالک)',

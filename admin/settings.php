@@ -589,6 +589,9 @@ $httpsOn = eplakIsHttpsRequest();
             <span class="kv-key">پروژه‌ی فایربیس اپ اندروید (APK)</span>
             <span class="kv-val" data-testid="fcm-app-project">
               <span dir="ltr" style="font-size:12px;"><?= htmlspecialchars((string) $fcmConfig['app_project']) ?></span>
+              <?php if (trim((string) ($fcmConfig['app_sender'] ?? '')) !== ''): ?>
+                <span dir="ltr" style="font-size:11px; color:var(--dark-500);" data-testid="fcm-app-sender">(Project number: <?= htmlspecialchars((string) $fcmConfig['app_sender']) ?>)</span>
+              <?php endif; ?>
               <?php if ($fcmConfig['ready']): ?>
                 <?= $fcmConfig['project_match'] === false
                     ? '<span class="pill pill-bad">✖ با کلید سرویس یکی نیست</span>'

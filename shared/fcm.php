@@ -27,8 +27,8 @@ require_once __DIR__ . '/webpush.php';   /* استفاده از eplakHttpPost و
    گام‌های «توکن دسترسی» و «اعتبارسنجی پیام» سبز می‌مانند.
    (آزمون push.test.mjs هم‌خوانیِ این مقدارها با google-services.json را می‌سنجد.)
    در محیط آزمون با EPLAK_APP_FCM_PROJECT یا تنظیم app_fcm_project قابل تغییر است. */
-if (!defined('EPLAK_APP_FCM_PROJECT_ID')) define('EPLAK_APP_FCM_PROJECT_ID', 'eplak-7e6ed');
-if (!defined('EPLAK_APP_FCM_SENDER_ID'))  define('EPLAK_APP_FCM_SENDER_ID', '221915268820');
+if (!defined('EPLAK_APP_FCM_PROJECT_ID')) define('EPLAK_APP_FCM_PROJECT_ID', 'eplak-7e6ed-fb72c');
+if (!defined('EPLAK_APP_FCM_SENDER_ID'))  define('EPLAK_APP_FCM_SENDER_ID', '775593554513');
 if (!defined('EPLAK_APP_PACKAGE'))        define('EPLAK_APP_PACKAGE', 'com.eplak');
 
 /** پروژه‌ای که اپ اندروید (APK) با آن ساخته شده است */
@@ -59,16 +59,39 @@ function eplakFcmAppProject(): array
     ];
 }
 
-/** متن فارسیِ «کلید از پروژه‌ی دیگری است» با راه حل گام‌به‌گام */
+/** متن فارسیِ «کلید از پروژه‌ی دیگری است» با هر دو راه حل گام‌به‌گام */
 function eplakFcmProjectMismatchText(string $keyProject, string $appProject = ''): string
 {
-    if ($appProject === '') $appProject = eplakFcmAppProject()['project_id'];
+    $app = eplakFcmAppProject();
+    if ($appProject === '') $appProject = $app['project_id'];
     $key = $keyProject !== '' ? $keyProject : 'نامشخص';
-    return 'کلید سرویس فایربیس برای پروژه‌ی «' . $key . '» است، ولی اپ اندروید (APK) با پروژه‌ی «'
-        . $appProject . '» ساخته شده؛ گوگل ارسال را با «SenderId mismatch» رد می‌کند و هیچ اعلانی به اپ اندروید نمی‌رسد. '
-        . 'راه حل: در Firebase Console پروژه‌ی «' . $appProject . '» را باز کنید → Project settings → Service accounts → '
-        . 'Generate new private key، و محتوای همان فایل JSON را این‌جا (پنل → تنظیمات → کلید سرویس فایربیس) بچسبانید. '
-        . '(کلید پروژه‌ی «' . $key . '» فقط وقتی به کار می‌آید که APK با google-services.json همان پروژه دوباره ساخته شود.)';
+
+    /* «شناسه‌ی فرستنده» همان Project number کنسول فایربیس است: با آن می‌شود در یک نگاه
+       فهمید پروژه‌ی درست باز شده یا نه. (تله‌ی رایج: «Project name» با «Project ID» فرق
+       دارد و فایربیس گاهی به شناسه پسوند می‌چسباند — مثل eplak-7e6ed-fb72c.) */
+    $sender = trim((string) $app['sender_id']);
+    $senderNote = $sender !== '' ? ' (شناسه‌ی فرستنده / Project number: ' . $sender . ')' : '';
+
+    $text = 'کلید سرویس فایربیس برای پروژه‌ی «' . $key . '» است، ولی اپ اندروید (APK) با پروژه‌ی «'
+        . $appProject . '»' . $senderNote . ' ساخته شده؛ گوگل ارسال را با «SenderId mismatch» رد می‌کند'
+        . ' و هیچ اعلانی به اپ اندروید نمی‌رسد. ساختن کلیدِ تازه از همان پروژه‌ی «' . $key . '» این مشکل را حل نمی‌کند. ';
+
+    $text .= 'راه حل ۱ (بدون ساختِ دوباره‌ی APK): در Firebase Console پروژه‌ی «' . $appProject . '» را باز کنید → '
+        . 'Project settings → Service accounts → Generate new private key، و محتوای همان فایل JSON را این‌جا '
+        . '(پنل → تنظیمات → کلید سرویس فایربیس) بچسبانید. ';
+
+    $text .= '⚠️ «Project ID» با «Project name» فرق دارد: ممکن است نامِ پروژه چیزی باشد و شناسه‌اش چیز دیگری '
+        . '(فایربیس گاهی پسوندی مثل «-fb72c» به شناسه اضافه می‌کند). ملاک، Project ID و Project number در '
+        . 'صفحه‌ی Project settings است، نه نام نمایشی بالای کنسول. ';
+
+    $text .= 'راه حل ۲ (اگر به پروژه‌ی «' . $appProject . '» دسترسی ندارید): در همان پروژه‌ای که کلید از آن است '
+        . '(«' . $key . '»)، یک اپ اندروید با نام بسته‌ی «' . $app['package'] . '» ثبت کنید '
+        . '(Project settings → Your apps → Add app → Android)، فایل google-services.json را دانلود کنید و با '
+        . '«node tools/dev/apply-google-services.mjs <file>» در مخزن جایگزین کنید تا APK با پروژه‌ی تازه دوباره '
+        . 'ساخته شود؛ آن‌وقت همین کلید معتبر می‌شود. (کاربران باید APK جدید را نصب و یک‌بار باز کنند تا توکن '
+        . 'تازه ثبت شود.)';
+
+    return $text;
 }
 
 /** وضعیت آماده بودن موتور: افزونه‌های لازم + کلید سرویس وارد شده */
