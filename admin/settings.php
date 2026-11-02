@@ -13,12 +13,15 @@ eplakRequirePermission('settings');
 require_once __DIR__ . '/../shared/fcm.php';
 require_once __DIR__ . '/../shared/app_heartbeat.php';
 require_once __DIR__ . '/../shared/notify_events.php';
+/* پیامکِ «کد تایید»: تنها ارائه‌دهنده = ملی پیامک (کلید API + ترجمه‌ی کدهای پاسخ) */
+require_once __DIR__ . '/../shared/payamak.php';
 
 $adminId  = (int) ($_SESSION['admin_id'] ?? 0);
 $admin    = getAdminById($pdo, $adminId);
 $message  = '';
 $messageType = 'danger';
 $pushTestResult = null;
+$smsTestResult = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     eplakRequireCsrf();
@@ -242,6 +245,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         eplakSetAppSetting($pdo, 'vapid_subject', $subject);
         $message = '✅ نشانی تماس اعلان‌ها ذخیره شد.';
         $messageType = 'success';
+    } elseif ($action === 'test_sms') {
+        /* ── «ارسال پیامک آزمایشی» ───────────────────────────────────────────
+           چرا این‌جا؟ ریشه‌ی بیشترِ «کد تایید نمی‌آید»ها تنظیمِ پیامک است و تا
+           امروز راهی نبود که مدیر بدون ورودِ یک کاربرِ واقعی بفهمد کلید درست است
+           یا نه. این دکمه دقیقاً همان مسیری را می‌رود که «کد تایید» می‌رود
+           (shared/payamak.php → eplakPayamakSendCode) و پاسخِ ملی پیامک را به
+           فارسی ترجمه می‌کند (مثلاً -110 = «باید کلید API بفرستید»، -4 = «شناسه‌ی
+           متن تأیید نشده»).
+           دسترسی: فقط مدیرِ کل (مجوز settings، بالای همین فایل) + توکن CSRF
+           (eplakRequireCsrf در ابتدای بلوک POST) — پس بیرون از پنل قابلِ صدا
+           زدن نیست و اعتبارِ پیامکِ سایت هدر نمی‌رود. */
+        $smsCfg = eplakConfigArray();
+        $phone = eplakNotifyNormalizePhone((string) ($_POST['sms_test_phone'] ?? ''));
+        if (!preg_match('/^09\d{9}$/', $phone)) {
+            $message = '⚠️ شماره‌ی موبایل معتبر نیست؛ باید با 09 شروع شود و ۱۱ رقم باشد (مثلاً 09121234567).';
+            $messageType = 'danger';
+        } elseif (!function_exists('curl_init')) {
+            $message = '⚠️ ماژول cURL در PHP این سرور فعال نیست؛ بدون آن هیچ پیامکی ارسال نمی‌شود.';
+            $messageType = 'danger';
+        } elseif (!eplakPayamakReady($smsCfg)) {
+            $message = '⚠️ پنل ملی پیامک آماده نیست: «نام کاربری» و «کلید API» هر دو در shared/config.php لازم‌اند'
+                . ' (کلیدهای payamak_username و payamak_api_key). کلید API از «پنل ملی پیامک ← توسعه‌دهندگان ←'
+                . ' تنظیمات وب‌سرویس ← API Key» کپی می‌شود؛ از setup.php هم می‌توانید وارد کنید.';
+            $messageType = 'danger';
+        } else {
+            /* ضدِ هدر رفتنِ اعتبارِ پیامک: بین دو آزمایش دستِ‌کم ۳۰ ثانیه فاصله */
+            $nowTs = time();
+            $lastAt = (int) eplakAppSetting($pdo, 'sms_test_last_at', '0');
+            $wait = 30 - ($nowTs - $lastAt);
+            if ($lastAt > 0 && $wait > 0) {
+                $message = '⚠️ برای هدر نرفتنِ اعتبارِ پیامک، ' . $wait . ' ثانیه دیگر دوباره آزمایش کنید.';
+                $messageType = 'danger';
+            } else {
+                eplakSetAppSetting($pdo, 'sms_test_last_at', (string) $nowTs);
+                /* متنِ الگوی تأییدشده همان «کدِ چهاررقمی» است؛ پس عددِ تصادفی
+                   می‌فرستیم تا مطابقتِ متن با الگو (خطای -5) هم آزمایش شود. */
+                $smsTestCode = (string) random_int(1000, 9999);
+                $sms = eplakPayamakSendCode($smsCfg, $phone, $smsTestCode);
+                error_log('[eplak-sms-test] admin_id=' . $adminId . ' ' . $sms['log']);
+                $smsTestResult = $sms;
+                $smsTestResult['phone'] = $phone;
+                $smsTestResult['sent_code'] = $smsTestCode;
+                if ($sms['ok']) {
+                    $message = '✅ پیامک آزمایشی برای ' . $phone . ' ارسال شد'
+                        . ($sms['rec_id'] !== '' ? ' (شناسه‌ی رکورد: ' . $sms['rec_id'] . ')' : '')
+                        . ' — کدِ داخل پیامک باید ' . $smsTestCode . ' باشد. اگر تا یک دقیقه نرسید،'
+                        . ' «وضعیت ارسال» را در پنل ملی پیامک ببینید (کد ۳۵ = لیست سیاه مخابرات).';
+                    $messageType = 'success';
+                } else {
+                    $message = '⚠️ ارسال ناموفق بود: ' . $sms['fa']
+                        . ($sms['hint'] !== '' ? ' — ' . $sms['hint'] : '');
+                    $messageType = 'danger';
+                }
+            }
+        }
     }
 
     $admin = getAdminById($pdo, $adminId);
@@ -259,6 +317,24 @@ $pushPossible = eplakPushEnabled();
 $pushStats    = getPushStats($pdo);
 $pushErrors   = getPushLastErrors($pdo, 5);
 $vapidSubject = (string) eplakAppSetting($pdo, 'vapid_subject', '');
+
+/* ── وضعیتِ پیامک (ملی پیامک) برای بخشِ «ارسال پیامک آزمایشی» ───────────────
+   مقدارِ کلید هرگز نمایش داده نمی‌شود؛ فقط «هست/نیست» و «از کدام تنظیم خوانده
+   شده». ترتیبِ خواندن یک‌جا در shared/payamak.php است:
+   PAYAMAK_API_KEY ← payamak_api_key ← PAYAMAK_PASSWORD ← payamak_password */
+$smsCfg   = eplakConfigArray();
+$smsState = [
+    'username'         => eplakPayamakUsername($smsCfg),
+    'source'           => eplakPayamakSecretSource($smsCfg),
+    'secret_label'     => eplakPayamakSecretLabel($smsCfg),
+    'template'         => eplakPayamakTemplateId($smsCfg),
+    'template_raw'     => eplakPayamakTemplateRaw($smsCfg),
+    'template_default' => eplakPayamakDefaultTemplate(),
+    'ready'            => eplakPayamakReady($smsCfg),
+    'partial'          => eplakPayamakPartial($smsCfg),
+    'curl'             => function_exists('curl_init'),
+    'endpoint'         => EPLAK_PAYAMAK_ENDPOINT,
+];
 
 /* وضعیت اعلان اپ اندروید (فایربیس/FCM) */
 $fcmConfig  = eplakFcmConfig($pdo);
@@ -754,6 +830,119 @@ $httpsOn = eplakIsHttpsRequest();
           <p class="field-hint" data-testid="app-heartbeats-empty">هنوز هیچ اپی (با نسخه‌ی جدید) فهرست اعلان‌ها را نگرفته است.</p>
         <?php endif; ?>
       </section>
+
+      <section class="panel" id="sms">
+        <h2><i class="fas fa-comment-sms"></i> پیامکِ «کد تایید» (ملی پیامک)</h2>
+        <p class="field-hint">
+          ورودِ کاربران با «کد تاییدِ پیامکی» انجام می‌شود و تنها سرویسِ پیامکیِ پروژه
+          <strong>ملی پیامک</strong> (<code dir="ltr">rest.payamak-panel.com</code>) است.
+          این‌جا وضعیتِ واقعیِ همان تنظیمات دیده می‌شود و می‌توانید یک <strong>پیامکِ آزمایشی</strong>
+          بفرستید تا مطمئن شوید «کلید API» و «شناسه‌ی متن» درست‌اند.
+          <br>مهم‌ترین نکته: ملی پیامک در وب‌سرویس به‌جای «رمز عبورِ پنل»، <strong>«کلید API»</strong> می‌خواهد؛
+          اگر رمزِ پنل فرستاده شود پاسخِ <code dir="ltr">RetStatus=-110</code> می‌آید و کد تایید ارسال نمی‌شود.
+        </p>
+
+        <div class="kv-list" data-testid="sms-state">
+          <div class="kv-row">
+            <span class="kv-key">آماده‌ی ارسال؟</span>
+            <span class="kv-val">
+              <?= $smsState['ready'] ? '<span class="pill pill-ok" data-testid="sms-state-ready">بله</span>' : '<span class="pill pill-bad" data-testid="sms-state-notready">خیر — کد تایید ارسال نمی‌شود</span>' ?>
+            </span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">نام کاربریِ پنل</span>
+            <span class="kv-val" dir="ltr" style="text-align:right">
+              <?= $smsState['username'] !== '' ? '<code>' . htmlspecialchars($smsState['username']) . '</code>' : '<span class="pill pill-bad">تنظیم نشده</span>' ?>
+            </span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">کلیدِ دسترسی</span>
+            <span class="kv-val" data-testid="sms-state-secret">
+              <?php if ($smsState['source'] === 'api_key'): ?>
+                <span class="pill pill-ok">کلید API (payamak_api_key)</span>
+              <?php elseif ($smsState['source'] === 'password'): ?>
+                <span class="pill pill-warn">از payamak_password خوانده می‌شود (قدیمی)</span>
+                <div class="field-hint">کار می‌کند، ولی جایِ درستش <code dir="ltr">payamak_api_key</code> است؛
+                  اگر ملی پیامک خطای <code dir="ltr">-110</code> داد یعنی مقدارِ فعلی «رمز عبورِ پنل» است نه «کلید API».</div>
+              <?php else: ?>
+                <span class="pill pill-bad">تنظیم نشده</span>
+                <div class="field-hint">کلید API از «پنل ملی پیامک ← توسعه‌دهندگان ← تنظیمات وب‌سرویس ← API Key» کپی
+                  و در <code dir="ltr">shared/config.php</code> (یا از <code dir="ltr">setup.php</code>) وارد می‌شود.</div>
+              <?php endif; ?>
+            </span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">شناسه‌ی متنِ تأییدشده (bodyId)</span>
+            <span class="kv-val" dir="ltr" style="text-align:right">
+              <code data-testid="sms-state-body"><?= htmlspecialchars($smsState['template']) ?></code>
+              <?= $smsState['template_raw'] === '' ? '<span class="pill pill-warn">پیش‌فرضِ پروژه</span>' : '' ?>
+            </span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">ماژول cURL سرور</span>
+            <span class="kv-val"><?= $smsState['curl'] ? '<span class="pill pill-ok">فعال</span>' : '<span class="pill pill-bad">غیرفعال — بدون آن پیامک ارسال نمی‌شود</span>' ?></span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">نشانیِ سرویس</span>
+            <span class="kv-val" dir="ltr" style="text-align:right"><code><?= htmlspecialchars($smsState['endpoint']) ?></code></span>
+          </div>
+        </div>
+
+        <?php if ($smsTestResult !== null): ?>
+          <div class="alert alert-<?= $smsTestResult['ok'] ? 'success' : 'danger' ?>" data-testid="sms-test-result" style="margin-top:18px;">
+            <strong><?= $smsTestResult['ok'] ? '✅ ارسال شد' : '⚠️ ارسال نشد' ?></strong>
+            — شماره: <span dir="ltr"><?= htmlspecialchars((string) $smsTestResult['phone']) ?></span>
+            · کدِ فرستاده‌شده: <strong dir="ltr"><?= htmlspecialchars((string) $smsTestResult['sent_code']) ?></strong>
+            <div class="kv-list" style="margin-top:10px;">
+              <div class="kv-row"><span class="kv-key">RetStatus</span>
+                <span class="kv-val" dir="ltr" style="text-align:right"><code data-testid="sms-test-ret"><?= htmlspecialchars($smsTestResult['status'] !== '' ? $smsTestResult['status'] : '—') ?></code></span></div>
+              <?php if ($smsTestResult['str'] !== ''): ?>
+                <div class="kv-row"><span class="kv-key">StrRetStatus</span>
+                  <span class="kv-val" dir="ltr" style="text-align:right"><code><?= htmlspecialchars($smsTestResult['str']) ?></code></span></div>
+              <?php endif; ?>
+              <?php if ($smsTestResult['ok'] && $smsTestResult['rec_id'] !== ''): ?>
+                <div class="kv-row"><span class="kv-key">شناسه‌ی رکورد ارسال</span>
+                  <span class="kv-val" dir="ltr" style="text-align:right"><code data-testid="sms-test-recid"><?= htmlspecialchars($smsTestResult['rec_id']) ?></code></span></div>
+              <?php endif; ?>
+              <div class="kv-row"><span class="kv-key">ترجمه‌ی فارسی</span>
+                <span class="kv-val" data-testid="sms-test-fa"><?= htmlspecialchars($smsTestResult['text'] !== '' ? $smsTestResult['text'] : ($smsTestResult['fa'] ?? '—')) ?></span></div>
+              <?php if (!empty($smsTestResult['hint'])): ?>
+                <div class="kv-row"><span class="kv-key">چه‌کار باید کرد</span>
+                  <span class="kv-val" data-testid="sms-test-hint"><?= htmlspecialchars($smsTestResult['hint']) ?></span></div>
+              <?php endif; ?>
+              <div class="kv-row"><span class="kv-key">HTTP</span>
+                <span class="kv-val" dir="ltr" style="text-align:right"><code><?= (int) $smsTestResult['http'] ?></code></span></div>
+            </div>
+            <p class="field-hint" style="margin-top:10px;">یک خطِ گزارش هم در <code dir="ltr">error_log</code> هاست نوشته شد
+              (با برچسب <code dir="ltr">[eplak-sms]</code> و بدونِ کلید/رمز) تا اگر باز هم «کد تایید نیامد»،
+              دلیلش از همان‌جا خوانده شود.</p>
+          </div>
+        <?php endif; ?>
+
+        <form method="post" class="settings-grid" style="margin-top:18px;" data-testid="sms-test-form">
+          <?= eplakCsrfField() ?>
+          <input type="hidden" name="action" value="test_sms">
+          <div class="form-group">
+            <label for="sms_test_phone">شماره‌ی موبایل برای پیامکِ آزمایشی</label>
+            <input type="text" id="sms_test_phone" name="sms_test_phone" inputmode="numeric"
+                   maxlength="11" placeholder="09xxxxxxxxx" data-testid="sms-test-phone">
+            <span class="field-hint">یک پیامکِ <strong>واقعی</strong> با الگوی «کد تایید» ارسال می‌شود و از اعتبارِ
+              پنل کم می‌کند؛ بین دو آزمایش ۳۰ ثانیه فاصله لازم است. نتیجه (کدِ وضعیت و ترجمه‌ی فارسی‌اش)
+              همین‌جا نمایش داده می‌شود.</span>
+          </div>
+          <div>
+            <button type="submit" class="btn btn-primary" data-testid="sms-test-send"
+              <?= $smsState['ready'] && $smsState['curl'] ? '' : 'disabled' ?>>
+              <i class="fas fa-paper-plane"></i> ارسال پیامک آزمایشی
+            </button>
+            <?php if (!$smsState['ready']): ?>
+              <div class="field-hint" data-testid="sms-test-disabled">تا «نام کاربری» و «کلید API» در
+                <code dir="ltr">shared/config.php</code> تنظیم نشود، دکمه غیرفعال است.</div>
+            <?php endif; ?>
+          </div>
+        </form>
+      </section>
+
 
       <section class="panel">
         <h2><i class="fas fa-circle-info"></i> وضعیت فنی سرور</h2>

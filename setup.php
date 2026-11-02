@@ -90,6 +90,9 @@ function eplak_setup_effective(): array
         'disp_tz'  => (string) ($cfg['display_timezone'] ?? 'Asia/Tehran'),
         'payamak_user'     => eplakPayamakUsername($cfg),
         'payamak_pass_set' => eplakPayamakPasswordSet($cfg),
+        /* کلید از کجا آمده؟ 'api_key' (درست) | 'password' (قدیمی) | '' (نیست) */
+        'payamak_secret_source' => eplakPayamakSecretSource($cfg),
+        'payamak_secret_label'  => eplakPayamakSecretLabel($cfg),
         /* شناسه‌ی مؤثرِ متن: اگر خالی باشد، همان پیش‌فرضِ 573639 */
         'payamak_template' => eplakPayamakTemplateId($cfg),
         'payamak_template_default' => eplakPayamakDefaultTemplate(),
@@ -132,6 +135,100 @@ function eplak_setup_tables(PDO $pdo, string $driver): array
     }
     return $found;
 }
+
+/* ── پوشه‌های نوشتنی ──────────────────────────────────────────────────────
+   شکایتِ واقعیِ هاستِ تازه: «uploads و data قابل نوشتن نیستند». در بیشترِ
+   موارد آن پوشه‌ها اصلاً وجود نداشتند — بسته‌ی آپلود پوشه‌ی خالی نمی‌بُرد و
+   گیت هم پوشه‌ی خالی نگه نمی‌دارد. پس این صفحه:
+     ۱) وضعیتِ هر پوشه را صادقانه می‌گوید (هست؟ نوشتنی است؟)
+     ۲) دکمه‌ای دارد که همان پوشه‌ها را با اجازه‌ی درست می‌سازد و نگهبانِ
+        uploads/.htaccess را می‌نویسد (تا فایلِ آپلودشده قابلِ اجرا نباشد).
+   اگر PHP اجازه‌ی ساخت نداشته باشد، «نشد» می‌گوید و راهِ دستی را نشان می‌دهد. */
+function eplak_setup_writable_dirs(): array
+{
+    return [
+        'shared'          => 'shared — برای نوشتنِ shared/config.php',
+        'data'            => 'data — دیتابیس SQLite و فایل‌های موقت',
+        'uploads'         => 'uploads — ریشه‌ی فایل‌های آپلودی (+ نگهبانِ .htaccess)',
+        'uploads/reports' => 'uploads/reports — عکس/فیلمِ گزارش‌های مردمی',
+        'uploads/news'    => 'uploads/news — تصویرِ اخبار و اطلاعیه‌ها',
+        'uploads/ads'     => 'uploads/ads — تصویرِ تبلیغاتِ اپ',
+        'uploads/tmp'     => 'uploads/tmp — پردازشِ موقتِ آپلود',
+    ];
+}
+
+/** وضعیتِ هر پوشه: exists / writable / state(ok|bad|missing) / text(فارسی) */
+function eplak_setup_dir_status(): array
+{
+    $out = [];
+    foreach (eplak_setup_writable_dirs() as $rel => $label) {
+        $abs = EPLAK_SETUP_ROOT . '/' . $rel;
+        $exists = is_dir($abs);
+        $writable = $exists ? is_writable($abs) : false;
+        if ($exists && $writable) {
+            $state = 'ok';
+            $text = '✅ هست و نوشتنی است';
+        } elseif ($exists) {
+            $state = 'bad';
+            $text = '❌ هست ولی نوشتنی نیست — اجازه‌ی پوشه را 775 (یا 755) بگذارید';
+        } else {
+            $state = 'missing';
+            $text = '⚠️ وجود ندارد — با دکمه‌ی «ساخت پوشه‌های نوشتنی» ساخته می‌شود';
+        }
+        $out[$rel] = [
+            'label'    => $label,
+            'exists'   => $exists,
+            'writable' => $writable,
+            'state'    => $state,
+            'text'     => $text,
+        ];
+    }
+    return $out;
+}
+
+/** ساختِ پوشه‌ها + نوشتنِ نگهبانِ uploads/.htaccess؛ نتیجه برای هر پوشه */
+function eplak_setup_make_dirs(): array
+{
+    /* محتوای نگهبان یک‌جا در shared/media.php است تا نسخه‌ها واگرا نشوند */
+    if (!defined('EPLAK_ROOT')) {
+        define('EPLAK_ROOT', EPLAK_SETUP_ROOT);
+    }
+    require_once EPLAK_SETUP_ROOT . '/shared/media.php';
+
+    $results = [];
+    foreach (array_keys(eplak_setup_writable_dirs()) as $rel) {
+        $abs = EPLAK_SETUP_ROOT . '/' . $rel;
+        $created = false;
+        if (!is_dir($abs)) {
+            $created = @mkdir($abs, 0775, true) && is_dir($abs);
+        }
+        if (is_dir($abs) && !is_writable($abs)) {
+            @chmod($abs, 0775);
+        }
+        $results[$rel] = [
+            'created'  => $created,
+            'exists'   => is_dir($abs),
+            'writable' => is_dir($abs) && is_writable($abs),
+        ];
+    }
+
+    $guardPath = EPLAK_SETUP_ROOT . '/uploads/.htaccess';
+    $existing = is_file($guardPath) ? (string) @file_get_contents($guardPath) : '';
+    $guard = ['ok' => false, 'path' => 'uploads/.htaccess', 'note' => ''];
+    if (strpos($existing, eplakMediaGuardMarker()) !== false) {
+        $guard['ok'] = true;
+        $guard['note'] = 'از قبل هست';
+    } elseif (@file_put_contents($guardPath, eplakMediaGuardContent()) !== false) {
+        @chmod($guardPath, 0644);
+        $guard['ok'] = true;
+        $guard['note'] = 'نوشته شد';
+    } else {
+        $guard['note'] = 'نوشته نشد (اجازه‌ی نوشتنِ پوشه‌ی uploads را بررسی کنید)';
+    }
+
+    return ['dirs' => $results, 'guard' => $guard];
+}
+
 
 function eplak_setup_status(): array
 {
@@ -184,10 +281,14 @@ function eplak_setup_status(): array
         'display_timezone' => $eff['disp_tz'],
         'uploads_writable' => is_dir($uploadsDir) ? is_writable($uploadsDir) : is_writable(EPLAK_SETUP_ROOT),
         'data_writable'    => is_dir($dataDir) ? is_writable($dataDir) : is_writable(EPLAK_SETUP_ROOT),
+        /* وضعیتِ صادقانه‌ی هر پوشه (هست؟ نوشتنی است؟) — نه یک ✅/❌ کلی */
+        'dirs'             => eplak_setup_dir_status(),
         'payamak_user'     => $eff['payamak_user'],
         'payamak_ready'    => $eff['payamak_user'] !== '' && $eff['payamak_pass_set'] && preg_match('/^\d+$/', $eff['payamak_template']) === 1,
         'payamak_template' => $eff['payamak_template'],
         'payamak_template_default' => $eff['payamak_template_default'],
+        'payamak_secret_source' => $eff['payamak_secret_source'],
+        'payamak_secret_label'  => $eff['payamak_secret_label'],
         'otp_test_code'    => $eff['otp_test_code'],
         'admin_logged_in'  => eplak_setup_admin(),
     ];
@@ -228,7 +329,15 @@ function eplak_setup_write_config(array $values): array
         . "    'display_timezone' => " . var_export((string) ($values['display_timezone'] ?: 'Asia/Tehran'), true) . ",\n"
         . "    'otp_test_code' => " . var_export((string) ($values['otp_test_code'] ?? ''), true) . ",\n"
         . "    'payamak_username' => " . var_export((string) ($values['payamak_username'] ?? ''), true) . ",\n"
-        . "    'payamak_password' => " . var_export((string) ($values['payamak_password'] ?? ''), true) . ",\n"
+        /* «کلید API» جایِ درستِ رمزِ وب‌سرویس است. payamak_password فقط برای
+           سازگاری با تنظیمِ قدیمیِ هاست نوشته می‌شود و وقتی کلید API وارد شده
+           باشد خالی می‌ماند تا بعداً کسی اشتباهاً «رمز عبورِ پنل» را نفرستد
+           (ملی پیامک آن را با RetStatus=-110 رد می‌کند). */
+        . "    'payamak_api_key' => " . var_export((string) ($values['payamak_api_key'] ?? ''), true) . ",\n"
+        . "    'payamak_password' => " . var_export(
+            (string) (($values['payamak_api_key'] ?? '') !== '' ? '' : ($values['payamak_password'] ?? '')),
+            true
+        ) . ",\n"
         /* شناسه‌ی متن: اگر خالی بماند، همان پیش‌فرضِ 573639 نوشته می‌شود تا روی
            هاست تازه «کد تایید» بی‌دلیل از کار نیفتد. */
         . "    'payamak_template_id' => " . var_export(
@@ -282,14 +391,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'display_timezone' => trim((string) ($_POST['display_timezone'] ?? 'Asia/Tehran')),
                     'otp_test_code'    => trim((string) ($_POST['otp_test_code'] ?? '')),
                     'payamak_username'    => trim((string) ($_POST['payamak_username'] ?? '')),
-                    'payamak_password'    => (string) ($_POST['payamak_password'] ?? ''),
+                    /* «کلید API» (ApiKey) همان چیزی است که وب‌سرویسِ ملی پیامک در
+                       فیلدِ password می‌خواهد؛ رمزِ عبورِ پنل با RetStatus=-110 رد
+                       می‌شود. اگر کسی از سرِ عادت مقدار را در فیلدِ قدیمیِ «رمز»
+                       گذاشت، همان خوانده می‌شود تا ارسال قطع نشود. */
+                    'payamak_api_key'     => trim((string) ($_POST['payamak_api_key'] ?? '')),
+                    'payamak_password'    => trim((string) ($_POST['payamak_api_key'] ?? '')) !== ''
+                        ? trim((string) ($_POST['payamak_api_key'] ?? ''))
+                        : (string) ($_POST['payamak_password'] ?? ''),
                     'payamak_template_id' => trim((string) ($_POST['payamak_template_id'] ?? '')),
                 ];
                 if ($values['driver'] === 'mysql' && ($values['name'] === '' || $values['user'] === '')) {
                     $flash = ['error', 'نام دیتابیس و نام کاربری MySQL الزامی است.'];
                 } elseif (($values['payamak_username'] === '') !== ($values['payamak_password'] === '')) {
                     /* نیمه‌تنظیم‌شده از تنظیم‌نشده بدتر است: کاربر فکر می‌کند کار تمام است */
-                    $flash = ['error', 'برای پنل ملی پیامک، نام کاربری و رمز هر دو لازم‌اند (یا هر دو را خالی بگذارید).'];
+                    $flash = ['error', 'برای پنل ملی پیامک، نام کاربری و «کلید API» هر دو لازم‌اند (یا هر دو را خالی بگذارید).'];
                 } elseif ($values['payamak_template_id'] !== '' && preg_match('/^\d+$/', $values['payamak_template_id']) !== 1) {
                     $flash = ['error', '«شناسه‌ی متن تأییدشده» (bodyId) ملی پیامک باید فقط رقم باشد؛ یا خالی بگذارید تا پیش‌فرضِ ' . eplakPayamakDefaultTemplate() . ' استفاده شود.'];
                 } else {
@@ -344,6 +460,44 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $flash = ['error', 'اجرای ' . $file . ' ناموفق: ' . $e->getMessage()];
                 }
             }
+        } elseif ($action === 'make_dirs') {
+            /* «ساخت پوشه‌های نوشتنی»: ریشه‌ی بیشترِ «عکسِ گزارش آپلود نشد» و
+               «دیتابیس SQLite ساخته نشد» روی هاستِ تازه، نبودِ خودِ پوشه‌هاست.
+               اگر PHP اجازه‌ی ساخت نداشته باشد، صادقانه «نشد» می‌گوییم و راهِ
+               دستی (chmod در cPanel/FTP) را نشان می‌دهیم — هرگز ✅ الکی. */
+            if (!$canWrite) {
+                $flash = ['error', 'ساخت پوشه‌ها فقط در اجرای اولِ راه‌اندازی یا با ورودِ مدیر انجام می‌شود.'];
+            } else {
+                $made = eplak_setup_make_dirs();
+                $created = [];
+                $failed = [];
+                foreach ($made['dirs'] as $rel => $info) {
+                    if (!empty($info['created'])) {
+                        $created[] = $rel;
+                    }
+                    if (empty($info['writable'])) {
+                        $failed[] = $rel;
+                    }
+                }
+                error_log(sprintf(
+                    '[eplak-setup] make_dirs from %s: created=%d failed=%d guard=%s',
+                    (string) ($_SERVER['REMOTE_ADDR'] ?? '?'),
+                    count($created),
+                    count($failed),
+                    (string) ($made['guard']['note'] ?? '')
+                ));
+                if ($failed) {
+                    $flash = ['error', 'این پوشه‌ها نوشتنی نشدند: ' . implode('، ', $failed)
+                        . ' — در cPanel ← File Manager (یا با FTP) اجازه‌ی آن‌ها را 775 بگذارید'
+                        . ($created ? ' · ساخته شدند: ' . implode('، ', $created) : '')
+                        . ' · uploads/.htaccess: ' . (string) ($made['guard']['note'] ?? '') . '.'];
+                } else {
+                    $flash = ['ok', '✅ همه‌ی پوشه‌های نوشتنی آماده‌اند'
+                        . ($created ? ' (ساخته شدند: ' . implode('، ', $created) . ')' : '')
+                        . ' · نگهبانِ uploads/.htaccess: ' . (string) ($made['guard']['note'] ?? '') . '.'];
+                }
+            }
+
         } elseif ($action === 'delete_setup') {
             if (!eplak_setup_admin()) {
                 $flash = ['error', 'حذف این صفحه فقط با ورود مدیر انجام می‌شود.'];
@@ -440,8 +594,15 @@ foreach (['backend/eplak-db.sql', 'backend/fix-news-db.sql', 'backend/fix-notifi
       <tr><td class="k">پنل پیامک (برای کد تایید)</td>
         <td class="<?= $status['payamak_ready'] ? 'ok' : 'bad' ?>">
           <?php if ($status['payamak_ready']): ?>✅ ملی پیامک (کاربری: <code><?= eplak_setup_h($status['payamak_user']) ?></code> · شناسه‌ی متن: <code><?= eplak_setup_h($status['payamak_template']) ?></code>)
+            <div class="note">کلیدِ دسترسی: <?= eplak_setup_h($status['payamak_secret_label']) ?></div>
+            <?php if ($status['payamak_secret_source'] === 'password'): ?>
+              <div class="warn">⚠️ مقدارِ فعلی از «رمز عبورِ پنل» خوانده می‌شود. ملی پیامک در وب‌سرویس
+                «کلید API» می‌خواهد و ممکن است با خطای <code>-110</code> رد کند — کلید API را از
+                «پنل ← توسعه‌دهندگان ← تنظیمات وب‌سرویس» کپی کنید و در <code>payamak_api_key</code> بگذارید.</div>
+            <?php endif; ?>
           <?php else: ?>❌ ملی پیامک تنظیم نشده ⇒ کد تایید ارسال نمی‌شود
-            <div class="note">نام کاربری و رمز پنل ملی پیامک لازم است؛ «شناسه‌ی متن تأییدشده» (bodyId)
+            <div class="note">نام کاربری و <b>«کلید API»</b> پنل ملی پیامک لازم است (رمز عبورِ پنل کار
+              نمی‌کند؛ خطای <code>-110</code>)؛ «شناسه‌ی متن تأییدشده» (bodyId)
               به‌صورت پیش‌فرض <code><?= eplak_setup_h($status['payamak_template_default']) ?></code> است.</div><?php endif; ?></td></tr>
       <tr><td class="k">PHP / اکستنشن‌ها</td>
         <td class="<?= ($status['php_ok'] && $status['pdo_mysql'] && $status['curl']) ? 'ok' : 'bad' ?>">
@@ -453,9 +614,34 @@ foreach (['backend/eplak-db.sql', 'backend/fix-news-db.sql', 'backend/fix-notifi
         <td>دیتابیس: <code><?= eplak_setup_h($status['db_timezone']) ?></code> · نمایش: <code><?= eplak_setup_h($status['display_timezone']) ?></code>
           · زمان سرور: <code><?= eplak_setup_h(date('Y-m-d H:i:s')) ?></code></td></tr>
       <tr><td class="k">پوشه‌های نوشتنی</td>
-        <td>shared <?= $status['config_writable'] ? '<span class="ok">✅</span>' : '<span class="bad">❌</span>' ?> ·
-            uploads <?= $status['uploads_writable'] ? '<span class="ok">✅</span>' : '<span class="bad">❌</span>' ?> ·
-            data <?= $status['data_writable'] ? '<span class="ok">✅</span>' : '<span class="warn">❌</span>' ?></td></tr>
+        <td>
+          <?php $dirProblems = 0; foreach ($status['dirs'] as $rel => $d) { if ($d['state'] !== 'ok') { $dirProblems++; } } ?>
+          <table style="margin:0 0 8px">
+            <?php foreach ($status['dirs'] as $rel => $d): ?>
+              <tr>
+                <td class="k" style="width:38%"><code><?= eplak_setup_h($rel) ?></code><div class="note"><?= eplak_setup_h($d['label']) ?></div></td>
+                <td class="<?= $d['state'] === 'ok' ? 'ok' : ($d['state'] === 'missing' ? 'warn' : 'bad') ?>"><?= eplak_setup_h($d['text']) ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </table>
+          <?php if ($dirProblems === 0): ?>
+            <div class="ok">✅ همه‌ی پوشه‌های لازم هست و نوشتنی است.</div>
+          <?php elseif ($canWrite): ?>
+            <form method="post" style="display:inline">
+              <input type="hidden" name="_token" value="<?= eplak_setup_h($token) ?>">
+              <input type="hidden" name="action" value="make_dirs">
+              <button type="submit" class="ghost">📁 ساخت پوشه‌های نوشتنی</button>
+            </form>
+            <span class="note">پوشه‌های نبوده با اجازه‌ی 775 ساخته می‌شوند و نگهبانِ
+              <code>uploads/.htaccess</code> (جلوگیری از اجرای اسکریپت در پوشه‌ی آپلود) نوشته می‌شود.
+              اگر PHP اجازه‌ی ساخت نداشته باشد، همین صفحه صادقانه می‌گوید کدام پوشه نوشتنی نشد و
+              باید در cPanel ← File Manager اجازه‌ی آن را 775 بگذارید.</span>
+          <?php else: ?>
+            <div class="note">برای ساختِ خودکارِ پوشه‌ها، ابتدا وارد پنل مدیریت شوید (یا این کار را
+              در cPanel ← File Manager انجام دهید: پوشه‌های <code>data</code> و <code>uploads</code>
+              با زیرپوشه‌های <code>reports</code>، <code>news</code>، <code>ads</code> و <code>tmp</code>، اجازه‌ی 775).</div>
+          <?php endif; ?>
+        </td></tr>
       <tr><td class="k">کد آزمایشی محلی (<code>otp_test_code</code>)</td>
         <td><?= $status['otp_test_code'] !== '' ? '<span class="warn">⚠️ پر شده (فقط روی localhost اثر دارد — در تولید خالی بگذارید)</span>' : '<span class="ok">✅ خالی</span>' ?></td></tr>
       <tr><td class="k">ورود مدیر</td>
@@ -494,13 +680,20 @@ foreach (['backend/eplak-db.sql', 'backend/fix-news-db.sql', 'backend/fix-notifi
 
         <h2 style="margin-top:22px">پنل ملی پیامک (برای ارسال کد تایید)</h2>
         <p class="note">تنها سرویس پیامکی که پروژه استفاده می‌کند <b>ملی پیامک</b>
-          (<code>rest.payamak-panel.com</code>) است. نام کاربری و رمز را از پنل ملی
-          پیامک بردارید؛ «شناسه‌ی متن تأییدشده» (bodyId) به‌صورت پیش‌فرض
+          (<code>rest.payamak-panel.com</code>) است.
+          <br><b>مهم‌ترین نکته:</b> در فیلدِ رمز باید <b>«کلید API» (ApiKey)</b> را بگذارید،
+          <u>نه</u> «رمز عبورِ پنل» را. کلید API از پنل ملی پیامک ←
+          <b>توسعه‌دهندگان ← تنظیمات وب‌سرویس ← API Key</b> کپی می‌شود. اگر رمزِ عبورِ پنل
+          فرستاده شود، ملی پیامک با خطای <code>-110</code> («الزام استفاده از ApiKey به‌جای
+          رمز عبور») رد می‌کند و «کد تایید» به گوشی نمی‌رسد.
+          <br>«شناسه‌ی متن تأییدشده» (bodyId) به‌صورت پیش‌فرض
           <code><?= eplak_setup_h($status['payamak_template_default']) ?></code> است و اگر شناسه‌ی
-          دیگری دارید، همان را بنویسید (فقط رقم).</p>
+          دیگری دارید، همان را بنویسید (فقط رقم). خطای <code>-4</code> یعنی همین شناسه در پنل
+          تأیید نشده است.
+          <br>نکته: اگر «رمز عبورِ پنل» را عوض کنید، کلید APIِ قبلی باطل می‌شود ⇒ دوباره از پنل کپی کنید.</p>
         <div class="row">
           <div><label>ملی پیامک — نام کاربری</label><input type="text" name="payamak_username" value="<?= eplak_setup_h($status['payamak_user']) ?>"></div>
-          <div><label>ملی پیامک — رمز</label><input type="password" name="payamak_password" autocomplete="new-password"></div>
+          <div><label>ملی پیامک — کلید API (به‌جای رمز عبورِ پنل)</label><input type="password" name="payamak_api_key" autocomplete="new-password" placeholder="پنل ← توسعه‌دهندگان ← تنظیمات وب‌سرویس ← API Key"></div>
           <div><label>ملی پیامک — شناسه‌ی متن تأییدشده (bodyId)</label><input type="text" name="payamak_template_id" inputmode="numeric" value="<?= eplak_setup_h($status['payamak_template']) ?>"></div>
         </div>
 

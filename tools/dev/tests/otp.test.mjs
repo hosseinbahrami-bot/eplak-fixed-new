@@ -20,20 +20,26 @@ const client = read('modules/auth.js');
 const index = read('index.html');
 const css = read('assets/css/style.css');
 const configGuide = read('INSTALL_GUIDE_FA.md');
+const payamakLib = read('shared/payamak.php');
 
-ok('درخواست «ملی پیامک» فقط از API سمت سرور انجام می‌شود',
-  api.includes('https://rest.payamak-panel.com/api/SendSMS/BaseServiceNumber') && !client.includes('payamak-panel.com'));
+ok('درخواست «ملی پیامک» فقط از API سمت سرور و از یک تابعِ مشترک انجام می‌شود',
+  payamakLib.includes("'https://rest.payamak-panel.com/api/SendSMS/BaseServiceNumber'")
+    && !client.includes('payamak-panel.com') && api.includes('eplakPayamakSendCode(')
+    && !api.includes('curl_init('));
 ok('مشخصات ملی پیامک از متغیر محیطی یا تنظیمات خصوصی سرور خوانده می‌شود',
-  api.includes('PAYAMAK_USERNAME') && api.includes('PAYAMAK_PASSWORD') && api.includes('PAYAMAK_TEMPLATE_ID') &&
-  api.includes("['payamak_username']") && api.includes("['payamak_password']") &&
-  api.includes("['payamak_template_id']") && !index.includes('PAYAMAK_PASSWORD'));
+  api.includes('PAYAMAK_USERNAME') && api.includes('PAYAMAK_TEMPLATE_ID') &&
+  api.includes("['payamak_username']") && api.includes("['payamak_template_id']") &&
+  payamakLib.includes('PAYAMAK_API_KEY') && payamakLib.includes('PAYAMAK_PASSWORD') &&
+  payamakLib.includes("['payamak_api_key']") && payamakLib.includes("['payamak_password']") &&
+  !index.includes('PAYAMAK_PASSWORD') && !index.includes('payamak_api_key'));
 ok('درخواست شامل شناسه متن، شماره مقصد و کد چهاررقمی به‌عنوان متن جایگزین است',
-  api.includes("'username' => $payamakUsername") && api.includes("'password' => $payamakPassword") &&
-  api.includes("'to' => $phone") && api.includes("'bodyId' => $payamakTemplateId") &&
-  api.includes("'text' => (string)random_int(1000, 9999)"));
+  /'username'\s*=>\s*\$username/.test(payamakLib) && /'password'\s*=>\s*\$secret/.test(payamakLib) &&
+  /'to'\s*=>\s*\$to/.test(payamakLib) && /'bodyId'\s*=>\s*\$bodyId/.test(payamakLib) &&
+  /'text'\s*=>\s*\(string\)\s*\$code/.test(payamakLib) &&
+  api.includes('$providerCode = (string)random_int(1000, 9999);'));
 ok('موفقیت ملی پیامک با RetStatus=1 تشخیص داده و TLS اعتبارسنجی می‌شود',
-  api.includes("($providerPayload['RetStatus'] ?? '') === '1'") &&
-  api.includes('CURLOPT_SSL_VERIFYPEER => true') && api.includes('CURLOPT_SSL_VERIFYHOST => 2'));
+  payamakLib.includes("$ok = ($status === '1');") &&
+  payamakLib.includes('CURLOPT_SSL_VERIFYPEER => true') && payamakLib.includes('CURLOPT_SSL_VERIFYHOST => 2'));
 ok('کد دریافتی از سرویس به صورت هش نگهداری می‌شود',
   api.includes('password_hash($providerCode') && api.includes('password_verify($code'));
 ok('کد منقضی می‌شود و ارسال و تلاش تایید محدود هستند',
@@ -73,7 +79,6 @@ const ping = read('api/ping.php');
 const statusApi = read('api/status.php');
 const example = read('shared/config.example.php');
 const setup = read('setup.php');
-const payamakLib = read('shared/payamak.php');
 const newHostGuide = read('docs/NEW_HOST_FA.md');
 
 ok('خطای دیتابیس برای همه‌ی اندپوینت‌های api/ همیشه JSON است (نه صفحه‌ی HTML)',
@@ -93,7 +98,8 @@ ok('status.php هرگز ۵۰۰ نمی‌دهد: اتصال به دیتابیس �
   /try \{[\s\S]*new PDO\([\s\S]*\} catch \(Throwable \$e\)/.test(statusApi)
     && !statusApi.includes('bootstrap.php'));
 ok('الگوی config کلیدهای پنل «ملی پیامک» را دارد و شناسه‌ی متنِ پیش‌فرض 573639 است',
-  example.includes("'payamak_username'") && example.includes("'payamak_password'")
+  example.includes("'payamak_username'") && example.includes("'payamak_api_key'")
+    && example.includes("'payamak_password'")
     && example.includes("'payamak_template_id' => '573639'") && !/amoot/i.test(example));
 ok('setup.php اتصال را پیش از نوشتن آزمایش می‌کند و فقط در اجرای اول/با مدیر می‌نویسد',
   setup.includes('eplak_setup_try_pdo($values, $err)')
@@ -125,10 +131,11 @@ console.log('— ۴) تنها ملی پیامک، با شناسه‌ی متنِ 
 ok('آموت‌اس‌ام‌اس از کد، الگوی تنظیمات، راه‌انداز و راهنماها کاملاً حذف شده',
   [api, statusApi, setup, example, payamakLib, newHostGuide, configGuide]
     .every((text) => !/amoot/i.test(text)));
-ok('نشانی و کلیدهای ملی پیامک در api/auth.php دست‌نخورده باقی مانده‌اند',
-  api.includes('https://rest.payamak-panel.com/api/SendSMS/BaseServiceNumber')
-    && api.includes("'bodyId' => $payamakTemplateId") && api.includes('PAYAMAK_USERNAME')
-    && api.includes("['payamak_template_id']"));
+ok('نشانی و شکلِ درخواستِ ملی پیامک یک‌جا در shared/payamak.php دست‌نخورده مانده‌اند',
+  payamakLib.includes('https://rest.payamak-panel.com/api/SendSMS/BaseServiceNumber')
+    && /'bodyId'\s*=>\s*\$bodyId/.test(payamakLib)
+    && /'bodyId'\s*=>\s*\$payamakTemplateId/.test(api)
+    && api.includes('PAYAMAK_USERNAME') && api.includes("['payamak_template_id']"));
 ok('شناسه‌ی متنِ پیش‌فرض یک‌جا (shared/payamak.php) تعریف شده و هر سه مصرف‌کننده از آن می‌خوانند',
   payamakLib.includes("define('EPLAK_PAYAMAK_TEMPLATE_DEFAULT', '573639')")
     && api.includes('eplakPayamakDefaultTemplate()') && statusApi.includes('eplakPayamakDefaultTemplate()')
@@ -154,6 +161,85 @@ ok('شناسه‌ی قدیمیِ 552115 هیچ‌جای کد/راهنماها ن
 ok('راهنماها فقط ملی پیامک و شناسه‌ی 573639 را می‌گویند',
   newHostGuide.includes('573639') && configGuide.includes('573639')
     && newHostGuide.includes('ملی پیامک') && configGuide.includes('ملی پیامک'));
+
+/* ── ۵) کلید API، ترجمه‌ی فارسیِ کدها، پیامکِ آزمایشی، پوشه‌های نوشتنی، CORS ──
+   درخواست‌های کارفرما (بهبودهای سمتِ کدِ پیامک):
+     • «کلید API» جایِ درستِ رمزِ وب‌سرویس است (payamak_api_key) — رمزِ عبورِ پنل
+       با RetStatus=-110 رد می‌شود و «کد تایید» نمی‌آید.
+     • پاسخِ ملی پیامک باید فارسی ترجمه شود و در error_log دلیلِ کامل بیاید.
+     • پنل یک «ارسال پیامک آزمایشی» داشته باشد (فقط مدیرِ کل، با CSRF).
+     • setup.php برچسبِ درست بدهد، وضعیتِ پوشه‌ها را صادقانه بگوید و دکمه‌ی
+       «ساخت پوشه‌های نوشتنی» داشته باشد.
+     • بسته‌ی آپلود، پوشه‌های نوشتنی را ببرد (نه داده‌ی کاربران را).
+     • خطای دیتابیس روی مسیرِ JSON هدر CORS بگیرد تا اپ دلیلِ واقعی را ببیند. */
+console.log('— ۵) کلید API، ترجمه‌ی فارسی، پیامکِ آزمایشی، پوشه‌های نوشتنی و CORS');
+const settingsPage = read('admin/settings.php');
+const buildScript = read('tools/build-update-package.sh');
+const gitignore = read('.gitignore');
+const mediaLib = read('shared/media.php');
+
+ok('کلیدِ وب‌سرویس «ApiKey» است نه رمزِ عبورِ پنل (با سازگاریِ تنظیمِ قدیمی)',
+  payamakLib.includes("getenv('PAYAMAK_API_KEY')") && payamakLib.includes("$config['payamak_api_key'] ?? ''")
+    && payamakLib.includes("getenv('PAYAMAK_PASSWORD')") && payamakLib.includes('function eplakPayamakSecretSource')
+    && payamakLib.includes('function eplakPayamakSecret(')
+    && api.includes('eplakPayamakSecret($fileConfig)') && statusApi.includes('eplakPayamakSecret($fileCfg)')
+    && setup.includes("'payamak_api_key'     => trim((string) ($_POST['payamak_api_key'] ?? ''))")
+    && example.includes("'payamak_api_key'     => ''"));
+
+ok('هر کدِ پاسخِ ملی پیامک ترجمه‌ی فارسی و «چه‌کار باید کرد» دارد',
+  payamakLib.includes('function eplakPayamakStatusText') && payamakLib.includes('function eplakPayamakExplain')
+    && ['-110', '-109', '-108', '-4', '-5', '-1', '0', '2', '35', '19', '-8', '-6', '1']
+      .every((c) => new RegExp("'" + c.replace(/-/g, '\\-') + "'\\s*=>").test(payamakLib))
+    && payamakLib.includes('StrRetStatus') && payamakLib.includes("($data['Value'] ?? '')"));
+
+const logBlock = payamakLib.slice(payamakLib.indexOf('$logParts = '), payamakLib.indexOf("'ok'     => $ok"));
+ok('گزارشِ error_log پرجزئیات است (HTTP/RetStatus/ترجمه/مقصدِ پوشیده) ولی کلید و رمز در آن نیست',
+  logBlock.includes("'[eplak-sms]'") && logBlock.includes('ret=') && logBlock.includes('http=')
+    && !logBlock.includes('$secret') && !logBlock.includes('$username') && !logBlock.includes('$request')
+    && payamakLib.includes("$result['log'] .= ' to=' . $masked . ' bodyId=' . $bodyId . ' secret=' . $source;")
+    && payamakLib.includes("substr($to, 0, 4)")
+    && api.includes("error_log('[eplak-otp] ' . $sms['log']"));
+
+ok('«ارسال پیامک آزمایشی» فقط با ورودِ مدیرِ کل + CSRF و از همان مسیرِ «کد تایید» است',
+  settingsPage.includes("$action === 'test_sms'")
+    && settingsPage.includes('eplakPayamakSendCode($smsCfg, $phone, $smsTestCode)')
+    && settingsPage.includes("eplakRequirePermission('settings')") && settingsPage.includes('eplakRequireCsrf();')
+    && settingsPage.includes('data-testid="sms-test-send"') && settingsPage.includes('sms_test_last_at')
+    && settingsPage.includes('eplakPayamakReady($smsCfg)') && settingsPage.includes('sms-test-result'));
+
+ok('setup.php برچسبِ درست دارد: «کلید API» به‌جای «رمز عبورِ پنل»',
+  setup.includes('ملی پیامک — کلید API (به‌جای رمز عبورِ پنل)') && setup.includes('name="payamak_api_key"')
+    && !setup.includes('name="payamak_password"') && setup.includes('-110')
+    && setup.includes('توسعه‌دهندگان ← تنظیمات وب‌سرویس')
+    && setup.includes("($values['payamak_username'] === '') !== ($values['payamak_password'] === '')"));
+
+ok('setup.php وضعیتِ پوشه‌ها را صادقانه می‌گوید و دکمه‌ی «ساخت پوشه‌های نوشتنی» دارد',
+  setup.includes('function eplak_setup_dir_status()') && setup.includes('function eplak_setup_make_dirs()')
+    && setup.includes("$action === 'make_dirs'") && setup.includes('وجود ندارد')
+    && setup.includes('نوشتنی نیست') && setup.includes('value="make_dirs"')
+    && setup.includes('eplakMediaGuardContent()') && setup.includes('eplakMediaGuardMarker()'));
+
+ok('نگهبانِ uploads/.htaccess یک‌جا تعریف شده (media.php و setup.php یک متن می‌نویسند)',
+  mediaLib.includes('function eplakMediaGuardContent') && mediaLib.includes('function eplakMediaGuardMarker')
+    && mediaLib.includes('@file_put_contents($htaccess, eplakMediaGuardContent())')
+    && mediaLib.includes('Require all denied') && mediaLib.includes('Deny from all'));
+
+ok('خطای دیتابیس روی مسیرِ JSON هدر CORS می‌گیرد (وگرنه اپ دلیلِ واقعی را نمی‌بیند)',
+  /if \(\$wantsJson\) \{[\s\S]*?Access-Control-Allow-Origin: \*/.test(dbFile)
+    && /REQUEST_METHOD[\s\S]*?OPTIONS[\s\S]*?http_response_code\(204\)/.test(dbFile)
+    && dbFile.includes("header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');")
+    && dbFile.includes("header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');"));
+
+ok('بسته‌ی آپلود پوشه‌های نوشتنی و نگهبانِ آپلود را می‌برد، ولی داده‌ی کاربران را نه',
+  ['uploads/.htaccess', 'uploads/reports/.gitkeep', 'uploads/news/.gitkeep',
+   'uploads/ads/.gitkeep', 'uploads/tmp/.gitkeep', 'data/.gitkeep']
+    .every((f) => buildScript.includes(f))
+    && buildScript.includes('tools/package-stubs')
+    && buildScript.includes('shared/config.php data/eplak.sqlite')
+    && buildScript.includes("^uploads/(reports|news|ads|tmp)/[0-9]{4}/")
+    && gitignore.includes('uploads/') && gitignore.includes('data/')
+    && gitignore.includes('shared/config.php'));
+
 
 console.log(`\nنتیجهٔ OTP: ${pass} موفق، ${fail} ناموفق`);
 if (fail) process.exitCode = 1;

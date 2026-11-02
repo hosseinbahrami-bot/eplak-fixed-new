@@ -112,7 +112,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "syntax" ]; then
   run_step "بررسی نحوی JS"  node "$WORK/js-syntax.mjs"  "$ROOT"
 fi
 
-for t in notify notify-schema news jalali app pushcrypto fcm backend security online geo upload tiles push places placesadmin acl ads otp ios pwa; do
+for t in notify notify-schema news jalali app pushcrypto fcm backend security online geo upload tiles push places placesadmin acl ads otp sms ios pwa; do
   if [ "$TARGET" = "all" ] || [ "$TARGET" = "$t" ]; then
     if [ -f "$WORK/$t.test.mjs" ]; then
       run_step "آزمون $t" node "$WORK/$t.test.mjs"

@@ -1362,11 +1362,17 @@ function eplakMysqlLegacyAlters(PDO $pdo, array &$report): void {
    ============================================================================ */
 
 /**
- * خواندن یک کلید از shared/config.php (فقط یک‌بار در هر درخواست).
- * آن فایل در گیت نیست (رمز دیتابیس دارد)؛ نمونه‌اش shared/config.example.php است.
- * روی هاست‌های اشتراکی که امکان SetEnv ندارند، تنظیمات از همین فایل خوانده می‌شود.
+ * خواندنِ کلِ shared/config.php به‌صورت آرایه (فقط یک‌بار در هر درخواست).
+ * آن فایل در گیت نیست (رمز دیتابیس و کلید پیامک دارد)؛ نمونه‌اش
+ * shared/config.example.php است. روی هاست‌های اشتراکی که امکان SetEnv ندارند،
+ * تنظیمات از همین فایل خوانده می‌شود.
+ *
+ * چرا آرایه‌ی کامل؟ چون تابع‌های shared/payamak.php و shared/fcm.php «پیکربندی»
+ * را یک‌جا می‌گیرند (نه کلید به کلید) تا ترتیبِ «متغیر محیطی ← فایل» در همه‌ی
+ * مصرف‌کننده‌ها یکی بماند: پنل ادمین (پیامک آزمایشی)، api/auth.php (کد تایید)،
+ * api/status.php (تشخیص) و setup.php (راه‌انداز).
  */
-function eplakConfigValue(string $key, $default = null) {
+function eplakConfigArray(): array {
     static $cfg = null;
     if ($cfg === null) {
         $cfg = [];
@@ -1378,6 +1384,16 @@ function eplakConfigValue(string $key, $default = null) {
             }
         }
     }
+    return $cfg;
+}
+
+/**
+ * خواندن یک کلید از shared/config.php (فقط یک‌بار در هر درخواست).
+ * آن فایل در گیت نیست (رمز دیتابیس دارد)؛ نمونه‌اش shared/config.example.php است.
+ * روی هاست‌های اشتراکی که امکان SetEnv ندارند، تنظیمات از همین فایل خوانده می‌شود.
+ */
+function eplakConfigValue(string $key, $default = null) {
+    $cfg = eplakConfigArray();
     return array_key_exists($key, $cfg) ? $cfg[$key] : $default;
 }
 

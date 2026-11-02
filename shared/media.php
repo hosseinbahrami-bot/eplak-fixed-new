@@ -72,8 +72,39 @@ function eplakMediaUploadRoot(): string {
     return EPLAK_ROOT . '/uploads/reports';
 }
 
+/* نشانگرِ نسخه‌ی فایلِ نگهبان — هم اینجا و هم setup.php و هم اسکریپتِ ساختِ
+   بسته‌ی آپلود، همین یک نشانگر را می‌شناسند. */
+function eplakMediaGuardMarker(): string
+{
+    return '# eplak-media-guard-v2';
+}
+
+/* محتوای uploads/.htaccess — یک‌جا تعریف می‌شود تا:
+     • هنگام آپلود (eplakMediaEnsureDir)
+     • دکمه‌ی «ساخت پوشه‌های نوشتنی» در setup.php
+     • بسته‌ی آپلودِ هاست (که همین فایل را با خودش می‌برد)
+   هر سه دقیقاً یک متن بنویسند و نسخه‌ها از هم واگرا نشوند.
+   نکته‌ی مهم: همه‌ی دستورهای مربوط به PHP داخل <IfModule> هستند؛ در غیر این
+   صورت روی هاست‌هایی که PHP-FPM/LiteSpeed دارند خطای 500 می‌داد و عکس‌های
+   گزارش‌ها نمایش داده نمی‌شدند. */
+function eplakMediaGuardContent(): string
+{
+    return eplakMediaGuardMarker() . " — جلوگیری از اجرای اسکریپت در پوشه‌ی فایل‌های آپلودی (نسخه‌ی ۲)\n"
+        . "<IfModule mod_php.c>\n  php_flag engine off\n</IfModule>\n"
+        . "<IfModule mod_php5.c>\n  php_flag engine off\n</IfModule>\n"
+        . "<IfModule mod_php7.c>\n  php_flag engine off\n</IfModule>\n"
+        . "<IfModule mod_php8.c>\n  php_flag engine off\n</IfModule>\n"
+        . "<IfModule mod_authz_core.c>\n"
+        . "  <FilesMatch \"\\.(php|php5|php7|phtml|pht|phar|cgi|pl|py|sh|htaccess)$\">\n    Require all denied\n  </FilesMatch>\n"
+        . "</IfModule>\n"
+        . "<IfModule !mod_authz_core.c>\n"
+        . "  <FilesMatch \"\\.(php|php5|php7|phtml|pht|phar|cgi|pl|py|sh|htaccess)$\">\n    Order allow,deny\n    Deny from all\n  </FilesMatch>\n"
+        . "</IfModule>\n";
+}
+
 /* ساخت پوشه‌ی ماهانه + محافظت از اجرای اسکریپت */
-function eplakMediaEnsureDir(string $absoluteDir): bool {
+function eplakMediaEnsureDir(string $absoluteDir): bool
+{
     if (!is_dir($absoluteDir) && !@mkdir($absoluteDir, 0775, true) && !is_dir($absoluteDir)) {
         return false;
     }
@@ -82,26 +113,12 @@ function eplakMediaEnsureDir(string $absoluteDir): bool {
         return false;
     }
     $htaccess = $uploadsRoot . '/.htaccess';
-    $guardMarker = '# eplak-media-guard-v2';
+    $guardMarker = eplakMediaGuardMarker();
     $existing = is_file($htaccess) ? (string) @file_get_contents($htaccess) : '';
 
-    /* اگر فایل نگهبان نبود یا نسخه‌ی قدیمی بود، بازنویسی می‌شود.
-       نکته‌ی مهم: همه‌ی دستورهای مربوط به PHP داخل <IfModule> هستند؛ در غیر این
-       صورت روی هاست‌هایی که PHP-FPM/LiteSpeed دارند خطای 500 می‌داد و
-       عکس‌های گزارش‌ها نمایش داده نمی‌شدند. */
+    /* اگر فایل نگهبان نبود یا نسخه‌ی قدیمی بود، بازنویسی می‌شود. */
     if (strpos($existing, $guardMarker) === false) {
-        $guard = $guardMarker . " — جلوگیری از اجرای اسکریپت در پوشه‌ی فایل‌های آپلودی (نسخه‌ی ۲)\n"
-            . "<IfModule mod_php.c>\n  php_flag engine off\n</IfModule>\n"
-            . "<IfModule mod_php5.c>\n  php_flag engine off\n</IfModule>\n"
-            . "<IfModule mod_php7.c>\n  php_flag engine off\n</IfModule>\n"
-            . "<IfModule mod_php8.c>\n  php_flag engine off\n</IfModule>\n"
-            . "<IfModule mod_authz_core.c>\n"
-            . "  <FilesMatch \"\\.(php|php5|php7|phtml|pht|phar|cgi|pl|py|sh|htaccess)$\">\n    Require all denied\n  </FilesMatch>\n"
-            . "</IfModule>\n"
-            . "<IfModule !mod_authz_core.c>\n"
-            . "  <FilesMatch \"\\.(php|php5|php7|phtml|pht|phar|cgi|pl|py|sh|htaccess)$\">\n    Order allow,deny\n    Deny from all\n  </FilesMatch>\n"
-            . "</IfModule>\n";
-        @file_put_contents($htaccess, $guard);
+        @file_put_contents($htaccess, eplakMediaGuardContent());
         @chmod($htaccess, 0644);
     }
     return true;
