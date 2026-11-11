@@ -20,5 +20,10 @@ tools/node_modules/
 eplak-fixed-update.zip
 eplak-fixed-update.zip.sha256
 
+# بسته‌ی سایتِ معرفیِ روت (قالب + لایه‌ی واسط) — بیرون از مخزن ساخته و برای
+# آپلود در public_html/ تحویل داده می‌شود؛ در گیت نمی‌ماند.
+eplak-website.zip
+eplak-website.zip.sha256
+
 # محیط آزمون‌های خودکار (اگر داخل مخزن ساخته شود)
 .harness/
