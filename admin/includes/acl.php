@@ -519,6 +519,7 @@ function eplakPermissionLabel(string $perm): string
 {
     $labels = [
         'dashboard'      => 'داشبورد',
+        'analytics'      => 'آمارِ سایت و دانلودها',
         'reports.view'   => 'مشاهده‌ی گزارش‌ها',
         'reports.edit'   => 'پاسخ و تغییر وضعیت گزارش‌ها',
         'reports.create' => 'ثبت گزارش جدید',
@@ -576,6 +577,7 @@ function eplakAdminSidebar(string $active = ''): string
 {
     $items = [
         ['key' => 'index',         'href' => 'index.php',         'icon' => 'fa-chart-pie',          'label' => 'داشبورد',                'perm' => 'dashboard'],
+        ['key' => 'analytics',     'href' => 'analytics.php',     'icon' => 'fa-chart-line',         'label' => 'آمارِ سایت و دانلودها',   'perm' => 'analytics'],
         ['key' => 'reports',       'href' => 'reports.php',       'icon' => 'fa-flag',               'label' => 'گزارش‌ها',                 'perm' => 'reports.view'],
         ['key' => 'tickets',       'href' => 'tickets.php',       'icon' => 'fa-ticket-alt',         'label' => 'تیکت‌ها',                  'perm' => 'tickets.view'],
         ['key' => 'users',         'href' => 'users.php',         'icon' => 'fa-users',              'label' => 'کاربران',                'perm' => 'users'],

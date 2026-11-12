@@ -136,6 +136,11 @@ jobs:
           check admin/settings.php         'test_sms'                        '«ارسال پیامک آزمایشی» در پنل (فقط مدیر کل) داخل بسته است'
           check setup.php                  'make_dirs'                       '«ساخت پوشه‌های نوشتنی» در راه‌انداز داخل بسته است'
           check admin/includes/db.php      'Access-Control-Allow-Origin'     'خطای دیتابیس روی مسیرِ JSON هدر CORS می‌گیرد'
+          check shared/analytics.php       'function eplakAnalyticsTrack'  'لایه‌ی آمارِ سایت (گردآوری و تجمیع) در بسته هست'
+          check api/track.php              'eplakAnalyticsTrack'           'گردآورِ عمومیِ رویدادهای آمار در بسته هست'
+          check admin/includes/charts.php  'function eplakChartArea'       'نمودارهای SVGِ آمار (بدونِ کتابخانه‌ی بیرونی) در بسته هست'
+          check admin/analytics.php        "eplakAdminSidebar('analytics')" 'صفحه‌ی «آمارِ سایت و دانلودها» در بسته هست'
+          check shared/bootstrap.php       'site_stats'                    'جدولِ آمار در ساختارِ دیتابیس ساخته می‌شود'
 
       - name: اثر انگشت و مشخصات بسته
         run: |
