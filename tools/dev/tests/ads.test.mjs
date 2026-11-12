@@ -162,9 +162,9 @@ ok('bootstrap فایلِ تبلیغات را بار می‌کند و بنرها�
   bootstrap.includes("require_once __DIR__ . '/ads.php';")
   && (bootstrap.match(/eplakSeedDefaultAds\(\$pdo\);/g) || []).length === 2);
 ok('نسخه‌ی اسکیما بالا رفته است (تا دیتابیس قدیمیِ هاست همگام شود)',
-  /EPLAK_SCHEMA_VERSION', '2026-11-02\.2'/.test(bootstrap)
-  && read('tools/dev/tests/app.test.mjs').includes('2026-11-02\\.2')
-  && read('tools/dev/tests/geo.test.mjs').includes('2026-11-02\\.2'));
+  /EPLAK_SCHEMA_VERSION', '2026-11-12\.1'/.test(bootstrap)
+  && read('tools/dev/tests/app.test.mjs').includes('2026-11-12\\.1')
+  && read('tools/dev/tests/geo.test.mjs').includes('2026-11-12\\.1'));
 ok('سه جای بنر دقیقاً همان سه بنرِ موجودِ اپ است',
   adsLib.includes("define('EPLAK_ADS_PLACEMENTS', 'home_top,home_mid,dash_slim')")
   && (indexHtml.match(/data-ad-placement="(home_top|home_mid|dash_slim)"/g) || []).length === 3);
@@ -212,7 +212,7 @@ ok('سه بنرِ پیش‌فرض = همان سه بنرِ فعلیِ اپ (یک
 ok('بنرهای پیش‌فرض فعال‌اند، لینک ندارند و نسخه‌ی webp هم دارند',
   fresh.rows.every((r) => Number(r.is_active) === 1 && r.link_url === '' && /\.webp$/.test(r.image_webp)));
 ok('نشانه‌ی «یک‌بار درج شدن» ثبت شد تا با پاک کردنِ مدیر، بنرها برنگردند',
-  fresh.seeded === '1' && fresh.version === '2026-11-02.2', `${fresh.seeded}/${fresh.version}`);
+  fresh.seeded === '1' && fresh.version === '2026-11-12.1', `${fresh.seeded}/${fresh.version}`);
 const reseed = grab(await phpRun(`eplakSeedDefaultAds($pdo); echo '<<<' . json_encode([(int) $pdo->query('SELECT COUNT(*) FROM ads')->fetchColumn()]) . '>>>';`))[0];
 ok('درجِ دوباره‌ی بنرهای پیش‌فرض، تکراری نمی‌سازد', reseed === 3, String(reseed));
 

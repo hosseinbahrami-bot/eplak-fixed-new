@@ -45,12 +45,13 @@ $out['sent'] = sendNotification($pdo, 'عنوان', 'متن', 'all', [], 'admin'
 $out['recipients'] = count(getNotificationRecipients($pdo, (int) $pdo->query('SELECT MAX(id) FROM notification_sends')->fetchColumn()));
 echo json_encode($out);`));
 ok('بذرها اجرا شدند (۶ خبر/دانستنی + ۶۵ واحد)', db?.news === 6 && db?.depts === 65, `news=${db?.news} depts=${db?.depts}`);
-const wanted = ['notifications', 'notification_reads', 'notification_deletes', 'device_tokens', 'push_subscriptions', 'report_media', 'app_settings'];
+const wanted = ['notifications', 'notification_reads', 'notification_deletes', 'device_tokens', 'push_subscriptions', 'report_media', 'app_settings', 'site_stats'];
 const missing = wanted.filter((t) => !(db?.tables || []).includes(t));
 ok('همه‌ی جدول‌های لازم ساخته شدند', missing.length === 0, 'گم‌شده: ' + missing.join(', '));
 /* 2026-11-02.1 = افزودن ستون‌های full_name/is_active/last_login_at به admin_users
-   و جدول admin_departments (مدیرانِ حوزه‌محدود) */
-ok('نسخه‌ی ساختار دیتابیس تازه ثبت شد', /^2026-(09-30|10-0[123]|11-02)\./.test(String(db?.schema)), String(db?.schema));
+   و جدول admin_departments (مدیرانِ حوزه‌محدود)
+   2026-11-12.1 = افزودن جدول site_stats (آمارِ بازدیدِ سایت و دانلودها) */
+ok('نسخه‌ی ساختار دیتابیس تازه ثبت شد', /^2026-(09-30|10-0[123]|11-02|11-12)\./.test(String(db?.schema)), String(db?.schema));
 ok('ستون شناسه‌ی یکتای درخواست به جدول گزارش‌ها اضافه شد (پایه‌ی جلوگیری از تکرار)',
   (db?.report_cols || []).includes('client_ref'), JSON.stringify(db?.report_cols || []));
 ok('ستون‌های شمارش فایربیس ساخته شدند', (db?.send_cols || []).includes('fcm_sent') && (db?.send_cols || []).includes('fcm_failed'), JSON.stringify(db?.send_cols));

@@ -783,6 +783,31 @@ function eplakSqliteBootstrap(PDO $pdo): void {
     )");
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ads_clicks_ad ON ads_clicks(ad_id, ip_hash)');
 
+    /* ── آمارِ سایتِ معرفی و دانلودها (shared/analytics.php، admin/analytics.php) ──
+       هر رویداد یک سطر: visit (بازدیدِ صفحه)، download (کلیکِ دانلودِ APK/PWA) و
+       qr (کلیکِ کدِ QR). visit_day/visit_hour «به وقتِ تهران» نوشته می‌شوند تا
+       نمودارهای روزانه/ماهانه/سالانه با یک GROUP BY ساده ساخته شوند و SUBSTR هم
+       روی MySQL و هم روی SQLite همان جواب را بدهد (بدونِ DATE_FORMAT که فقط
+       MySQL دارد). IP خام ذخیره نمی‌شود؛ فقط هشِ ip_hash (مثلِ ads_clicks). */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS site_stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        visit_day VARCHAR(10) NOT NULL DEFAULT '',
+        visit_hour INTEGER NOT NULL DEFAULT 0,
+        kind VARCHAR(16) NOT NULL DEFAULT 'view',
+        target VARCHAR(60) NOT NULL DEFAULT '',
+        page VARCHAR(180) NOT NULL DEFAULT '',
+        visitor VARCHAR(40) NOT NULL DEFAULT '',
+        ip_hash VARCHAR(64) NOT NULL DEFAULT '',
+        device VARCHAR(12) NOT NULL DEFAULT '',
+        browser VARCHAR(30) NOT NULL DEFAULT '',
+        os VARCHAR(30) NOT NULL DEFAULT '',
+        ref_host VARCHAR(120) NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_site_stats_day ON site_stats(visit_day, kind)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_site_stats_visitor ON site_stats(visitor, visit_day)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_site_stats_ip ON site_stats(ip_hash, visit_day)');
+
     eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS tickets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_phone VARCHAR(20) NOT NULL,
@@ -1075,11 +1100,14 @@ function eplakUsersUpsertSql(PDO $pdo, bool $keepDefaultName = false): string {
    یک پله بالا ببرید؛ بقیه‌اش خودکار انجام می‌شود.
    ============================================================================ */
 if (!defined('EPLAK_SCHEMA_VERSION')) {
+    /* + جدول site_stats (آمارِ بازدیدِ سایتِ معرفی، دانلودِ APK/PWA و کلیکِ QR)
+       ⇒ بخشِ «آمارِ سایت» در پنل: shared/analytics.php، api/track.php و
+       admin/analytics.php */
     /* + جدول‌های ads و ads_clicks (تبلیغات داخل اپ: سه جای بنر، چند تصویرِ
        چرخشی، لینک، آمار کلیک) — shared/ads.php و api/ads.php */
     /* + ستون‌های full_name/is_active/last_login_at روی admin_users و جدول admin_departments
        (مدیرانِ حوزه/معاونت) */
-    define('EPLAK_SCHEMA_VERSION', '2026-11-02.2');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
+    define('EPLAK_SCHEMA_VERSION', '2026-11-12.1');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
 }
 
 /* تعریف جداول (همان متن CREATE TABLE) برای مقایسه با دیتابیس.
@@ -2194,6 +2222,35 @@ function eplakGetPdo(): PDO {
         $pdo->exec('CREATE INDEX idx_ads_clicks_ad ON ads_clicks(ad_id, ip_hash)');
     } catch (\Throwable $e) {
         /* بی‌ضرر */
+    }
+
+    /* ── آمارِ سایتِ معرفی و دانلودها (shared/analytics.php، admin/analytics.php) ──
+       هر رویداد یک سطر: visit (بازدیدِ صفحه)، download (کلیکِ دانلودِ APK/PWA) و
+       qr (کلیکِ کدِ QR). visit_day/visit_hour «به وقتِ تهران» نوشته می‌شوند تا
+       نمودارهای روزانه/ماهانه/سالانه با یک GROUP BY ساده ساخته شوند و SUBSTR هم
+       روی MySQL و هم روی SQLite همان جواب را بدهد (بدونِ DATE_FORMAT که فقط
+       MySQL دارد). IP خام ذخیره نمی‌شود؛ فقط هشِ ip_hash (مثلِ ads_clicks). */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS site_stats (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        visit_day VARCHAR(10) NOT NULL DEFAULT '',
+        visit_hour INT NOT NULL DEFAULT 0,
+        kind VARCHAR(16) NOT NULL DEFAULT 'view',
+        target VARCHAR(60) NOT NULL DEFAULT '',
+        page VARCHAR(180) NOT NULL DEFAULT '',
+        visitor VARCHAR(40) NOT NULL DEFAULT '',
+        ip_hash VARCHAR(64) NOT NULL DEFAULT '',
+        device VARCHAR(12) NOT NULL DEFAULT '',
+        browser VARCHAR(30) NOT NULL DEFAULT '',
+        os VARCHAR(30) NOT NULL DEFAULT '',
+        ref_host VARCHAR(120) NOT NULL DEFAULT '',
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    try {
+        $pdo->exec('CREATE INDEX idx_site_stats_day ON site_stats(visit_day, kind)');
+        $pdo->exec('CREATE INDEX idx_site_stats_visitor ON site_stats(visitor, visit_day)');
+        $pdo->exec('CREATE INDEX idx_site_stats_ip ON site_stats(ip_hash, visit_day)');
+    } catch (\Throwable $e) {
+        /* ایندکس تکراری یا نبودِ اجازه — آمار بدونِ آن هم کار می‌کند */
     }
 
     eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS tickets (

@@ -50,6 +50,14 @@
 #                 تیکت‌های همان حوزه (مشاهده/پاسخ/تغییر وضعیت)، داشبوردِ محدود،
 #                 بسته‌بودن صفحه‌های دیگر سمت سرور (۴۰۳)، حسابِ غیرفعال/بدون حوزه،
 #                 چند حوزه‌ای، محافظِ خودقفل‌شدن، XSS و نشت نکردنِ رمز عبور
+#    analytics  → «آمارِ سایت و دانلودها» در پنل: جدول site_stats و ایندکس‌هایش،
+#                 گردآورِ api/track.php (ضدِ تورم، رد کردنِ ربات، هش بودنِ IP،
+#                 JSON و هرگز ۵۰۰ نشدن)، تجمیع‌های روزانه/ماهانه/سالانه با
+#                 برچسبِ شمسی، نقشه‌ی حرارتیِ هفته، ساعت‌های اوج، آمارِ کاربران/
+#                 گزارش‌ها/تیکت‌ها از جدول‌های موجود، خروجیِ CSV، پاک‌سازیِ دستی،
+#                 شمارِ واقعیِ دانلودِ APK از گیت‌هاب (کش‌شده و بدونِ شبکه در
+#                 بارگذاری)، نمودارهای SVGِ سمتِ سرور، و دسترسی: فقط مدیر کل
+#                 (مدیرِ حوزه ۴۰۳ می‌گیرد و لینک را در منو نمی‌بیند)
 #    ios        → نسخه‌ی iOS (ios-app/): بسته‌ی وبِ داخل اپ همان مجموعه‌ی اندروید است و همه‌ی
 #                 فایل‌های index.html را دارد، Info.plist/پروژه‌ی Xcode/سورس Swift، اسکریپت
 #                 آزمون دودیِ شبیه‌ساز، ورک‌فلوهای CI، و نرفتن ios-app به بسته‌ی هاست
@@ -112,7 +120,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "syntax" ]; then
   run_step "بررسی نحوی JS"  node "$WORK/js-syntax.mjs"  "$ROOT"
 fi
 
-for t in notify notify-schema news jalali app pushcrypto fcm backend security online geo upload tiles push places placesadmin acl ads otp sms ios pwa; do
+for t in notify notify-schema news jalali app pushcrypto fcm backend security online geo upload tiles push places placesadmin acl ads otp sms ios pwa analytics; do
   if [ "$TARGET" = "all" ] || [ "$TARGET" = "$t" ]; then
     if [ -f "$WORK/$t.test.mjs" ]; then
       run_step "آزمون $t" node "$WORK/$t.test.mjs"
