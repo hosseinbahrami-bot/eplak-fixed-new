@@ -73,7 +73,7 @@ class EplakXlsxWriter
         /* نام لاتینِ ایمن برای مرورگرهایی که filename* را نمی‌فهمند */
         $asciiName = preg_replace('/[^A-Za-z0-9_\-\.]/', '', $asciiName);
         if ($asciiName === '' || $asciiName === '.xlsx') {
-            $asciiName = 'eplak-export-' . date('Y-m-d') . '.xlsx';
+            $asciiName = 'eplak-export-' . (function_exists('eplakJalaliIsoDate') ? eplakJalaliIsoDate() : date('Y-m-d')) . '.xlsx';
         }
 
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

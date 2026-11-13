@@ -39,11 +39,19 @@ $deptTotal   = array_sum(array_column($deptStats, 'count'));
 $deptMax     = 0;
 foreach ($deptStats as $d) { $deptMax = max($deptMax, (int)$d['count']); }
 
-$monthly     = $eplakIsSuper ? getReportsMonthly($pdo, 6) : getScopedReportsMonthly($scopedReports, 6);
+/* روندِ ماهانه با «ماه‌های شمسی» — سطل‌ها و برچسب‌ها هر دو شمسی‌اند
+   (shared/fa_datetime.php: eplakJalaliMonthWindow). ساعتِ خودِ دیتابیس پاس
+   داده می‌شود تا مرزِ «این ماه» با ساعاتِ ثبت‌شده یکی باشد. */
+$eplakTodayDb = eplakDbNowString($pdo);
+$monthly     = $eplakIsSuper
+    ? getReportsMonthly($pdo, 6)
+    : getScopedReportsMonthly($scopedReports, 6, $eplakTodayDb);
 $monthlyMax  = 0;
 $monthlySum  = 0;
 foreach ($monthly as $m) { $monthlyMax = max($monthlyMax, (int)$m['count']); $monthlySum += (int)$m['count']; }
 $monthlyMax  = max(1, $monthlyMax);
+$monthlyFirst = $monthly ? (string) ($monthly[0]['full'] ?? $monthly[0]['label']) : '';
+$monthlyLast  = $monthly ? (string) ($monthly[count($monthly) - 1]['full'] ?? $monthly[count($monthly) - 1]['label']) : '';
 
 $chartRadius   = 70;
 $chartCirc     = 2 * M_PI * $chartRadius;
@@ -193,7 +201,7 @@ foreach ($chartSegments as $i => $seg) {
         </div>
 
         <div class="chart-col">
-          <h2><i class="fa-solid fa-chart-line"></i> روند ماهانهٔ گزارش‌ها</h2>
+          <h2><i class="fa-solid fa-chart-line"></i> روند ماهانهٔ گزارش‌ها <span style="font-size:12px;font-weight:500;opacity:.7">(ماه‌های شمسی)</span></h2>
           <svg class="trend-chart" viewBox="0 0 340 165" role="img" aria-label="روند ماهانه گزارش‌ها">
 <?php
   $tw = 340; $th = 165; $padB = 30; $padT = 18;
@@ -213,7 +221,9 @@ foreach ($chartSegments as $i => $seg) {
       $y   = $padT + $plotH - $h;
       $cls = $cnt > 0 ? 'trend-bar' : 'trend-bar trend-bar-zero';
       echo '            <rect class="' . $cls . '" x="' . round($x, 1) . '" y="' . round($y, 1)
-         . '" width="' . round($barW, 1) . '" height="' . max(2, round($h, 1)) . '" rx="5"></rect>' . "\n";
+         . '" width="' . round($barW, 1) . '" height="' . max(2, round($h, 1)) . '" rx="5">'
+         . '<title>' . htmlspecialchars(($m['full'] ?? $m['label']), ENT_QUOTES, 'UTF-8') . ' — ' . $cnt
+         . ' گزارش</title></rect>' . "\n";
       echo '            <text class="trend-value" x="' . round($x + $barW / 2, 1) . '" y="' . round($y - 5, 1)
          . '" text-anchor="middle">' . $cnt . '</text>' . "\n";
       echo '            <text class="trend-label" x="' . round($x + $barW / 2, 1) . '" y="' . ($th - 10)
@@ -223,7 +233,9 @@ foreach ($chartSegments as $i => $seg) {
           </svg>
           <p class="chart-note">
             <i class="fa-solid fa-circle-info"></i>
-            <?= (int)$monthlySum ?> گزارش در ۶ ماه گذشته — بیشینهٔ ماهانه: <?= (int)$monthlyMax ?>
+            <?= (int)$monthlySum ?> گزارش در <?= (int)count($monthly) ?> ماهِ گذشته
+            (<?= htmlspecialchars($monthlyFirst, ENT_QUOTES, 'UTF-8') ?> تا
+            <?= htmlspecialchars($monthlyLast, ENT_QUOTES, 'UTF-8') ?>) — بیشینهٔ ماهانه: <?= (int)$monthlyMax ?>
           </p>
         </div>
 

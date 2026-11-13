@@ -102,7 +102,10 @@ if ((string) ($_GET['export'] ?? '') === 'csv') {
         exit;
     }
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="eplak-analytics-' . $range['from'] . '_to_' . $range['to'] . '.csv"');
+    /* نامِ فایل شمسی باشد (رقمِ لاتین تا ASCII بماند): eplak-analytics-1404-08-22_to_1405-08-22.csv */
+    $csvFrom = function_exists('eplakJalaliIsoDate') ? eplakJalaliIsoDate($range['from'] . ' 12:00:00') : $range['from'];
+    $csvTo   = function_exists('eplakJalaliIsoDate') ? eplakJalaliIsoDate($range['to'] . ' 12:00:00') : $range['to'];
+    header('Content-Disposition: attachment; filename="eplak-analytics-' . $csvFrom . '_to_' . $csvTo . '.csv"');
     header('Cache-Control: no-store, no-cache, must-revalidate');
     header('X-Content-Type-Options: nosniff');
     echo "\xEF\xBB\xBF";                 /* BOM تا اکسلِ ویندوز فارسی را درست بخواند */

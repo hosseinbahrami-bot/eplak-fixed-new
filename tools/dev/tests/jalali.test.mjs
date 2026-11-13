@@ -235,6 +235,7 @@ const pages = [
   ['جزئیات ارسال اعلان', 'admin/notification_view.php', { get: { id: String(seed.send_id) } }],
   ['تنظیمات', 'admin/settings.php', {}],
   ['نسخه‌ی اپ', 'admin/version.php', {}],
+  ['خروجی اکسل', 'admin/export.php', {}],
 ];
 
 const rendered = {};
@@ -242,7 +243,7 @@ for (const [label, script, opts] of pages) {
   rendered[label] = await adminPage(script, opts);
 }
 
-let shownJalali = 0; let shownGregorian = 0; let fatalPages = 0;
+let shownJalali = 0; let shownGregorian = 0; let fatalPages = 0; let shownGregMonth = 0;
 for (const [label, script] of pages) {
   const p = rendered[label];
   if (!p) { fatalPages++; continue; }
@@ -250,12 +251,19 @@ for (const [label, script] of pages) {
   const text = visibleText(p.html);
   if (JALALI.test(text)) shownJalali++;
   if (GREGORIAN.test(text)) { shownGregorian++; console.log('   [میلادی در ' + label + '] ' + (text.match(/.{0,40}\d{4}-\d{2}-\d{2}.{0,30}/) || [''])[0]); }
+  /* «نامِ ماهِ میلادی» هم تاریخِ میلادی است. پیش‌تر فقط الگوی عددی سنجیده
+     می‌شد و به همین دلیل نمودارِ داشبورد با برچسبِ «ژوئن/ژوئیه/اوت/سپتامبر/
+     اکتبر/نوامبر» از آزمون رد می‌شد. */
+  const gm = text.match(GREG_MONTHS);
+  if (gm) { shownGregMonth++; console.log('   [ماه میلادی در ' + label + '] ' + gm[0]); }
 }
 ok('هیچ صفحه‌ی پنل خطای PHP ندارد', fatalPages === 0, 'صفحه‌های دارای خطا: ' + fatalPages);
 ok('تاریخِ درخواست/تیکت/کاربر/خبر/اعلان در پنل «شمسی» نشان داده می‌شود', shownJalali >= 10,
   'صفحه‌هایی با تاریخ شمسی: ' + shownJalali + ' از ' + pages.length);
 ok('هیچ تاریخ میلادیِ خامی (2026-10-11) در متنِ دیده‌شده‌ی پنل نمانده', shownGregorian === 0,
   'صفحه‌ها: ' + shownGregorian);
+ok('هیچ «نامِ ماهِ میلادی» (ژوئن/نوامبر/…) در متنِ دیده‌شده‌ی پنل نمانده', shownGregMonth === 0,
+  'صفحه‌ها: ' + shownGregMonth);
 
 const rp = rendered['فهرست گزارش‌ها'];
 ok('دقیقاً همان تاریخِ گزارش به شمسی و وقت تهران است (۱۴۰۵/۰۷/۱۹ - ساعت ۱۳:۲۴)',
@@ -538,6 +546,154 @@ ok('مسیرِ جایگزینِ reports.js هم همان قراردادِ تهر
   /REPORT_TEHRAN_OFFSET_MIN = 210/.test(reportsJs) && /reportTehranWallToDate/.test(reportsJs));
 ok('ساعت و تقویمِ پیشخوان از «اکنونِ تهران» می‌آیند (نه ساعتِ گوشی)',
   /window\.eplakNow/.test(read('modules/clock-lux.js')) && /window\.eplakNow/.test(dashJs));
+
+/* ───────────────── ۵) ماه‌های شمسی در نمودارها، فیلترها و خروجی‌ها ─────────────────
+   چرا این بخش اضافه شد؟
+   پیش‌تر آزمون فقط «تاریخِ عددیِ میلادی» (2026-10-11) را در متنِ دیده‌شده‌ی پنل
+   می‌سنجید؛ به همین دلیل نمودارِ داشبورد با برچسبِ «۰ژوئن ۰ژوئیه ۰اوت
+   ۰سپتامبر ۰اکتبر ۴نوامبر» از آزمون رد می‌شد و مدیر آن را دید. حالا هم
+   «نامِ ماهِ میلادی» سنجیده می‌شود و هم خودِ سطل‌بندیِ ماهانه. */
+section('۵) نمودارِ ماهانه و باقیِ تاریخ‌ها: همه شمسی');
+
+const FA_MONTHS = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+/* متنِ بدونِ توضیح — تا نامِ ماه‌های میلادی که در «توضیحِ باگ» ذکر شده‌اند
+   با نام‌های واقعیِ میلادی در کد اشتباه گرفته نشوند */
+const stripComments = (src) => codeLines(src).map((l) => l.t).join('\n');
+/* pickJsonِ این آزمون فقط «شیء» JSON را برمی‌دارد ⇒ خروجیِ PHP باید کلیددار باشد */
+const phpObj = async (stmts, expr) => pickJson(await run(
+  "require '" + APP + "/shared/fa_datetime.php';\n"
+  + "require '" + APP + "/admin/includes/db.php';\n"
+  + "require '" + APP + "/admin/includes/functions.php';\n"
+  + (stmts || '') + "\necho json_encode(" + expr + ');'));
+
+/* ۵-۱) نمودارِ داشبورد: برچسبِ ستون‌ها باید نامِ ماهِ شمسی باشد */
+const dash = rendered['داشبورد'];
+const dashText = dash ? visibleText(dash.html) : '';
+const dashLabels = dash
+  ? [...String(dash.html).matchAll(/class="trend-label"[^>]*>([^<]+)</g)].map((m) => m[1].trim())
+  : [];
+ok('نمودارِ «روند ماهانهٔ گزارش‌ها» شش برچسب دارد و همه نامِ ماهِ شمسی‌اند',
+  dashLabels.length === 6 && dashLabels.every((l) => FA_MONTHS.includes(l)), dashLabels.join(' '));
+ok('باگِ «۰ژوئن۰ژوئیه۰اوت۰سپتامبر۰اکتبر۴نوامبر» رفته: هیچ ماهِ میلادی در داشبورد نیست',
+  dashLabels.length > 0 && !dashLabels.some((l) => GREG_MONTHS.test(l)) && !GREG_MONTHS.test(dashText));
+ok('بازه‌ی نمودار با سالِ شمسی صریح نوشته شده و هر ستون راهنمایِ هاورِ «مهر ۱۴۰۵ — ۱ گزارش» دارد',
+  /ماه‌های شمسی/.test(dashText)
+  && /<title>[^<]*[۰-۹]{4} — \d+ گزارش<\/title>/.test(String(dash.html))
+  && !GREGORIAN.test(dashText),
+  (String(dash && dash.html).match(/<title>[^<]*<\/title>/) || [''])[0]);
+
+/* ۵-۲) سطل‌بندی هم شمسی است (نه فقط برچسب‌ها) */
+const monthlyRes = await phpObj('', "['rows' => getReportsMonthly($pdo, 60)]");
+const monthly = (monthlyRes && monthlyRes.rows) || [];
+const seededMonth = monthly.find((m) => m.key === '1405-07');
+ok('گزارشِ ۲۰۲۶/۱۰/۱۱ در سطلِ «مهر ۱۴۰۵» می‌نشیند (گروه‌بندی شمسی، نه میلادی)',
+  !!seededMonth && seededMonth.count >= 1 && seededMonth.label === 'مهر'
+  && seededMonth.full === 'مهر ۱۴۰۵' && seededMonth.year === 1405 && seededMonth.month === 7,
+  JSON.stringify(seededMonth || monthlyRes));
+ok('همه‌ی سطل‌ها کلیدِ شمسیِ «۱۴xx-xx»، برچسبِ فارسی و سالِ شمسی دارند',
+  monthly.length === 60
+  && monthly.every((m) => /^1[34]\d\d-(0[1-9]|1[0-2])$/.test(m.key) && FA_MONTHS.includes(m.label))
+  && monthly.every((m) => new RegExp(FA_MONTHS[m.month - 1] + ' ' + '[۰-۹]{4}$').test(m.full)),
+  JSON.stringify(monthly.slice(0, 2)));
+ok('سطل‌ها پیوسته‌اند (مرزِ سال: اسفند ← فروردین) و ماهِ جاری آخرین است',
+  monthly.length === 60 && monthly.some((m) => m.key === '1404-12') && monthly.some((m) => m.key === '1405-01')
+  && monthly[59].key > monthly[0].key
+  && monthly.slice(1).every((m, i) => Number(m.key.slice(0, 4)) * 12 + Number(m.key.slice(5))
+      === Number(monthly[i].key.slice(0, 4)) * 12 + Number(monthly[i].key.slice(5)) + 1),
+  JSON.stringify(monthly.slice(-2)));
+const nowKey = await phpObj('', "['k' => eplakJalaliMonthKey(eplakDbNow())]");
+ok('آخرین سطل = ماهِ شمسیِ جاریِ سرور (نه ماهِ میلادیِ جاری)',
+  !!nowKey && monthly.length > 0 && monthly[monthly.length - 1].key === nowKey.k,
+  JSON.stringify(nowKey) + ' در برابر ' + (monthly[monthly.length - 1] || {}).key);
+const scopedRes = await phpObj("$rows = $pdo->query('SELECT created_at FROM reports')->fetchAll();",
+  "['rows' => getScopedReportsMonthly($rows, 60)]");
+const scoped = (scopedRes && scopedRes.rows) || [];
+ok('مسیرِ مدیرِ حوزه هم همان سطلِ شمسی و همان برچسب را می‌دهد (یک شکلِ خروجی)',
+  scoped.length === 60
+  && JSON.stringify(scoped.map((m) => m.key)) === JSON.stringify(monthly.map((m) => m.key))
+  && (scoped.find((m) => m.key === '1405-07') || {}).count >= 1,
+  JSON.stringify((scopedRes || {}).rows ? scoped.slice(0, 1) : scopedRes));
+ok('دیگر هیچ آرایه‌ی «ژانویه … دسامبر» و هیچ DATE_FORMATِ میلادی در کد نمانده',
+  !/ژانویه|دسامبر|نوامبر|سپتامبر/.test(stripComments(read('admin/includes/functions.php')))
+  && !/DATE_FORMAT/.test(stripComments(read('admin/includes/functions.php'))));
+
+/* ۵-۳) تبدیلِ معکوسِ شمسی←میلادی (پایه‌ی پنجره‌ی ماهانه و فیلترِ تاریخ) */
+const rt = await phpObj(
+  "$bad = 0; $sample = '';\n"
+  + "for ($i = -6000; $i < 9000; $i++) {\n"
+  + "  $d = (new DateTimeImmutable('@' . (1600000000 + ($i * 86400))))->setTimezone(new DateTimeZone('Asia/Tehran'));\n"
+  + "  $gy = (int) $d->format('Y'); $gm = (int) $d->format('n'); $gd = (int) $d->format('j');\n"
+  + "  list($jy, $jm, $jd) = eplakGregorianToJalali($gy, $gm, $gd);\n"
+  + "  list($ry, $rm, $rd) = eplakJalaliToGregorian($jy, $jm, $jd);\n"
+  + "  if ($ry !== $gy || $rm !== $gm || $rd !== $gd) { $bad++; if ($sample === '') { $sample = \"$gy-$gm-$gd\"; } }\n"
+  + "}",
+  "['bad' => $bad, 'sample' => $sample]");
+ok('رفتن و برگشتنِ میلادی→شمسی→میلادی روی ۱۵٬۰۰۰ روز بدونِ یک روز خطا',
+  !!rt && rt.bad === 0, JSON.stringify(rt));
+const anchor = await phpObj('', "['nowruz1403' => eplakJalaliToGregorian(1403, 1, 1),"
+  + " 'leapEnd1399' => eplakJalaliToGregorian(1399, 12, 30),"
+  + " 'd1399' => eplakJalaliMonthDays(1399, 12), 'd1400' => eplakJalaliMonthDays(1400, 12),"
+  + " 'd1405_1' => eplakJalaliMonthDays(1405, 1), 'd1405_7' => eplakJalaliMonthDays(1405, 7)]");
+ok('لنگرهای واقعی: نوروز ۱۴۰۳ = ۲۰۲۴/۰۳/۲۰، اسفندِ کبیسه ۳۰ روز و اسفندِ ساده ۲۹ روز',
+  !!anchor && JSON.stringify(anchor.nowruz1403) === '[2024,3,20]'
+  && JSON.stringify(anchor.leapEnd1399) === '[2021,3,20]'
+  && anchor.d1399 === 30 && anchor.d1400 === 29 && anchor.d1405_1 === 31 && anchor.d1405_7 === 30,
+  JSON.stringify(anchor));
+const bounds = await phpObj('', "['lastOfMehr' => eplakJalaliMonthKey('2026-10-22 23:59:59'),"
+  + " 'firstOfAban' => eplakJalaliMonthKey('2026-10-23 00:00:00'),"
+  + " 'lastOfAban' => eplakJalaliMonthKey('2026-11-21 23:59:59'),"
+  + " 'firstOfAzar' => eplakJalaliMonthKey('2026-11-22 00:00:00'),"
+  + " 'bad' => eplakJalaliMonthKey('0000-00-00 00:00:00')]");
+ok('مرزِ سطلِ شمسی دقیق است (۲۲ مهر ⇒ مهر، ۲۳ مهر ⇒ آبان، ۲۲ آبان ⇒ آذر) و مقدارِ خراب ⇒ خالی',
+  !!bounds && bounds.lastOfMehr === '1405-07' && bounds.firstOfAban === '1405-08'
+  && bounds.lastOfAban === '1405-08' && bounds.firstOfAzar === '1405-09' && bounds.bad === '',
+  JSON.stringify(bounds));
+
+/* ۵-۴) فیلترِ تاریخ: ورودیِ شمسی به میلادیِ دیتابیس تبدیل می‌شود */
+const ud = await phpObj('', "['fa' => eplakParseUserDate('۱۴۰۵/۰۸/۲۲'), 'lat' => eplakParseUserDate('1405/08/22'),"
+  + " 'dash' => eplakParseUserDate('1405-8-22'), 'greg' => eplakParseUserDate('2026-11-13'),"
+  + " 'noDay' => eplakParseUserDate('1405/08'), 'empty' => eplakParseUserDate(''),"
+  + " 'garbage' => eplakParseUserDate('abc'), 'badMonth' => eplakParseUserDate('1405/13/01'),"
+  + " 'overDay' => eplakParseUserDate('2026-02-31')]");
+ok('فیلترِ تاریخ هم شمسی را می‌پذیرد (رقمِ فارسی/لاتین/خط‌تیره) و هم میلادی را (لینکِ قدیمی)',
+  !!ud && ud.fa === '2026-11-13' && ud.lat === '2026-11-13' && ud.dash === '2026-11-13'
+  && ud.greg === '2026-11-13' && ud.noDay === '2026-10-23', JSON.stringify(ud));
+ok('ورودیِ نامعتبر ⇒ رشته‌ی خالی (نه کوئریِ شکسته) و روزِ اضافی به آخرِ ماه گرد می‌شود',
+  !!ud && ud.empty === '' && ud.garbage === '' && ud.badMonth === '' && ud.overDay === '2026-02-28',
+  JSON.stringify(ud));
+
+/* ۵-۵) خروجیِ اکسل: سلول‌ها، نامِ فایل و فرم همه شمسی */
+const ex = rendered['خروجی اکسل'];
+const exText = ex ? visibleText(ex.html) : '';
+ok('فرمِ خروجی «از تاریخ (شمسی)» است و هیچ تاریخِ میلادی در متنِ دیده‌شده ندارد',
+  !!ex && /از تاریخ \(شمسی\)/.test(exText) && /تا تاریخ \(شمسی\)/.test(exText)
+  && !GREGORIAN.test(exText) && !GREG_MONTHS.test(exText),
+  (exText.match(/.{0,30}\d{4}-\d{2}-\d{2}.{0,20}/) || [''])[0]);
+ok('راهنما هم «شمسی» می‌گوید (نه «تاریخ‌ها به صورت میلادی فیلتر می‌شوند»)',
+  /تاریخ‌ها «شمسی» نوشته و شمسی فیلتر می‌شوند/.test(exText) && !/به صورت میلادی فیلتر/.test(exText));
+const exSrc = stripComments(read('admin/export.php'));
+ok('سلول‌های تاریخِ اکسل با eplakFaDateTimeOf نوشته می‌شوند (created_atِ خامِ میلادی نه)',
+  !/\(string\)\$r\['created_at'\]/.test(exSrc)
+  && (exSrc.match(/eplakFaDateTimeOf\(/g) || []).length >= 5
+  && /eplakFaDateTimeOf\(reportEffectiveDate\(\$r\), ''\)/.test(exSrc),
+  String((exSrc.match(/eplakFaDateTimeOf\(/g) || []).length));
+ok('نامِ فایلِ اکسل شمسی است (فارسی برایِ مدیر، لاتین برایِ سازگاریِ ASCII)',
+  (exSrc.match(/eplakFaDigits\(eplakJalaliIsoDate\(\)\)/g) || []).length === 5
+  && (exSrc.match(/eplakJalaliIsoDate\(\) \. '\.xlsx'/g) || []).length === 5
+  && !/date\('Y-m-d'\)/.test(exSrc));
+
+/* ۵-۶) بقیه‌ی صفحه‌ها: عیب‌یابی و CSVِ آمار */
+ok('صفحه‌ی عیب‌یابی، زمانِ سرور را شمسی نشان می‌دهد (خامِ میلادی فقط به‌عنوانِ شاهدِ فنی)',
+  /\$add\('زمان سرور', function_exists\('eplakFaNow'\) \? eplakFaNow\(\)/.test(read('admin/notif_diag.php'))
+  && /فقط برایِ عیب‌یابی/.test(read('admin/notif_diag.php')));
+ok('خروجیِ CSVِ آمار هم شمسی است: ستونِ «روزِ شمسی» و نامِ فایلِ شمسی',
+  /eplakAnalyticsJalaliDay\(\(string\) \$r\['visit_day'\]\)/.test(read('shared/analytics.php'))
+  && /'روزِ شمسی'/.test(read('shared/analytics.php'))
+  && /eplakJalaliIsoDate\(\$range\['from'\]/.test(read('admin/analytics.php')));
+ok('نامِ ماه‌های شمسی یک منبعِ واحد دارد (آمار هم از fa_datetime می‌خواند، نه یک آرایه‌ی دوم)',
+  /return eplakFaMonthNames\(\);/.test(read('shared/analytics.php'))
+  && /function eplakFaMonthNames\(\): array/.test(read('shared/fa_datetime.php'))
+  && (stripComments(read('shared/analytics.php')).match(/'فروردین'/g) || []).length <= 1);
 
 console.log('\n' + '='.repeat(52));
 console.log(`JALALI: ${pass} passed, ${fail} failed`);
