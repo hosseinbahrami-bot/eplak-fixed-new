@@ -72,7 +72,7 @@ foreach ($chartSegments as $i => $seg) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>پنل مدیریت ای‌پلاک</title>
-  <link rel="stylesheet" href="assets/style.css?v=9">
+  <link rel="stylesheet" href="assets/style.css?v=10">
   <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
   <script src="assets/theme.js?v=7"></script>
   <script src="assets/persian-digits.js?v=6"></script>
@@ -140,16 +140,22 @@ foreach ($chartSegments as $i => $seg) {
         <div class="status-chart-wrap">
 
           <div class="donut-holder">
-            <svg class="donut" viewBox="0 0 200 200" role="img" aria-label="نمودار وضعیت گزارش‌ها">
+            <svg class="donut" viewBox="0 0 200 200" role="img" style="direction:rtl" aria-label="نمودار وضعیت گزارش‌ها">
               <circle class="donut-track" cx="100" cy="100" r="<?= $chartRadius ?>" fill="none" stroke-width="24"></circle>
+<?php /* آینه‌ی راست‌به‌چپ: گروه با scale(-1,1) حولِ محورِ وسط (x=100) برگردانده
+         شده، پس قطعه‌ها از ساعتِ ۱۲ «پادساعت‌گرد» می‌روند — همان جهتی که در
+         چیدمانِ راست‌به‌چپ با ترتیبِ راهنما (اولین مورد سمتِ راست) می‌خواند.
+         متنِ وسطِ دونات بیرونِ این گروه است تا وارونه نشود. */ ?>
+              <g transform="translate(200,0) scale(-1,1)">
 <?php foreach ($chartSegments as $seg): if ($seg['count'] <= 0) { continue; } ?>
-              <circle class="donut-seg" cx="100" cy="100" r="<?= $chartRadius ?>" fill="none"
-                      stroke="<?= $seg['color'] ?>" stroke-width="24" stroke-linecap="butt"
-                      stroke-dasharray="0 <?= number_format($chartCirc, 2, '.', '') ?>"
-                      data-dash="<?= number_format($seg['len'], 2, '.', '') ?> <?= number_format($chartCirc - $seg['len'], 2, '.', '') ?>"
-                      stroke-dashoffset="<?= number_format(-$seg['offset'], 2, '.', '') ?>"
-                      transform="rotate(-90 100 100)"></circle>
+                <circle class="donut-seg" cx="100" cy="100" r="<?= $chartRadius ?>" fill="none"
+                        stroke="<?= $seg['color'] ?>" stroke-width="24" stroke-linecap="butt"
+                        stroke-dasharray="0 <?= number_format($chartCirc, 2, '.', '') ?>"
+                        data-dash="<?= number_format($seg['len'], 2, '.', '') ?> <?= number_format($chartCirc - $seg['len'], 2, '.', '') ?>"
+                        stroke-dashoffset="<?= number_format(-$seg['offset'], 2, '.', '') ?>"
+                        transform="rotate(-90 100 100)"></circle>
 <?php endforeach; ?>
+              </g>
               <text class="donut-total" x="100" y="97" text-anchor="middle"><?= $statusTotal ?></text>
               <text class="donut-caption" x="100" y="120" text-anchor="middle">کل گزارش‌ها</text>
             </svg>
@@ -202,7 +208,10 @@ foreach ($chartSegments as $i => $seg) {
 
         <div class="chart-col">
           <h2><i class="fa-solid fa-chart-line"></i> روند ماهانهٔ گزارش‌ها <span style="font-size:12px;font-weight:500;opacity:.7">(ماه‌های شمسی)</span></h2>
-          <svg class="trend-chart" viewBox="0 0 340 165" role="img" aria-label="روند ماهانه گزارش‌ها">
+          <?php /* direction:rtl روی خودِ SVG: متنِ فارسیِ داخلِ نمودار («آبان ۱۴۰۵»)
+                 در جهتِ راست‌به‌چپ چیده می‌شود؛ بدونِ آن، SVG پیش‌فرض ltr است و
+                 برچسب‌ها وارونه دیده می‌شوند. */ ?>
+          <svg class="trend-chart" viewBox="0 0 340 165" role="img" style="direction:rtl" aria-label="روند ماهانه گزارش‌ها">
 <?php
   $tw = 340; $th = 165; $padB = 30; $padT = 18;
   $n = max(1, count($monthly));
@@ -217,13 +226,17 @@ foreach ($chartSegments as $i => $seg) {
   foreach ($monthly as $i => $m) {
       $cnt = (int)$m['count'];
       $h   = ($cnt / $monthlyMax) * $plotH;
-      $x   = $i * $slot + ($slot - $barW) / 2;
+      /* RTL: اولین ماه (قدیمی‌ترین) سمتِ راست و آخرین ماه سمتِ چپ */
+      $x   = $tw - (($i + 1) * $slot) + ($slot - $barW) / 2;
       $y   = $padT + $plotH - $h;
       $cls = $cnt > 0 ? 'trend-bar' : 'trend-bar trend-bar-zero';
       echo '            <rect class="' . $cls . '" x="' . round($x, 1) . '" y="' . round($y, 1)
          . '" width="' . round($barW, 1) . '" height="' . max(2, round($h, 1)) . '" rx="5">'
-         . '<title>' . htmlspecialchars(($m['full'] ?? $m['label']), ENT_QUOTES, 'UTF-8') . ' — ' . $cnt
-         . ' گزارش</title></rect>' . "\n";
+         /* رقمِ راهنمایِ هاور هم فارسی: persian-digits.js عنصرِ <title> را
+            رد می‌کند (تا عنوانِ صفحه‌ها دست‌نخورده بماند)، پس این‌جا خودمان
+            فارسی می‌نویسیم. */
+         . '<title>' . htmlspecialchars(($m['full'] ?? $m['label']), ENT_QUOTES, 'UTF-8') . ' — '
+         . eplakFaDigits((string) $cnt) . ' گزارش</title></rect>' . "\n";
       echo '            <text class="trend-value" x="' . round($x + $barW / 2, 1) . '" y="' . round($y - 5, 1)
          . '" text-anchor="middle">' . $cnt . '</text>' . "\n";
       echo '            <text class="trend-label" x="' . round($x + $barW / 2, 1) . '" y="' . ($th - 10)

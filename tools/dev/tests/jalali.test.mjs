@@ -576,11 +576,12 @@ ok('نمودارِ «روند ماهانهٔ گزارش‌ها» شش برچسب
   dashLabels.length === 6 && dashLabels.every((l) => FA_MONTHS.includes(l)), dashLabels.join(' '));
 ok('باگِ «۰ژوئن۰ژوئیه۰اوت۰سپتامبر۰اکتبر۴نوامبر» رفته: هیچ ماهِ میلادی در داشبورد نیست',
   dashLabels.length > 0 && !dashLabels.some((l) => GREG_MONTHS.test(l)) && !GREG_MONTHS.test(dashText));
+/* رقمِ راهنمایِ هاور هم فارسی است، پس الگو باید [۰-۹] باشد نه \d */
 ok('بازه‌ی نمودار با سالِ شمسی صریح نوشته شده و هر ستون راهنمایِ هاورِ «مهر ۱۴۰۵ — ۱ گزارش» دارد',
   /ماه‌های شمسی/.test(dashText)
-  && /<title>[^<]*[۰-۹]{4} — \d+ گزارش<\/title>/.test(String(dash.html))
+  && /<title>[^<]*[۰-۹]{4} — [۰-۹]+ گزارش<\/title>/.test(String(dash.html))
   && !GREGORIAN.test(dashText),
-  (String(dash && dash.html).match(/<title>[^<]*<\/title>/) || [''])[0]);
+  (String(dash && dash.html).match(/<title>[^<]*گزارش<\/title>/) || [''])[0]);
 
 /* ۵-۲) سطل‌بندی هم شمسی است (نه فقط برچسب‌ها) */
 const monthlyRes = await phpObj('', "['rows' => getReportsMonthly($pdo, 60)]");
@@ -694,6 +695,108 @@ ok('نامِ ماه‌های شمسی یک منبعِ واحد دارد (آما�
   /return eplakFaMonthNames\(\);/.test(read('shared/analytics.php'))
   && /function eplakFaMonthNames\(\): array/.test(read('shared/fa_datetime.php'))
   && (stripComments(read('shared/analytics.php')).match(/'فروردین'/g) || []).length <= 1);
+
+/* ───────────────── ۶) راست‌به‌چپ: نمودارها، دونات و شیتِ اکسل ─────────────────
+   صفحه‌ی پنل dir=rtl است، ولی سه چیز در RTL «برعکس» دیده می‌شد:
+     ۱) نمودارهای SVG: محورِ مقدارها سمتِ چپ و جهتِ زمان چپ→راست (انگلیسی)
+     ۲) متنِ فارسیِ داخلِ SVG با direction پیش‌فرضِ ltr ⇒ «۱۴۰۵ آبان» به‌جای
+        «آبان ۱۴۰۵»
+     ۳) شیتِ اکسلِ خروجی بدونِ rightToLeft باز می‌شد ⇒ ستونِ «شناسه» آن‌ورِ صفحه */
+section('۶) راست‌به‌چپ (RTL): نمودارها، دونات و شیتِ اکسل');
+
+const chartsObj = async (stmts, expr) => pickJson(await run(
+  "require '" + APP + "/shared/fa_datetime.php';\n"
+  + "require '" + APP + "/admin/includes/charts.php';\n"
+  + "require '" + APP + "/admin/includes/xlsx.php';\n"
+  + (stmts || '') + "\necho json_encode(" + expr + ');'));
+const nums = (svg, re) => [...String(svg).matchAll(re)].map((m) => Number(m[1]));
+
+const areaRes = await chartsObj(
+  "$s = [];\nfor ($i = 0; $i < 5; $i++) { $s[] = ['key' => 'k' . $i, 'label' => 'برچسب ' . $i, 'views' => $i + 1, 'uniques' => $i]; }",
+  "['svg' => eplakChartArea($s, ['show_dots' => true])]");
+const areaSvg = (areaRes && areaRes.svg) || '';
+const dots = nums(areaSvg, /class="ega-dot" cx="([\d.]+)"/g);
+ok('نمودارِ سطحی راست‌به‌چپ رسم می‌شود: نقطه‌ی اول (قدیمی‌ترین) سمتِ راست، آخرین سمتِ چپ',
+  dots.length === 5 && dots[0] > dots[4] && dots[0] > 400 && dots[4] < 100, JSON.stringify(dots));
+const yAxis = nums(areaSvg, /class="ega-axis ega-axis-num" x="([\d.]+)"/g);
+ok('محورِ مقدارها سمتِ «راستِ» نمودار است (مثلِ جدولِ فارسی، نه چپ)',
+  yAxis.length === 5 && yAxis.every((x) => x > 450), JSON.stringify(yAxis));
+ok('برچسب‌های محور text-anchor=middle دارند (معنیِ start/end با direction جابه‌جا می‌شود)',
+  areaSvg.includes('text-anchor="middle"') && !/class="ega-axis[^"]*"[^>]*text-anchor="(start|end)"/.test(areaSvg));
+ok('خودِ SVG جهتِ rtl دارد تا «آبان ۱۴۰۵» وارونه چیده نشود',
+  /<svg class="ega-chart ega-area"[^>]*style="direction:rtl"/.test(areaSvg));
+
+const barsRes = await chartsObj(
+  "$s = [];\nfor ($i = 0; $i < 4; $i++) { $s[] = ['label' => 'l' . $i, 'apk' => $i, 'pwa' => 1, 'qr' => 0]; }",
+  "['svg' => eplakChartGroupedBars($s)]");
+const barsX = nums((barsRes && barsRes.svg) || '', /class="ega-bar" x="([\d.]+)"/g);
+ok('ستون‌های گروهی هم راست‌به‌چپ‌اند و داخلِ هر گروه نخستین میله سمتِ راست است',
+  barsX.length >= 4 && barsX[0] > barsX[barsX.length - 1], JSON.stringify(barsX));
+
+const sparkRes = await chartsObj('', "['svg' => eplakChartSpark([1, 5, 3, 9])]");
+const sparkPts = String((sparkRes && sparkRes.svg) || '').match(/points="([^"]+)"/);
+const sparkX = sparkPts ? sparkPts[1].split(' ').map((p) => Number(p.split(',')[0])) : [];
+ok('جرقه‌نمودارِ کارت‌ها هم آینه‌ی RTL است (نخستین مقدار سمتِ راست)',
+  sparkX.length === 4 && sparkX[0] > sparkX[3], JSON.stringify(sparkX));
+
+const donutRes = await chartsObj(
+  "$seg = [['label' => 'موبایل', 'count' => 3, 'color' => '#10b981'], ['label' => 'دسکتاپ', 'count' => 1, 'color' => '#3b82f6']];",
+  "['svg' => eplakChartDonut($seg, ['caption' => 'بازدید'])]");
+const donutSvg = (donutRes && donutRes.svg) || '';
+ok('دونات در RTL آینه شد: قطعه‌ها داخلِ گروهِ scale(-1,1)‌اند (پادساعت‌گرد)',
+  /<g transform="translate\(170,0\) scale\(-1,1\)">/.test(donutSvg)
+  && donutSvg.indexOf('ega-donut-total') > donutSvg.indexOf('</g>'),
+  String(donutSvg.indexOf('</g>')) + '/' + String(donutSvg.indexOf('ega-donut-total')));
+
+/* داشبوردِ واقعی */
+const barsDash = nums(dash ? dash.html : '', /class="trend-bar[^"]*" x="([\d.]+)"/g);
+ok('نمودارِ «روند ماهانهٔ گزارش‌ها» در داشبورد هم راست‌به‌چپ شد (اولین ماه سمتِ راست)',
+  barsDash.length === 6 && barsDash[0] > barsDash[5], JSON.stringify(barsDash));
+ok('دوناتِ داشبورد هم آینه‌ی RTL دارد و SVGهایش direction:rtl گرفتند',
+  /<g transform="translate\(200,0\) scale\(-1,1\)">/.test(String(dash && dash.html))
+  && (String(dash && dash.html).match(/style="direction:rtl"/g) || []).length >= 2);
+ok('رقمِ راهنمایِ هاورِ ستون‌ها فارسی است (<title> را persian-digits.js رد می‌کند)',
+  /<title>[^<]*[۰-۹]{4} — [۰-۹]+ گزارش<\/title>/.test(String(dash && dash.html)),
+  (String(dash && dash.html).match(/<title>[^<]*<\/title>/) || [''])[0]);
+
+/* شیتِ اکسل */
+const xl = await chartsObj(
+  "$w = new EplakXlsxWriter();\n"
+  + "$m = new ReflectionMethod($w, 'worksheet');\n$m->setAccessible(true);\n"
+  + "$xml = $m->invoke($w, [['شناسه', 'تاریخ ثبت'], [1, '۱۴۰۵/۰۸/۲۲ - ساعت ۱۳:۲۴']]);",
+  "['rtl' => strpos($xml, 'rightToLeft=\"1\"') !== false,"
+  + " 'order' => strpos($xml, 'sheetViews') !== false && strpos($xml, 'sheetViews') < strpos($xml, '<sheetData>'),"
+  + " 'jalali' => strpos($xml, '۱۴۰۵/۰۸/۲۲') !== false]");
+ok('شیتِ اکسل «راست‌به‌چپ» ساخته می‌شود (rightToLeft=1) و ترتیبِ OOXML رعایت شده',
+  !!xl && xl.rtl === true && xl.order === true && xl.jalali === true, JSON.stringify(xl));
+
+/* CSS و ورودی‌ها */
+const cssSrc = read('admin/assets/style.css');
+/* بلوکِ همان قاعده جدا استخراج می‌شود؛ وگرنه text-align:leftِ قاعده‌ی
+   «بعدی» در پنجره‌ی جست‌وجو می‌افتاد و آزمون به‌درشتی رد می‌شد. */
+const usersColBlock = (cssSrc.match(/#usersTable td:nth-child\(3\),[\s\S]*?\n\}/) || [''])[0];
+const cardNumBlock = (cssSrc.match(/\.card \.card-number \{[\s\S]*?\n\}/) || [''])[0];
+ok('ستون‌های عددیِ جدولِ کاربران با سرفصلِ RTL تراز شدند (نه لبه‌ی چپِ سلول)',
+  /text-align:\s*right;/.test(usersColBlock) && !/text-align:\s*left;/.test(usersColBlock)
+  && /direction:\s*ltr;/.test(usersColBlock), usersColBlock.replace(/\s+/g, ' ').slice(0, 150));
+ok('عددِ بزرگِ کارت‌ها هم از سمتِ راست شروع می‌شود (کارت RTL است)',
+  /text-align:\s*right;/.test(cardNumBlock), cardNumBlock.replace(/\s+/g, ' ').slice(0, 150));
+const staleCss = fs.readdirSync(path.join(APP, 'admin')).filter((f) => f.endsWith('.php'))
+  .filter((f) => /style\.css\?v=(?!10\b)\d+/.test(read('admin/' + f)));
+ok('کش‌باسترِ style.css در همه‌ی صفحه‌ها بالا رفته تا تغییرِ RTL به مرورگرها برسد',
+  staleCss.length === 0 && /style\.css\?v=10/.test(read('admin/index.php')), staleCss.join(', '));
+ok('ورودیِ تاریخِ خروجی دیگر dir="ltr" ندارد (در فرمِ RTL چپ‌چین دیده می‌شد)',
+  !/id="from"[^>]*dir="ltr"/.test(read('admin/export.php')) && !/id="to"[^>]*dir="ltr"/.test(read('admin/export.php')));
+/* بدونِ توضیح‌ها سنجیده می‌شود: در CSSِ صفحه توضیحی هست که «چرا direction:ltr
+   لازم نیست» را می‌گوید و همان واژه را به‌صورتِ متن دارد. */
+const anSrc = stripComments(read('admin/analytics.php'));
+ok('صفحه‌ی آمار هم راست‌به‌چپ است: خاصیتِ منطقی به‌جای چپ/راستِ فیزیکی و بدونِ direction:ltr روی عددها',
+  !/direction:\s*ltr/.test(anSrc)
+  && (anSrc.match(/text-align:\s*(start|end)|padding-inline-start|margin-inline-start/g) || []).length >= 5,
+  JSON.stringify((anSrc.match(/text-align:\s*(start|end)|padding-inline-start|margin-inline-start/g) || [])));
+ok('جداکننده‌ی هزارگان «بیدی‌امن» ماند: کاما (CS) نه «٬» (AN) — رقمِ فارسی EN است و آمیختنِ EN با AN عدد را وارونه می‌کند',
+  /eplakFaDigits\(number_format\(\$n\)\)/.test(read('admin/includes/charts.php'))
+  && !/\\u\{66C\}/.test(read('admin/includes/charts.php')));
 
 console.log('\n' + '='.repeat(52));
 console.log(`JALALI: ${pass} passed, ${fail} failed`);

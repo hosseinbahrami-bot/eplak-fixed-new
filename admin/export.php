@@ -217,7 +217,7 @@ $statusStats  = getReportsStatusStats($pdo);
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>دریافت خروجی اکسل</title>
-  <link rel="stylesheet" href="assets/style.css?v=9">
+  <link rel="stylesheet" href="assets/style.css?v=10">
   <script src="assets/theme.js?v=7"></script>
   <script src="assets/persian-digits.js?v=6"></script>
   <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
@@ -296,14 +296,14 @@ $statusStats  = getReportsStatusStats($pdo);
 
           <div class="export-field">
             <label for="from">از تاریخ (شمسی)</label>
-            <input type="text" id="from" name="from" inputmode="numeric" dir="ltr"
+            <input type="text" id="from" name="from" inputmode="numeric"
                    value="<?= htmlspecialchars($fromRaw, ENT_QUOTES, 'UTF-8') ?>"
                    placeholder="مثال: <?= htmlspecialchars(function_exists('eplakFaDigits') ? eplakFaDigits('1405/01/01') : '1405/01/01', ENT_QUOTES, 'UTF-8') ?>">
           </div>
 
           <div class="export-field">
             <label for="to">تا تاریخ (شمسی)</label>
-            <input type="text" id="to" name="to" inputmode="numeric" dir="ltr"
+            <input type="text" id="to" name="to" inputmode="numeric"
                    value="<?= htmlspecialchars($toRaw, ENT_QUOTES, 'UTF-8') ?>"
                    placeholder="مثال: <?= htmlspecialchars($todayFa !== '' ? str_replace('/', '/', $todayFa) : '1405/12/29', ENT_QUOTES, 'UTF-8') ?>">
           </div>

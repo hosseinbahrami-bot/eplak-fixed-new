@@ -10,6 +10,17 @@
      ۳) نمودارِ سمتِ سرور یعنی «بدونِ جاوااسکریپت» هم دیده می‌شود، چاپ و
         اسکرین‌شاتِ پوستر تمیز است و آزمونش با PHPِ واقعی ممکن است.
 
+   راست‌به‌چپ (قراردادِ سراسریِ این پنل):
+     • محورِ زمان در همه‌ی نمودارهای کارتزی از «راست» شروع می‌شود و به «چپ»
+       می‌رود (قدیمی‌ترین نقطه سمتِ راست، تازه‌ترین سمتِ چپ) — چون صفحه‌ی پنل
+       dir=rtl است و نمودارِ چپ‌به‌راست در آن «انگلیسی» دیده می‌شود.
+     • محورِ مقدارها (عددِ عمودی) سمتِ «راست» می‌نشیند، نه چپ.
+     • متنِ داخلِ SVG خاصیتِ direction را از <html dir="rtl"> به ارث می‌برد،
+       پس «آبان ۱۴۰۵» درست چیده می‌شود (نه «۱۴۰۵ آبان»).
+     • رقم‌ها فارسی و جداکننده‌ی هزارگان «٬» فارسی است (نه کامای لاتین).
+     • نمودارهای HTML (نقشه‌ی حرارتی، ستون‌های ساعت، میله‌های افقی) با flex
+       در زمینه‌ی RTL خودبه‌خود راست‌به‌چپ چیده می‌شوند.
+
    همه‌ی تابع‌ها «خالص»‌اند: ورودی = داده، خروجی = رشته‌ی HTML/SVG.
    همه‌ی متن‌ها با htmlspecialchars بیرون می‌روند (XSS) و همه‌ی رقم‌ها فارسی‌اند
    (eplakFaDigits) تا با بقیه‌ی پنل یکی باشند.
@@ -30,7 +41,14 @@ function eplakChartEsc($text): string
     return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
 }
 
-/** عدد با جداکننده‌ی هزارگان و رقمِ فارسی */
+/**
+ * عدد با رقمِ فارسی: «۱,۲۳۴».
+ *
+ * چرا جداکننده «٬» (U+066C) نیست؟ چون رقمِ فارسی (U+06F0..U+06F9) کلاسِ bidi‏اش
+ * EN است و «٬» کلاسِ AN؛ آمیختنِ این دو در یک عدد می‌تواند باعثِ وارونه‌چینی شود
+ * («۲۳۴٬۱»). اما کاما کلاسِ CS است و طبقِ قاعده‌ی W4 بینِ دو رقمِ هم‌نوع خودش
+ * EN می‌شود ⇒ «۱,۲۳۴» همیشه یک تکه و درست می‌ماند (در RTL و LTR هر دو).
+ */
 function eplakChartNum($n): string
 {
     $n = (int) $n;
@@ -83,7 +101,8 @@ function eplakChartArea(array $series, array $opts = []): string
 {
     $w  = (int) ($opts['width'] ?? 900);
     $h  = (int) ($opts['height'] ?? 250);
-    $padL = 52; $padR = 16; $padT = 20; $padB = 40;
+    /* RTL: محورِ مقدارها سمتِ راست ⇒ فضایِ برچسب در padR */
+    $padL = 16; $padR = 54; $padT = 20; $padB = 40;
     $plotW = max(10, $w - $padL - $padR);
     $plotH = max(10, $h - $padT - $padB);
     $color = (string) ($opts['color'] ?? '#10b981');
@@ -99,19 +118,19 @@ function eplakChartArea(array $series, array $opts = []): string
     }
     $maxV = eplakChartNiceMax($maxV);
 
-    /* جهتِ زمان چپ→راست، دقیقاً مثلِ «روندِ ماهانه» در داشبوردِ خودِ پنل؛
-       وگرنه دو نمودارِ یک پنل دو جهتِ مخالف داشتند و خواندنشان سخت می‌شد. */
-    $x = static function ($i) use ($n, $padL, $plotW) {
+    /* جهتِ زمان «راست ← چپ»: نقطه‌ی اول (قدیمی‌ترین) سمتِ راست و آخرین
+       (تازه‌ترین) سمتِ چپ، چون صفحه‌ی پنل راست‌به‌چپ است. */
+    $x = static function ($i) use ($n, $padR, $w, $plotW) {
         if ($n === 1) {
-            return $padL + $plotW / 2;
+            return ($w - $padR) - $plotW / 2;
         }
-        return $padL + ($plotW * $i / ($n - 1));
+        return ($w - $padR) - ($plotW * $i / ($n - 1));
     };
     $y = static function ($v) use ($maxV, $padT, $plotH) {
         return $padT + $plotH - ($maxV > 0 ? ($v / $maxV) * $plotH : 0);
     };
 
-    $svg  = '<svg class="ega-chart ega-area" viewBox="0 0 ' . $w . ' ' . $h . '" role="img" '
+    $svg  = '<svg class="ega-chart ega-area" viewBox="0 0 ' . $w . ' ' . $h . '" role="img" style="direction:rtl" '
           . 'aria-label="' . eplakChartEsc($opts['title'] ?? 'نمودارِ روندِ بازدید') . '">' . "\n";
     $svg .= '  <defs><linearGradient id="egaAreaFill" x1="0" y1="0" x2="0" y2="1">'
           . '<stop offset="0%" stop-color="' . $color . '" stop-opacity="0.42"/>'
@@ -124,8 +143,11 @@ function eplakChartArea(array $series, array $opts = []): string
         $gy  = $y($val);
         $svg .= '  <line class="ega-grid" x1="' . $padL . '" y1="' . round($gy, 1) . '" x2="' . ($w - $padR)
               . '" y2="' . round($gy, 1) . '"></line>' . "\n";
-        $svg .= '  <text class="ega-axis" x="' . ($padL - 10) . '" y="' . round($gy + 4, 1) . '" text-anchor="end">'
-              . eplakChartNum($val) . '</text>' . "\n";
+        /* text-anchor="middle" عمداً انتخاب شد: معنیِ start/end با direction
+           جابه‌جا می‌شود (در RTL، «start» یعنی لبه‌ی راست) و برچسبِ محور به
+           داخلِ نمودار می‌ریخت؛ middle در هر دو جهت یکسان است. */
+        $svg .= '  <text class="ega-axis ega-axis-num" x="' . round($w - ($padR / 2) + 2, 1) . '" y="' . round($gy + 4, 1)
+              . '" text-anchor="middle">' . eplakChartNum($val) . '</text>' . "\n";
     }
 
     /* مسیرِ سطح و خط */
@@ -182,7 +204,7 @@ function eplakChartGroupedBars(array $series, array $opts = []): string
 {
     $w = (int) ($opts['width'] ?? 900);
     $h = (int) ($opts['height'] ?? 220);
-    $padL = 52; $padR = 16; $padT = 18; $padB = 42;
+    $padL = 16; $padR = 54; $padT = 18; $padB = 42;   /* RTL: محورِ مقدارها سمتِ راست */
     $plotW = max(10, $w - $padL - $padR);
     $plotH = max(10, $h - $padT - $padB);
     $n = count($series);
@@ -206,18 +228,18 @@ function eplakChartGroupedBars(array $series, array $opts = []): string
     $barW = max(3, min(18, ($slot * 0.72) / max(1, count($groups))));
     $step = eplakChartLabelStep($n, 10);
 
-    $svg  = '<svg class="ega-chart ega-bars" viewBox="0 0 ' . $w . ' ' . $h . '" role="img" '
+    $svg  = '<svg class="ega-chart ega-bars" viewBox="0 0 ' . $w . ' ' . $h . '" role="img" style="direction:rtl" '
           . 'aria-label="' . eplakChartEsc($opts['title'] ?? 'نمودارِ دانلودها') . '">' . "\n";
     for ($g = 0; $g <= 4; $g++) {
         $val = (int) round($maxV * $g / 4);
         $gy  = $padT + $plotH - ($maxV > 0 ? ($val / $maxV) * $plotH : 0);
         $svg .= '  <line class="ega-grid" x1="' . $padL . '" y1="' . round($gy, 1) . '" x2="' . ($w - $padR)
               . '" y2="' . round($gy, 1) . '"></line>' . "\n";
-        $svg .= '  <text class="ega-axis" x="' . ($padL - 10) . '" y="' . round($gy + 4, 1) . '" text-anchor="end">'
-              . eplakChartNum($val) . '</text>' . "\n";
+        $svg .= '  <text class="ega-axis ega-axis-num" x="' . round($w - ($padR / 2) + 2, 1) . '" y="' . round($gy + 4, 1)
+              . '" text-anchor="middle">' . eplakChartNum($val) . '</text>' . "\n";
     }
     foreach ($series as $i => $row) {
-        $cx = $padL + ($slot * $i + $slot / 2);
+        $cx = ($w - $padR) - ($slot * $i + $slot / 2);   /* RTL: از راست به چپ */
         $total = 0;
         foreach ($groups as $gi => $g) {
             $v = (int) ($row[$g['key']] ?? 0);
@@ -226,7 +248,8 @@ function eplakChartGroupedBars(array $series, array $opts = []): string
             if ($bh <= 0) {
                 continue;
             }
-            $bx = $cx - ($barW * count($groups) / 2) + $gi * $barW;
+            /* داخلِ هر گروه هم راست‌به‌چپ: اولین گروه (APK) سمتِ راست */
+            $bx = $cx + ($barW * count($groups) / 2) - (($gi + 1) * $barW);
             $svg .= '  <rect class="ega-bar" x="' . round($bx + 0.8, 1) . '" y="' . round($padT + $plotH - $bh, 1)
                   . '" width="' . round($barW - 1.6, 1) . '" height="' . round(max(2, $bh), 1) . '" rx="3" fill="'
                   . eplakChartEsc($g['color']) . '"><title>' . eplakChartEsc($row['label'] ?? '') . ' — '
@@ -258,9 +281,13 @@ function eplakChartDonut(array $segments, array $opts = []): string
     }
     $caption = (string) ($opts['caption'] ?? 'کل');
     $r = 62; $c = 2 * M_PI * $r; $offset = 0.0;
-    $svg  = '<div class="ega-donut-wrap"><svg class="ega-donut" viewBox="0 0 170 170" role="img" '
+    $svg  = '<div class="ega-donut-wrap"><svg class="ega-donut" viewBox="0 0 170 170" role="img" style="direction:rtl" '
           . 'aria-label="' . eplakChartEsc($opts['title'] ?? 'نمودارِ دایره‌ای') . '">' . "\n";
     $svg .= '  <circle class="ega-donut-track" cx="85" cy="85" r="' . $r . '" fill="none" stroke-width="22"></circle>' . "\n";
+    /* آینه‌ی راست‌به‌چپ: قطعه‌ها از ساعتِ ۱۲ پادساعت‌گرد می‌روند تا با ترتیبِ
+       راهنما (که در RTL از راست شروع می‌شود) هم‌خوان باشند. متنِ وسط بیرونِ
+       این گروه می‌ماند تا وارونه نشود. */
+    $svg .= '  <g transform="translate(170,0) scale(-1,1)">' . "\n";
     if ($total > 0) {
         foreach ($segments as $s) {
             $cnt = (int) ($s['count'] ?? 0);
@@ -277,6 +304,7 @@ function eplakChartDonut(array $segments, array $opts = []): string
             $offset += $len;
         }
     }
+    $svg .= '  </g>' . "\n";
     $svg .= '  <text class="ega-donut-total" x="85" y="83" text-anchor="middle">' . eplakChartNum($total) . '</text>' . "\n";
     $svg .= '  <text class="ega-donut-caption" x="85" y="104" text-anchor="middle">' . eplakChartEsc($caption) . '</text>' . "\n";
     $svg .= '</svg><ul class="ega-legend">' . "\n";
@@ -339,6 +367,8 @@ function eplakChartHeatmap(array $cells, int $max, array $opts = []): string
     $order = function_exists('eplakAnalyticsWeekdayOrder') ? eplakAnalyticsWeekdayOrder() : [6, 7, 1, 2, 3, 4, 5];
     $color = (string) ($opts['color'] ?? '#10b981');
 
+    /* چیدمانِ HTML در زمینه‌ی dir=rtl خودبه‌خود راست‌به‌چپ است: نامِ روزها
+       سمتِ راست، ساعتِ ۰ سمتِ راست و ساعتِ ۲۳ سمتِ چپ. */
     $html  = '<div class="ega-heat"><div class="ega-heat-hours">' . "\n";
     for ($h = 0; $h < 24; $h++) {
         $html .= '    <span>' . ($h % 3 === 0 ? eplakChartNum($h) : '') . '</span>' . "\n";
@@ -356,7 +386,8 @@ function eplakChartHeatmap(array $cells, int $max, array $opts = []): string
         }
         $html .= '  </span></div>' . "\n";
     }
-    $html .= '  <div class="ega-heat-scale"><span>کم</span><span class="ega-heat-ramp" style="background:linear-gradient(90deg,'
+    /* پلکانِ «کم ← زیاد» در RTL از راست شروع می‌شود ⇒ گرادیان هم برگردانده شد */
+    $html .= '  <div class="ega-heat-scale"><span>کم</span><span class="ega-heat-ramp" style="background:linear-gradient(270deg,'
           . eplakChartEsc($color) . '22,' . eplakChartEsc($color) . ')"></span><span>زیاد</span>'
           . '<em>بیشینه: ' . eplakChartNum($max) . ' رویداد در یک ساعت</em></div>' . "\n</div>";
     return $html;
@@ -398,11 +429,11 @@ function eplakChartSpark(array $values, array $opts = []): string
     $last = count($values) - 1;
     $pts = [];
     foreach ($values as $i => $v) {
-        $x = $last > 0 ? ($w * $i / $last) : $w / 2;
+        $x = $last > 0 ? ($w - ($w * $i / $last)) : $w / 2;   /* RTL: از راست به چپ */
         $y = $h - 2 - (($v / $max) * ($h - 6));
         $pts[] = round($x, 1) . ',' . round($y, 1);
     }
-    $lastX = $last > 0 ? $w : $w / 2;
+    $lastX = $last > 0 ? 0 : $w / 2;
     $lastY = $h - 2 - (($values[$last] / $max) * ($h - 6));
     return '<svg class="ega-spark" viewBox="0 0 ' . $w . ' ' . $h . '" aria-hidden="true">'
         . '<polyline points="' . implode(' ', $pts) . '" fill="none" stroke="' . eplakChartEsc($color)

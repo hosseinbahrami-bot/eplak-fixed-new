@@ -139,8 +139,15 @@ class EplakXlsxWriter
 
     private function worksheet(array $rows): string
     {
+        /* rightToLeft="1" ⇒ شیت در Excel/LibreOffice «راست‌به‌چپ» باز می‌شود:
+           ستونِ A سمتِ راست و ستون‌های بعدی به سمتِ چپ، دقیقاً مثلِ جدولِ فارسیِ
+           روی صفحه. بدونِ این، فایلِ اکسلِ گزارش‌ها چپ‌به‌راست باز می‌شد و
+           ستونِ «شناسه» آن‌ورِ صفحه می‌افتاد.
+           ترتیبِ اجزا طبقِschema  اکسل است: sheetViews پیش از sheetData. */
         $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            . '<sheetViews><sheetView rightToLeft="1" workbookViewId="0"/></sheetViews>'
+            . '<sheetData>';
 
         $r = 1;
         foreach ($rows as $row) {

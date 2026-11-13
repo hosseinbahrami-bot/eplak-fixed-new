@@ -508,5 +508,43 @@ ok('آزمون در فهرستِ run-regression.sh و در بررسی‌های �
 ok('هیچ هشدار/اخطار/خطای PHP در پاسخ‌های پنل و API دیده نشد (display_errors روشن، E_ALL)',
   phpNoise.length === 0, phpNoise.slice(0, 3).join(' | '));
 
+/* ══════════════════════════════════════════════════════════════════
+   ۹) راست‌به‌چپ: نمودارها، خروجیِ اکسل و چیدمانِ صفحه
+   ══════════════════════════════════════════════════════════════════ */
+section('۹) راست‌به‌چپ (RTL): نمودارها و خروجیِ اکسل');
+const rtlPage = await sup.get('/admin/analytics.php?range=30&g=day');
+ok('صفحه‌ی آمار ۲۰۰ و بدونِ خطای PHP', rtlPage.status === 200 && !/Fatal error|Warning:|Notice:/.test(rtlPage.text), String(rtlPage.status));
+ok('همه‌ی نمودارهای SVG جهتِ rtl دارند (برچسبِ «آبان ۱۴۰۵» وارونه چیده نمی‌شود)',
+  (rtlPage.text.match(/<svg class="ega-chart[^>]*style="direction:rtl"/g) || []).length >= 2
+  && (rtlPage.text.match(/style="direction:rtl"/g) || []).length >= 3,
+  String((rtlPage.text.match(/style="direction:rtl"/g) || []).length));
+const dotX = [...rtlPage.text.matchAll(/class="ega-dot" cx="([\d.]+)"/g)].map((m) => Number(m[1]));
+ok('نمودارِ روندِ بازدید راست‌به‌چپ است: روزِ اول سمتِ راست و امروز سمتِ چپ',
+  dotX.length >= 10 && dotX[0] > dotX[dotX.length - 1] && dotX[0] > 500 && dotX[dotX.length - 1] < 200,
+  JSON.stringify([dotX[0], dotX[dotX.length - 1]]));
+const yAxisX = [...rtlPage.text.matchAll(/class="ega-axis ega-axis-num" x="([\d.]+)"/g)].map((m) => Number(m[1]));
+ok('محورِ مقدارها سمتِ راستِ نمودار نشسته (مثلِ جدولِ فارسی)',
+  yAxisX.length >= 5 && yAxisX.every((x) => x > 500), JSON.stringify(yAxisX.slice(0, 3)));
+ok('نقشه‌ی حرارتی و ستون‌های ساعت با خاصیتِ منطقیِ RTL چیده شده‌اند (ستونِ روزها سمتِ راست)',
+  /padding-inline-start:74px/.test(rtlPage.text) && (rtlPage.text.match(/class="ega-heat-row"/g) || []).length === 7);
+ok('هیچ direction:ltr روی ظرفِ عددها نمانده (چیدمان یکدستِ RTL)',
+  !/direction:\s*ltr/.test(rtlPage.text.replace(/\/\*[\s\S]*?\*\//g, '')));
+ok('دکمه‌ی «خروجیِ اکسل (راست‌به‌چپ)» در نوارِ ابزار هست',
+  /export=xlsx/.test(rtlPage.text) && /خروجیِ اکسل \(راست‌به‌چپ\)/.test(rtlPage.text));
+const xl = await sup.get('/admin/analytics.php?range=365&export=xlsx');
+/* نکته: download() بافرِ خروجی را می‌بندد و در php-wasm بدنه دیده نمی‌شود؛
+   سرآیندها اما همان‌اند که در هاستِ واقعی می‌فرستد. */
+ok('خروجیِ اکسلِ آمار ۲۰۰ و از نوعِ xlsx است با نامِ فایلِ شمسی',
+  xl.status === 200 && /spreadsheetml/.test(hdr(xl, 'content-type'))
+  && /attachment; filename="eplak-analytics-\d{4}-\d{2}-\d{2}\.xlsx"/.test(hdr(xl, 'content-disposition')),
+  hdr(xl, 'content-type') + ' | ' + hdr(xl, 'content-disposition'));
+/* نکته‌ی محیطِ آزمون: php-wasm «یک نشست در حافظه» دارد و ورودِ دوباره‌ی مدیرِ کل
+   در بخشِ ۷، هویتِ نشست را عوض کرده است ⇒ همین‌جا دوباره به‌عنوان مدیرِ حوزه
+   وارد می‌شویم (در هاستِ واقعی هر کوکی نشستِ خودش را دارد). */
+await req('POST', '/admin/login.php', DEPT, { username: 'an-dept-admin', password: 'AnTest1403' });
+const deptXl = await dept.get('/admin/analytics.php?export=xlsx');
+ok('خروجیِ اکسل هم برایِ مدیرِ حوزه بسته است (۴۰۳)', deptXl.status === 403, String(deptXl.status));
+r = await req('POST', '/admin/login.php', SUP, { username: 'admin', password: 'admin123' });
+
 console.log(`\nنتیجهٔ ANALYTICS: ${pass} موفق، ${fail} ناموفق`);
 process.exit(fail ? 1 : 0);
