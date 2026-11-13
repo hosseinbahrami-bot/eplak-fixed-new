@@ -232,33 +232,85 @@ function getReportsByDepartment(PDO $pdo, int $limit = 8): array
     return $out;
 }
 
-/** روند ماهانهٔ گزارش‌ها — ماه‌های بدون گزارش هم با صفر نمایش داده می‌شوند */
-function getReportsMonthly(PDO $pdo, int $months = 6): array
+/**
+ * شمارشِ گزارش‌ها در «سطل‌های ماهِ شمسی».
+ * @param iterable $rows ردیف‌هایی با کلید created_at (یا رشته‌ی تاریخ)
+ * @return array<string,int> کلیدِ شمسی ('1405-08') ⇒ تعداد
+ */
+function eplakJalaliMonthCounts($rows): array
 {
-    $raw = $pdo->query("SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COUNT(*) AS cnt
-                        FROM reports
-                        WHERE created_at IS NOT NULL AND created_at > '0001-01-01'
-                        GROUP BY ym")->fetchAll();
-    $map = [];
-    foreach ($raw as $r) { $map[(string)$r['ym']] = (int)$r['cnt']; }
+    $counts = [];
+    foreach ($rows as $row) {
+        $raw = is_array($row) ? ($row['created_at'] ?? '') : $row;
+        $key = eplakJalaliMonthKey($raw);
+        if ($key === '') {
+            continue;                       /* تاریخِ خالی/خراب شمرده نمی‌شود */
+        }
+        $counts[$key] = (int) ($counts[$key] ?? 0) + 1;
+    }
+    return $counts;
+}
 
-    $names = ['ژانویه', 'فوریه', 'مارس', 'آوریل', 'مه', 'ژوئن',
-              'ژوئیه', 'اوت', 'سپتامبر', 'اکتبر', 'نوامبر', 'دسامبر'];
-
+/**
+ * شکلِ خروجیِ «روندِ ماهانه» — یک قالب برای هر دو مسیر (مدیر کل و مدیرِ حوزه)
+ * تا نمودارِ داشبورد یک منبع داشته باشد:
+ *   ['key'=>'1405-08', 'label'=>'آبان', 'full'=>'آبان ۱۴۰۵', 'year'=>1405,
+ *    'month'=>8, 'count'=>4]
+ */
+function eplakMonthlyShape(array $window, array $counts): array
+{
     $out = [];
-    $cursor = new DateTime('first day of this month');
-    $cursor->modify('-' . ($months - 1) . ' months');
-    for ($i = 0; $i < $months; $i++) {
-        $key = $cursor->format('Y-m');
+    foreach ($window as $w) {
         $out[] = [
-            'key'   => $key,
-            'label' => $names[(int)$cursor->format('n') - 1],
-            'year'  => (int)$cursor->format('Y'),
-            'count' => $map[$key] ?? 0,
+            'key'   => (string) $w['key'],
+            'label' => (string) $w['label'],
+            'full'  => (string) $w['full'],
+            'year'  => (int) $w['jy'],
+            'month' => (int) $w['jm'],
+            'count' => (int) ($counts[$w['key']] ?? 0),
         ];
-        $cursor->modify('+1 month');
     }
     return $out;
+}
+
+/**
+ * روندِ ماهانهٔ گزارش‌ها — ماه‌های بدون گزارش هم با صفر نمایش داده می‌شوند.
+ *
+ * ⚠ سطل‌ها و برچسب‌ها «شمسی»‌اند (۱۴۰۵/۰۸ = آبان)، نه میلادی. دو دلیل:
+ *   ۱) نسخه‌ی قبلی برچسب را از آرایه‌ی «ژانویه … دسامبر» می‌گرفت و سطل‌ها را با
+ *      DATE_FORMAT('%Y-%m') میلادی می‌ساخت ⇒ نمودارِ داشبورد برایِ مدیر
+ *      «۰ژوئن ۰ژوئیه ۰اوت ۰سپتامبر ۰اکتبر ۴نوامبر» نشان می‌داد.
+ *   ۲) ترجمه‌ی نام‌ها به‌تنهایی کافی نبود: هر ماهِ شمسی با دو ماهِ میلادی
+ *      هم‌پوشانی دارد، پس خودِ گروه‌بندی هم باید شمسی شود وگرنه شمارِ هر ستون
+ *      غلط می‌ماند.
+ * گروه‌بندی در PHP انجام می‌شود (نه در SQL) تا روی MySQL و SQLite یکسان باشد؛
+ * DATE_FORMAT هم که مخصوصِ MySQL بود کاملاً کنار رفت.
+ */
+function getReportsMonthly(PDO $pdo, int $months = 6): array
+{
+    $todayDb = function_exists('eplakDbNowString') ? eplakDbNowString($pdo) : null;
+    $window  = eplakJalaliMonthWindow($months, $todayDb);
+    if (!$window) {
+        return [];
+    }
+    $from = (string) $window[0]['gfrom'];
+    $to   = (string) $window[count($window) - 1]['gto'];
+
+    try {
+        if ($from !== '' && $to !== '') {
+            /* فقط ردیف‌های داخلِ بازه خوانده می‌شوند (کوئری سبک می‌ماند) */
+            $st = $pdo->prepare('SELECT created_at FROM reports
+                                 WHERE created_at IS NOT NULL AND created_at >= ? AND created_at <= ?');
+            $st->execute([$from . ' 00:00:00', $to . ' 23:59:59']);
+        } else {
+            $st = $pdo->query("SELECT created_at FROM reports
+                               WHERE created_at IS NOT NULL AND created_at > '0001-01-01'");
+        }
+        $counts = eplakJalaliMonthCounts($st->fetchAll(PDO::FETCH_ASSOC));
+    } catch (Throwable $e) {
+        $counts = [];                       /* جدول نیست ⇒ نمودارِ صفر، نه خطا */
+    }
+    return eplakMonthlyShape($window, $counts);
 }
 
 /* آمار وضعیت گزارش‌ها برای نمودار */
@@ -1693,44 +1745,20 @@ function getScopedReportsByDepartment(array $scopedReports, int $limit = 8): arr
 }
 
 /**
- * روند ماهانه از ردیف‌های در دامنه — در PHP حساب می‌شود تا روی هر دو درایور
- * (MySQL و SQLite) یکسان باشد؛ getReportsMonthly از DATE_FORMAT استفاده می‌کند
- * که مخصوص MySQL است. شکلِ خروجی دقیقاً همان است.
+ * روندِ ماهانه از ردیف‌های «در دامنه‌ی مدیرِ حوزه» — شکلِ خروجی و برچسب‌ها
+ * دقیقاً همان getReportsMonthly است (شمسی)، فقط داده‌ها از ردیف‌های فیلترشده
+ * می‌آیند نه از کلِ جدول.
+ *
+ * @param string|null $todayDb «اکنون» با ساعتِ خودِ دیتابیس تا سطلِ «این ماه»
+ *        با ساعاتِ ثبت‌شده در دیتابیس هم‌مرز باشد (SQLite ساعتِ UTC می‌نویسد).
  */
-function getScopedReportsMonthly(array $scopedReports, int $months = 6): array
+function getScopedReportsMonthly(array $scopedReports, int $months = 6, ?string $todayDb = null): array
 {
-    $months = max(1, $months);
-    $map = [];
-    foreach ($scopedReports as $row) {
-        $raw = trim((string) ($row['created_at'] ?? ''));
-        if ($raw === '' || strpos($raw, '0001-01-01') === 0) {
-            continue;
-        }
-        $ts = strtotime($raw);
-        if ($ts === false) {
-            continue;
-        }
-        $key = date('Y-m', $ts);
-        $map[$key] = (int) ($map[$key] ?? 0) + 1;
+    $window = eplakJalaliMonthWindow($months, $todayDb);
+    if (!$window) {
+        return [];
     }
-
-    $names = ['ژانویه', 'فوریه', 'مارس', 'آوریل', 'مه', 'ژوئن',
-              'ژوئیه', 'اوت', 'سپتامبر', 'اکتبر', 'نوامبر', 'دسامبر'];
-
-    $out = [];
-    $cursor = new DateTime('first day of this month');
-    $cursor->modify('-' . ($months - 1) . ' months');
-    for ($i = 0; $i < $months; $i++) {
-        $key = $cursor->format('Y-m');
-        $out[] = [
-            'key'   => $key,
-            'label' => $names[(int) $cursor->format('n') - 1],
-            'year'  => (int) $cursor->format('Y'),
-            'count' => (int) ($map[$key] ?? 0),
-        ];
-        $cursor->modify('+1 month');
-    }
-    return $out;
+    return eplakMonthlyShape($window, eplakJalaliMonthCounts($scopedReports));
 }
 
 /**

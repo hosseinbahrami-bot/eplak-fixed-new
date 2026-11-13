@@ -90,8 +90,23 @@ if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST') {
     }
 }
 
-/* ── خروجیِ CSV (پیش از هر HTML) ───────────────────────────────────────── */
-if ((string) ($_GET['export'] ?? '') === 'csv') {
+/* ── خروجیِ اکسل / CSV (پیش از هر HTML) ──────────────────────────────────
+   اکسل نخستین گزینه است چون شیتِ آن «راست‌به‌چپ» ساخته می‌شود
+   (admin/includes/xlsx.php ⇒ sheetView rightToLeft="1") و ستونِ اول سمتِ راست
+   می‌نشیند؛ CSV هیچ نشانه‌ای برای جهت ندارد و در اکسل چپ‌به‌راست باز می‌شود. */
+$exportKind = (string) ($_GET['export'] ?? '');
+if ($exportKind === 'xlsx') {
+    require_once __DIR__ . '/includes/xlsx.php';
+    $xrows = eplakAnalyticsCsvRows($pdo, $range['from'], $range['to']);
+    array_unshift($xrows, eplakAnalyticsCsvHead());
+    $writer = new EplakXlsxWriter();
+    $writer->addSheet('آمارِ سایت', $xrows);
+    $writer->download(
+        'آمار-سایت-' . eplakFaDigits(eplakJalaliIsoDate()) . '.xlsx',
+        'eplak-analytics-' . eplakJalaliIsoDate() . '.xlsx'
+    );
+}
+if ($exportKind === 'csv') {
     $csvRows = eplakAnalyticsCsvRows($pdo, $range['from'], $range['to']);
     /* نکته: بافرِ خروجی را «پاک» نمی‌کنیم؛ بعضی محیط‌ها (مثلِ php-wasm در
        آزمون‌ها) پاسخ را در همان بافر می‌گیرند و ob_end_clean بدنهِ CSV را
@@ -102,7 +117,10 @@ if ((string) ($_GET['export'] ?? '') === 'csv') {
         exit;
     }
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="eplak-analytics-' . $range['from'] . '_to_' . $range['to'] . '.csv"');
+    /* نامِ فایل شمسی باشد (رقمِ لاتین تا ASCII بماند): eplak-analytics-1404-08-22_to_1405-08-22.csv */
+    $csvFrom = function_exists('eplakJalaliIsoDate') ? eplakJalaliIsoDate($range['from'] . ' 12:00:00') : $range['from'];
+    $csvTo   = function_exists('eplakJalaliIsoDate') ? eplakJalaliIsoDate($range['to'] . ' 12:00:00') : $range['to'];
+    header('Content-Disposition: attachment; filename="eplak-analytics-' . $csvFrom . '_to_' . $csvTo . '.csv"');
     header('Cache-Control: no-store, no-cache, must-revalidate');
     header('X-Content-Type-Options: nosniff');
     echo "\xEF\xBB\xBF";                 /* BOM تا اکسلِ ویندوز فارسی را درست بخواند */
@@ -193,7 +211,7 @@ $esc = static function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, '
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>آمارِ سایت و دانلودها — پنل مدیریت ای‌پلاک</title>
-  <link rel="stylesheet" href="assets/style.css?v=9">
+  <link rel="stylesheet" href="assets/style.css?v=10">
   <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
   <script src="assets/theme.js?v=7"></script>
   <script src="assets/persian-digits.js?v=6"></script>
@@ -210,7 +228,10 @@ $esc = static function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, '
     .ega-card{position:relative;display:flex;flex-direction:column;gap:4px;overflow:hidden}
     .ega-card h3{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--dark-500);margin:0 0 6px}
     .ega-card h3 i{width:34px;height:34px;border-radius:var(--radius-md);display:grid;place-items:center;font-size:15px;background:var(--primary-50);color:var(--primary-600)}
-    .ega-card .ega-value{font-size:28px;font-weight:800;color:var(--dark-900);margin:0;direction:ltr;text-align:right}
+    /* عددِ بزرگِ کارت: در چیدمانِ RTL از سمتِ راست شروع می‌شود. direction:ltr
+       لازم نیست — رقمِ فارسی با جداکننده‌اش یک «رانِ عددی» است و الگوریتمِ
+       bidi خودش ترتیبش را درست نگه می‌دارد. */
+    .ega-card .ega-value{font-size:28px;font-weight:800;color:var(--dark-900);margin:0;text-align:start}
     .ega-card .ega-sub{font-size:12px;color:var(--dark-500);margin:2px 0 0}
     .ega-spark{width:100%;height:34px;display:block;margin-top:auto;opacity:.95}
     .ega-delta{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:2px 10px;border-radius:var(--radius-full);margin-top:6px;width:max-content}
@@ -236,24 +257,26 @@ $esc = static function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, '
     .ega-dot-lg{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
     .ega-lg-label{flex:1}
     .ega-lg-count{font-weight:700;color:var(--dark-900)}
-    .ega-lg-pct{color:var(--dark-500);font-size:12px;min-width:44px;text-align:left}
+    .ega-lg-pct{color:var(--dark-500);font-size:12px;min-width:44px;text-align:end}
     .ega-hbar-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
     .ega-hbar-list li{display:flex;align-items:center;gap:12px}
     .ega-hbar-label{flex:0 0 132px;font-size:13px;color:var(--dark-700);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .ega-hbar-track{flex:1;height:11px;border-radius:999px;background:var(--dark-100);overflow:hidden;min-width:40px}
     .ega-hbar-fill{display:block;height:100%;border-radius:999px}
-    .ega-hbar-count{font-weight:700;font-size:13px;color:var(--dark-900);min-width:52px;text-align:left;direction:ltr}
-    .ega-hbar-share{font-size:12px;color:var(--dark-500);min-width:44px;text-align:left}
+    .ega-hbar-count{font-weight:700;font-size:13px;color:var(--dark-900);min-width:52px;text-align:end}
+    .ega-hbar-share{font-size:12px;color:var(--dark-500);min-width:44px;text-align:end}
     .ega-heat{display:flex;flex-direction:column;gap:6px;overflow-x:auto;padding-bottom:6px}
-    .ega-heat-hours{display:flex;gap:3px;padding-right:74px}
+    /* در RTL، ستونِ نامِ روزها سمتِ راست است ⇒ سرفصلِ ساعت‌ها هم از همان
+       سمت باید به اندازه‌ی همان ستون تورفتگی بگیرد (خاصیتِ منطقی، نه فیزیکی) */
+    .ega-heat-hours{display:flex;gap:3px;padding-inline-start:74px}
     .ega-heat-hours span{flex:1;min-width:15px;text-align:center;font-size:10px;color:var(--dark-500)}
     .ega-heat-row{display:flex;align-items:center;gap:3px}
-    .ega-heat-day{flex:0 0 71px;font-size:12px;color:var(--dark-600);text-align:left}
+    .ega-heat-day{flex:0 0 71px;font-size:12px;color:var(--dark-600);text-align:end}
     .ega-heat-cells{display:flex;gap:3px;flex:1}
     .ega-heat-cells i{flex:1;min-width:15px;height:22px;border-radius:5px;display:block}
     .ega-heat-scale{display:flex;align-items:center;gap:9px;margin-top:8px;font-size:12px;color:var(--dark-500)}
     .ega-heat-ramp{width:120px;height:9px;border-radius:999px;display:inline-block}
-    .ega-heat-scale em{font-style:normal;margin-right:auto}
+    .ega-heat-scale em{font-style:normal;margin-inline-start:auto}
     .ega-hours{display:flex;align-items:flex-end;gap:4px;height:130px;padding:0 2px}
     .ega-hour{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;height:100%}
     .ega-hour i{width:100%;border-radius:5px 5px 2px 2px;display:block;min-height:3px;opacity:.85}
@@ -266,7 +289,7 @@ $esc = static function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, '
     .ega-stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
     .ega-stat{padding:15px 17px;border:1px solid var(--ch-border,var(--dark-100));border-radius:var(--radius-lg,14px);background:var(--ch-card,var(--dark-50))}
     .ega-stat span{display:block;font-size:12px;color:var(--dark-500);margin-bottom:5px}
-    .ega-stat strong{font-size:21px;font-weight:800;color:var(--dark-900);direction:ltr;display:inline-block}
+    .ega-stat strong{font-size:21px;font-weight:800;color:var(--dark-900);display:inline-block}
     .ega-stat small{display:block;font-size:11px;color:var(--dark-400);margin-top:4px}
     .ega-tag{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:var(--radius-full);font-size:11.5px;font-weight:700}
     .ega-tag-view{background:var(--primary-50,#e0f2fe);color:var(--primary-600)}
@@ -317,8 +340,11 @@ $esc = static function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, '
           </div>
           <div class="panel-actions">
             <span class="ega-live"><i></i> الان آنلاین: <?= eplakChartNum($online) ?></span>
+            <a class="btn btn-outline btn-sm" href="?range=<?= $esc($rangeKey) ?>&amp;g=<?= $esc($g) ?>&amp;export=xlsx">
+              <i class="fa-solid fa-file-excel"></i> خروجیِ اکسل (راست‌به‌چپ)
+            </a>
             <a class="btn btn-outline btn-sm" href="?range=<?= $esc($rangeKey) ?>&amp;g=<?= $esc($g) ?>&amp;export=csv">
-              <i class="fa-solid fa-file-csv"></i> خروجیِ CSV
+              <i class="fa-solid fa-file-csv"></i> CSV
             </a>
           </div>
         </div>
@@ -630,7 +656,7 @@ $esc = static function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, '
         <div class="divider"><span style="flex:1;height:1px;background:var(--dark-100);display:block"></span></div>
 
         <h2 style="font-size:15px;margin:0 0 12px"><i class="fa-solid fa-circle-question"></i> این آمار چطور کار می‌کند</h2>
-        <ul class="ega-note" style="margin:0;padding-right:20px">
+        <ul class="ega-note" style="margin:0;padding-inline-start:20px">
           <li><strong>گردآوری:</strong> سایتِ معرفی (index.html در <code>public_html</code>) هر بازدید و هر کلیکِ
             دانلود/QR را با <code>navigator.sendBeacon</code> به
             <code>/eplak-fixed/api/track.php</code> می‌فرستد. اگر آن بسته آپلود نشده باشد، آمارِ سایت خالی می‌ماند

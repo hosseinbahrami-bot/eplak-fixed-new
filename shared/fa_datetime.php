@@ -335,3 +335,251 @@ function eplakFaNow(bool $withTime = true): string
     }
     return eplakJalaliStamp($dt, $withTime);
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ماه‌های شمسی، تبدیلِ معکوس (شمسی ← میلادی) و پنجره‌ی ماهانه
+   ────────────────────────────────────────────────────────────────────────────
+   چرا این بخش لازم شد؟
+   نمودارِ «روند ماهانهٔ گزارش‌ها» در داشبورد، برچسبِ ماه‌ها را از آرایه‌ی
+   «ژانویه … دسامبر» می‌گرفت و سطل‌ها را هم با DATE_FORMAT('%Y-%m') میلادی
+   می‌ساخت؛ نتیجه روی صفحه‌ی مدیر این بود: «۰ژوئن ۰ژوئیه ۰اوت ۰سپتامبر
+   ۰اکتبر ۴نوامبر». تنها عوض‌کردنِ نام‌ها کافی نبود: هر ماهِ شمسی با دو ماهِ
+   میلادی هم‌پوشانی دارد، پس «گروه‌بندی» هم باید شمسی شود وگرنه شمارِ هر ستون
+   غلط می‌ماند.
+
+   نکته‌ی طراحیِ تبدیلِ معکوس:
+   الگوریتمِ بسته‌formِ شمسی←میلادی روی بازه‌های زمانیِ دور، روزها را جابه‌جا
+   می‌کند (در آزمونِ ۲۹٬۰۰۰ روزه، ۱۴٬۹۵۷ خطا داشت). پس اینجا «حدس + تصحیح»
+   استفاده می‌شود: یک حدسِ تقریبی از روزِ میلادی زده می‌شود و سپس با همین
+   eplakGregorianToJalali() (که مرجعِ کلِ سامانه است) سنجیده و پله‌پله دقیق
+   می‌شود. یعنی نتیجه «به‌طورِ سازنده‌ای» با تابعِ رفت هم‌خوان است و هیچ
+   قانونِ کبیسه‌ی دومی در کد وجود ندارد که بتواند از آن جدا بیفتد.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/** نامِ ماه‌های شمسی — یک منبع برای همه‌ی نمودارها، خروجی‌ها و برچسب‌ها */
+function eplakFaMonthNames(): array
+{
+    return ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+            'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+}
+
+/**
+ * شماره‌ی روزِ «تقریبی و یکنوا» در تقویمِ شمسی — فقط برایِ پیمایش/حدس.
+ * صحتِ نهایی هرگز به این تابع تکیه نمی‌کند (با eplakGregorianToJalali سنجیده
+ * می‌شود)، پس تقریبی بودنش بی‌ضرر است.
+ */
+function eplakJalaliApproxDays(int $jy, int $jm, int $jd): int
+{
+    $jm = max(1, min(12, $jm));
+    $cum = 0;
+    $mDays = [0, 31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30];
+    for ($i = 1; $i < $jm; $i++) {
+        $cum += $mDays[$i];
+    }
+    /* چرخه‌ی ۳۳ ساله با ۸ سالِ کبیسه — همان تقریبی که jalaali استفاده می‌کند */
+    $leaps = intdiv($jy, 33) * 8 + intdiv(($jy % 33) + 3, 4);
+    return ($jy * 365) + $leaps + $cum + $jd;
+}
+
+/**
+ * تبدیلِ شمسی ← میلادی (معکوسِ eplakGregorianToJalali).
+ * روش: حدسِ تقریبی از یک لنگرِ مطمئن، سپس تصحیحِ پله‌ای با خودِ تابعِ رفت.
+ * حتی اگر لنگر اشتباه باشد، حلقه‌ی تصحیح نتیجه را دقیق می‌کند.
+ *
+ * @return array{0:int,1:int,2:int} [سال, ماه, روز] میلادی
+ */
+function eplakJalaliToGregorian(int $jy, int $jm, int $jd): array
+{
+    $jm = max(1, min(12, $jm));
+    $jd = max(1, min(31, $jd));
+    $target = eplakJalaliApproxDays($jy, $jm, $jd);
+
+    /* لنگر: ۱ فروردین ۱۴۰۰ = ۲۱ مارس ۲۰۲۱ (ساعتِ ظهر تا مرزِ روز جابه‌جا نشود) */
+    $anchorTs = mktime(12, 0, 0, 3, 21, 2021);
+    if ($anchorTs === false) {
+        $anchorTs = 1616328000;                     /* 2021-03-21 12:00 UTC */
+    }
+    $ts = $anchorTs + (($target - eplakJalaliApproxDays(1400, 1, 1)) * 86400);
+
+    $gy = (int) date('Y', $ts);
+    $gm = (int) date('n', $ts);
+    $gd = (int) date('j', $ts);
+    for ($i = 0; $i < 8; $i++) {
+        $gy = (int) date('Y', $ts);
+        $gm = (int) date('n', $ts);
+        $gd = (int) date('j', $ts);
+        [$ky, $km, $kd] = eplakGregorianToJalali($gy, $gm, $gd);
+        if ($ky === $jy && $km === $jm && $kd === $jd) {
+            return [$gy, $gm, $gd];
+        }
+        $delta = $target - eplakJalaliApproxDays($ky, $km, $kd);
+        if ($delta === 0) {
+            $delta = ($ky < $jy || ($ky === $jy && $km < $jm)) ? 1 : -1;
+        }
+        $ts += $delta * 86400;
+    }
+    return [$gy, $gm, $gd];
+}
+
+/**
+ * تعدادِ روزهای یک ماهِ شمسی (اسفند ۲۹ یا ۳۰).
+ * از اختلافِ روزِ میلادیِ «اولِ این ماه» و «اولِ ماهِ بعد» حساب می‌شود تا
+ * هیچ قاعده‌ی کبیسه‌ی جداگانه‌ای لازم نباشد.
+ */
+function eplakJalaliMonthDays(int $jy, int $jm): int
+{
+    $jm = max(1, min(12, $jm));
+    $ny = ($jm === 12) ? $jy + 1 : $jy;
+    $nm = ($jm === 12) ? 1 : $jm + 1;
+    try {
+        [$gy, $gm, $gd]     = eplakJalaliToGregorian($jy, $jm, 1);
+        [$gy2, $gm2, $gd2] = eplakJalaliToGregorian($ny, $nm, 1);
+        $a = mktime(12, 0, 0, $gm, $gd, $gy);
+        $b = mktime(12, 0, 0, $gm2, $gd2, $gy2);
+        if ($a === false || $b === false || $b <= $a) {
+            return ($jm <= 6) ? 31 : (($jm <= 11) ? 30 : 29);
+        }
+        $days = (int) round(($b - $a) / 86400);
+        return ($days >= 29 && $days <= 31) ? $days : (($jm <= 6) ? 31 : (($jm <= 11) ? 30 : 29));
+    } catch (Throwable $e) {
+        return ($jm <= 6) ? 31 : (($jm <= 11) ? 30 : 29);
+    }
+}
+
+/** برچسبِ فارسیِ یک ماهِ شمسی: «آبان ۱۴۰۵» یا فقط «آبان» */
+function eplakJalaliMonthLabel(int $jy, int $jm, bool $withYear = true): string
+{
+    $names = eplakFaMonthNames();
+    $jm = max(1, min(12, $jm));
+    $label = $names[$jm - 1];
+    return $withYear ? $label . ' ' . eplakFaDigits((string) $jy) : $label;
+}
+
+/**
+ * پنجره‌ی «N ماهِ شمسیِ آخر» از قدیم به جدید — پایه‌ی نمودارهای ماهانه.
+ * هر عضو:
+ *   ['key'=>'1405-08', 'label'=>'آبان', 'full'=>'آبان ۱۴۰۵', 'jy'=>1405, 'jm'=>8,
+ *    'gfrom'=>'2026-10-23', 'gto'=>'2026-11-21']
+ * gfrom/gto همان ماهِ شمسی به میلادی‌اند تا بتوان در WHERE کوئری گذاشت
+ * (ستون‌های created_at در دیتابیس میلادی‌اند).
+ *
+ * @param string|null $todayDb «اکنون» با ساعتِ خودِ دیتابیس (eplakDbNowString)؛
+ *        اگر null باشد از ساعتِ تهرانِ PHP خوانده می‌شود.
+ */
+function eplakJalaliMonthWindow(int $months, ?string $todayDb = null): array
+{
+    $months = max(1, min(240, $months));
+    $today  = trim((string) $todayDb);
+    $dt     = $today !== '' ? eplakParseDbDateTime($today) : null;
+    if ($dt === null) {
+        try {
+            $dt = new DateTimeImmutable('now', eplakDisplayTimezone());
+        } catch (Throwable $e) {
+            $dt = new DateTimeImmutable('now');
+        }
+    }
+    [$jy, $jm] = eplakGregorianToJalali((int) $dt->format('Y'), (int) $dt->format('n'), (int) $dt->format('j'));
+
+    $names = eplakFaMonthNames();
+    $out   = [];
+    for ($i = $months - 1; $i >= 0; $i--) {
+        /* پیمایشِ ماه‌ها در فضای شمسی (بدونِ DateTime، تا سالِ کبیسه‌ی شمسی
+           و مرزِ اسفند/فروردین درست بماند) */
+        $total = ($jy * 12) + ($jm - 1) - $i;
+        $y = intdiv($total, 12);
+        $m = ($total % 12) + 1;
+        if ($m < 1 || $m > 12 || $y < 1) {
+            continue;
+        }
+        $gfrom = $gto = '';
+        try {
+            [$gy, $gm, $gd] = eplakJalaliToGregorian($y, $m, 1);
+            $gfrom = sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
+            $last  = eplakJalaliMonthDays($y, $m);
+            [$ey, $em, $ed] = eplakJalaliToGregorian($y, $m, $last);
+            $gto   = sprintf('%04d-%02d-%02d', $ey, $em, $ed);
+        } catch (Throwable $e) {
+            /* بازه‌ی میلادی نشد ⇒ فقط برچسبِ شمسی می‌ماند */
+        }
+        $out[] = [
+            'key'   => sprintf('%04d-%02d', $y, $m),
+            'label' => $names[$m - 1],
+            'full'  => eplakJalaliMonthLabel($y, $m),
+            'jy'    => $y,
+            'jm'    => $m,
+            'gfrom' => $gfrom,
+            'gto'   => $gto,
+        ];
+    }
+    return $out;
+}
+
+/** کلیدِ «سال-ماه» شمسیِ یک مقدار دیتابیس: '1405-08' (اگر خوانده نشود: '') */
+function eplakJalaliMonthKey($value): string
+{
+    $dt = eplakParseDbDateTime($value);
+    if ($dt === null) {
+        return '';
+    }
+    [$jy, $jm] = eplakGregorianToJalali((int) $dt->format('Y'), (int) $dt->format('n'), (int) $dt->format('j'));
+    return sprintf('%04d-%02d', $jy, $jm);
+}
+
+/** تاریخِ شمسی با رقمِ لاتین (1405-08-22) — برای نامِ فایل‌ها و ASCII */
+function eplakJalaliIsoDate($dbDateTime = null): string
+{
+    $dt = ($dbDateTime === null || trim((string) $dbDateTime) === '') ? null : eplakParseDbDateTime($dbDateTime);
+    if ($dt === null) {
+        try {
+            $dt = new DateTimeImmutable('now', eplakDisplayTimezone());
+        } catch (Throwable $e) {
+            $dt = new DateTimeImmutable('now');
+        }
+    }
+    [$jy, $jm, $jd] = eplakGregorianToJalali((int) $dt->format('Y'), (int) $dt->format('n'), (int) $dt->format('j'));
+    return sprintf('%04d-%02d-%02d', $jy, $jm, $jd);
+}
+
+/** رقم‌های فارسی/عربی ← لاتین (برای خواندنِ تاریخی که مدیر تایپ کرده) */
+function eplakLatinDigits(string $text): string
+{
+    $fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    $ar = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    return str_replace(array_merge($fa, $ar), ['0','1','2','3','4','5','6','7','8','9'], $text);
+}
+
+/**
+ * تاریخِ واردشده توسط مدیر ← «Y-m-d» میلادی برای کوئری.
+ * هم شمسی را می‌پذیرد (1405/08/22 یا ۱۴۰۵/۰۸/۲۲ یا 1405-8-22 یا 1405/08) و هم
+ * میلادی (2026-11-13) تا نشانک‌ها و لینک‌های قدیمی نشکنند. معیارِ تفکیک،
+ * بزرگیِ سال است (سال < ۱۷۰۰ ⇒ شمسی). ورودیِ نامعتبر ⇒ '' یعنی «فیلتر نکن».
+ */
+function eplakParseUserDate(?string $raw): string
+{
+    $raw = eplakLatinDigits(trim((string) $raw));
+    $raw = str_replace(['٬', ',', '٫', ' ', "\u{200C}", "\u{200F}"], '', $raw);
+    if ($raw === '') {
+        return '';
+    }
+    if (preg_match('/^(\d{4})[\-\/.](\d{1,2})(?:[\-\/.](\d{1,2}))?$/', $raw, $m)) {
+        $y  = (int) $m[1];
+        $mo = (int) $m[2];
+        $d  = isset($m[3]) && $m[3] !== '' ? (int) $m[3] : 1;
+    } else {
+        return '';
+    }
+    if ($y < 1000 || $y > 3000 || $mo < 1 || $mo > 12 || $d < 1 || $d > 31) {
+        return '';
+    }
+    if ($y < 1700) {                                   /* شمسی */
+        $d = min($d, eplakJalaliMonthDays($y, $mo));
+        [$gy, $gm, $gd] = eplakJalaliToGregorian($y, $mo, $d);
+        return sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
+    }
+    /* میلادی: روز را به طولِ واقعیِ همان ماه محدود کن (۲۰۲۶/۰۲/۳۱ ⇒ ۲۸ فوریه) */
+    $dim = (int) date('t', mktime(12, 0, 0, $mo, 1, $y));
+    if ($dim < 1) {
+        $dim = 31;
+    }
+    return sprintf('%04d-%02d-%02d', $y, $mo, min($d, $dim));
+}
