@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>افزودن کاربر جدید</title>
-  <link rel="stylesheet" href="assets/style.css?v=9">
+  <link rel="stylesheet" href="assets/style.css?v=10">
   <script src="assets/theme.js?v=7"></script>
   <script src="assets/persian-digits.js?v=6"></script>
   <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">

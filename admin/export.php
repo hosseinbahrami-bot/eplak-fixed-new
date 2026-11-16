@@ -46,8 +46,16 @@ function reportDepartmentOf(array $row): string
 
 $type   = trim((string)($_GET['type'] ?? ''));
 $status = trim((string)($_GET['status'] ?? ''));
-$from   = trim((string)($_GET['from'] ?? ''));
-$to     = trim((string)($_GET['to'] ?? ''));
+/* تاریخِ فیلتر را مدیر «شمسی» وارد می‌کند (۱۴۰۵/۰۸/۲۲)؛ ستون‌های دیتابیس
+   میلادی‌اند، پس همان‌جا یک‌بار به میلادی تبدیل می‌شود. ورودیِ میلادی هم
+   پذیرفته می‌شود تا نشانک‌ها و لینک‌های قدیمی نشکنند. (shared/fa_datetime.php)
+   $fromRaw/$toRaw همان چیزی است که مدیر تایپ کرده و در فرم برمی‌گردد. */
+$fromRaw = trim((string)($_GET['from'] ?? ''));
+$toRaw   = trim((string)($_GET['to'] ?? ''));
+$from    = eplakParseUserDate($fromRaw);
+$to      = eplakParseUserDate($toRaw);
+/* «تاریخِ امروز» برایِ راهنمایِ فرم — شمسی */
+$todayFa = function_exists('eplakFaNow') ? eplakFaNow(false) : '';
 
 $validTypes = ['reports', 'users', 'tickets', 'news', 'notifications'];
 
@@ -105,7 +113,7 @@ if ($type !== '' && in_array($type, $validTypes, true)) {
                 (string)$r['location'],
                 statusLabel(reportStatusOf($r)),
                 (string)$r['reply'],
-                reportEffectiveDate($r),
+                eplakFaDateTimeOf(reportEffectiveDate($r), ''),
             ];
         }
         $writer->addSheet('گزارش‌ها', $data);
@@ -125,8 +133,8 @@ if ($type !== '' && in_array($type, $validTypes, true)) {
         $summary[] = ['مجموع', $total, '100٪'];
         $writer->addSheet('خلاصه وضعیت‌ها', $summary);
 
-        $fname = 'گزارش‌ها-' . date('Y-m-d') . '.xlsx';
-        $asciiName = 'eplak-reports-' . date('Y-m-d') . '.xlsx';
+        $fname = 'گزارش‌ها-' . eplakFaDigits(eplakJalaliIsoDate()) . '.xlsx';
+        $asciiName = 'eplak-reports-' . eplakJalaliIsoDate() . '.xlsx';
 
     } elseif ($type === 'users') {
         $stmt = $pdo->prepare('SELECT id, phone, name, address, nid, created_at FROM users' . $where . ' ORDER BY id DESC');
@@ -136,11 +144,11 @@ if ($type !== '' && in_array($type, $validTypes, true)) {
         $data = [['شناسه', 'شماره تماس', 'نام', 'آدرس', 'کد ملی', 'تاریخ عضویت']];
         foreach ($rows as $r) {
             $data[] = [(int)$r['id'], (string)$r['phone'], (string)$r['name'],
-                       (string)$r['address'], (string)$r['nid'], (string)$r['created_at']];
+                       (string)$r['address'], (string)$r['nid'], eplakFaDateTimeOf($r['created_at'], '')];
         }
         $writer->addSheet('کاربران', $data);
-        $fname = 'کاربران-' . date('Y-m-d') . '.xlsx';
-        $asciiName = 'eplak-users-' . date('Y-m-d') . '.xlsx';
+        $fname = 'کاربران-' . eplakFaDigits(eplakJalaliIsoDate()) . '.xlsx';
+        $asciiName = 'eplak-users-' . eplakJalaliIsoDate() . '.xlsx';
 
     } elseif ($type === 'tickets') {
         $stmt = $pdo->prepare('SELECT id, user_phone, title, description, category, department, priority, status, reply, created_at FROM tickets' . $where . ' ORDER BY id DESC');
@@ -153,11 +161,11 @@ if ($type !== '' && in_array($type, $validTypes, true)) {
             $data[] = [(int)$r['id'], (string)$r['user_phone'], (string)$r['title'],
                        (string)$r['description'], (string)$r['category'], (string)$r['department'],
                        (string)$r['priority'], statusLabel(normalizeStatusValue((string)$r['status'])),
-                       (string)$r['reply'], (string)$r['created_at']];
+                       (string)$r['reply'], eplakFaDateTimeOf($r['created_at'], '')];
         }
         $writer->addSheet('تیکت‌ها', $data);
-        $fname = 'تیکت‌ها-' . date('Y-m-d') . '.xlsx';
-        $asciiName = 'eplak-tickets-' . date('Y-m-d') . '.xlsx';
+        $fname = 'تیکت‌ها-' . eplakFaDigits(eplakJalaliIsoDate()) . '.xlsx';
+        $asciiName = 'eplak-tickets-' . eplakJalaliIsoDate() . '.xlsx';
 
     } elseif ($type === 'news') {
         $stmt = $pdo->prepare('SELECT id, type, title, summary, body, icon, image_url, published, sort_order, created_at FROM news' . $where . ' ORDER BY sort_order ASC, id DESC');
@@ -171,11 +179,11 @@ if ($type !== '' && in_array($type, $validTypes, true)) {
                        (string)$r['title'], (string)$r['summary'], (string)$r['body'],
                        (string)$r['icon'], (string)$r['image_url'],
                        ((int)$r['published'] === 1 ? 'بله' : 'خیر'),
-                       (int)$r['sort_order'], (string)$r['created_at']];
+                       (int)$r['sort_order'], eplakFaDateTimeOf($r['created_at'], '')];
         }
         $writer->addSheet('اخبار و دانستنی‌ها', $data);
-        $fname = 'اخبار-و-دانستنی‌ها-' . date('Y-m-d') . '.xlsx';
-        $asciiName = 'eplak-news-' . date('Y-m-d') . '.xlsx';
+        $fname = 'اخبار-و-دانستنی‌ها-' . eplakFaDigits(eplakJalaliIsoDate()) . '.xlsx';
+        $asciiName = 'eplak-news-' . eplakJalaliIsoDate() . '.xlsx';
 
     } else { /* notifications */
         $stmt = $pdo->prepare('SELECT id, user_phone, title, body, read_flag, created_at FROM notifications' . $where . ' ORDER BY id DESC');
@@ -186,11 +194,11 @@ if ($type !== '' && in_array($type, $validTypes, true)) {
         foreach ($rows as $r) {
             $data[] = [(int)$r['id'], (string)$r['user_phone'], (string)$r['title'],
                        (string)$r['body'], ((int)$r['read_flag'] === 1 ? 'بله' : 'خیر'),
-                       (string)$r['created_at']];
+                       eplakFaDateTimeOf($r['created_at'], '')];
         }
         $writer->addSheet('اعلان‌ها', $data);
-        $fname = 'اعلان‌ها-' . date('Y-m-d') . '.xlsx';
-        $asciiName = 'eplak-notifications-' . date('Y-m-d') . '.xlsx';
+        $fname = 'اعلان‌ها-' . eplakFaDigits(eplakJalaliIsoDate()) . '.xlsx';
+        $asciiName = 'eplak-notifications-' . eplakJalaliIsoDate() . '.xlsx';
     }
 
     $writer->download($fname, $asciiName);
@@ -209,7 +217,7 @@ $statusStats  = getReportsStatusStats($pdo);
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>دریافت خروجی اکسل</title>
-  <link rel="stylesheet" href="assets/style.css?v=9">
+  <link rel="stylesheet" href="assets/style.css?v=10">
   <script src="assets/theme.js?v=7"></script>
   <script src="assets/persian-digits.js?v=6"></script>
   <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
@@ -287,13 +295,17 @@ $statusStats  = getReportsStatusStats($pdo);
           </div>
 
           <div class="export-field">
-            <label for="from">از تاریخ</label>
-            <input type="date" id="from" name="from" placeholder="مثال: 2026-01-01">
+            <label for="from">از تاریخ (شمسی)</label>
+            <input type="text" id="from" name="from" inputmode="numeric"
+                   value="<?= htmlspecialchars($fromRaw, ENT_QUOTES, 'UTF-8') ?>"
+                   placeholder="مثال: <?= htmlspecialchars(function_exists('eplakFaDigits') ? eplakFaDigits('1405/01/01') : '1405/01/01', ENT_QUOTES, 'UTF-8') ?>">
           </div>
 
           <div class="export-field">
-            <label for="to">تا تاریخ</label>
-            <input type="date" id="to" name="to" placeholder="مثال: 2026-12-29">
+            <label for="to">تا تاریخ (شمسی)</label>
+            <input type="text" id="to" name="to" inputmode="numeric"
+                   value="<?= htmlspecialchars($toRaw, ENT_QUOTES, 'UTF-8') ?>"
+                   placeholder="مثال: <?= htmlspecialchars($todayFa !== '' ? str_replace('/', '/', $todayFa) : '1405/12/29', ENT_QUOTES, 'UTF-8') ?>">
           </div>
 
           <div class="form-actions">
@@ -306,7 +318,8 @@ $statusStats  = getReportsStatusStats($pdo);
         <p class="hint">
           <i class="fa-solid fa-circle-info"></i>
           فایل تولیدشده با فرمت <strong>Excel (xlsx)</strong> و در دو شیت «داده‌ها» و «خلاصه وضعیت‌ها» ارائه می‌شود
-          و در Excel، LibreOffice و Google Sheets باز می‌شود. تاریخ‌ها به صورت میلادی فیلتر می‌شوند.
+          و در Excel، LibreOffice و Google Sheets باز می‌شود. تاریخ‌ها «شمسی» نوشته و شمسی فیلتر می‌شوند
+          (۱۴۰۵/۰۸/۲۲ یا 1405/08/22)؛ برایِ سازگاری، قالبِ میلادی هم پذیرفته می‌شود.
         </p>
       </section>
     </main>

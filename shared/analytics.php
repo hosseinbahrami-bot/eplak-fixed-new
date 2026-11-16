@@ -47,9 +47,13 @@ if (!defined('EPLAK_ANALYTICS_GH_RELEASE'))    define('EPLAK_ANALYTICS_GH_RELEAS
 if (!defined('EPLAK_ANALYTICS_GH_ASSET'))      define('EPLAK_ANALYTICS_GH_ASSET', 'eplak-app.apk');
 if (!defined('EPLAK_ANALYTICS_GH_CACHE'))      define('EPLAK_ANALYTICS_GH_CACHE', 21600);    /* ۶ ساعت کش */
 
-/** نامِ فارسیِ ماه‌های شمسی (برای برچسبِ نمودارِ ماهانه) */
+/** نامِ فارسیِ ماه‌های شمسی — از همان منبعِ واحدِ shared/fa_datetime.php
+    (تا پنل، داشبورد و آمار هر سه یک فهرست داشته باشند و یکی میلادی نماند) */
 function eplakAnalyticsFaMonths(): array
 {
+    if (function_exists('eplakFaMonthNames')) {
+        return eplakFaMonthNames();
+    }
     return ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
             'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
 }
@@ -1012,7 +1016,7 @@ function eplakAnalyticsCsvRows(PDO $pdo, string $from, string $to, int $limit = 
                 (string) $r['browser'],
                 (string) $r['os'],
                 eplakAnalyticsRefLabel((string) $r['ref_host']),
-                (string) $r['visit_day'],
+                eplakAnalyticsJalaliDay((string) $r['visit_day']),
                 (string) $r['visit_hour'],
             ];
         }
@@ -1025,7 +1029,7 @@ function eplakAnalyticsCsvRows(PDO $pdo, string $from, string $to, int $limit = 
 /** سرستون‌های CSV */
 function eplakAnalyticsCsvHead(): array
 {
-    return ['تاریخ و ساعت', 'نوع', 'هدف', 'صفحه/بخش', 'دستگاه', 'مرورگر', 'سیستم‌عامل', 'منبعِ ورود', 'روز', 'ساعت'];
+    return ['تاریخ و ساعت', 'نوع', 'هدف', 'صفحه/بخش', 'دستگاه', 'مرورگر', 'سیستم‌عامل', 'منبعِ ورود', 'روزِ شمسی', 'ساعت'];
 }
 
 /** یک رویدادِ آزمایشی (دکمه‌ی «ثبتِ رویدادِ آزمایشی» در پنل) تا لوله‌ی آمار آزموده شود */

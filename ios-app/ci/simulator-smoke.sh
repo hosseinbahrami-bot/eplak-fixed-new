@@ -118,6 +118,9 @@ wait_for selftest-2.json 90 || fail_dump 2
 shot 2-map
 wait_for selftest-3.json 120 || fail_dump 3
 shot 3-route
+# مرحله‌ی ۴: «پشتیبانی آنلاین» — کارتِ صفحه‌ی تماس باید صفحه‌ی چت را باز کند
+wait_for selftest-4.json 90 || fail_dump 4
+shot 4-support
 wait_for selftest-done.json 15 || true
 
 cp "$DATA"/Documents/selftest-*.json "$OUT"/ 2>/dev/null || true
@@ -130,14 +133,14 @@ out = sys.argv[1]
 def load(n):
     with open(os.path.join(out, "selftest-%d.json" % n), encoding="utf-8") as f:
         return json.load(f)
-s1, s2, s3 = load(1), load(2), load(3)
+s1, s2, s3, s4 = load(1), load(2), load(3), load(4)
 errors, notes = [], []
 
 def need(cond, msg):
     if not cond:
         errors.append(msg)
 
-for n, s in ((1, s1), (2, s2), (3, s3)):
+for n, s in ((1, s1), (2, s2), (3, s3), (4, s4)):
     need("error" not in s, "مرحله‌ی %d خطای جاوااسکریپت داد: %s" % (n, s.get("error")))
 
 # مرحله ۱
@@ -161,6 +164,17 @@ need((s2.get("rows") or 0) >= 10, "فهرست مکان‌ها کم است: %r" %
 opens = s3.get("externalOpens") or []
 need(s3.get("env") == "ios", "محیط به‌عنوان iOS شناخته نشد: %r" % s3.get("env"))
 need(any(u.startswith("neshan://") for u in opens), "لینک neshan:// به پوسته‌ی نیتیو نرسید: %r" % opens)
+# مرحله ۴ — پشتیبانی آنلاین (چتِ مستقیم با پشتیبان)
+need(s4.get("card") is True, "کارتِ «پشتیبانی آنلاین» در صفحه‌ی تماس نیست")
+need((s4.get("cardOnclick") or "").find("openSupportChat") != -1,
+     "کارتِ پشتیبانی onclick ندارد (هنوز تزئینی است): %r" % s4.get("cardOnclick"))
+need(s4.get("screen") is True, "صفحه‌ی چت (screen-support) در اپ نیست")
+need(s4.get("module") == "object" and s4.get("openFn") == "function",
+     "ماژولِ چت (modules/support.js) بالا نیامد: %r / %r" % (s4.get("module"), s4.get("openFn")))
+need(s4.get("css") is True, "پوسته‌ی چت (assets/css/support.css) بار نشده")
+need(s4.get("els") is True, "المان‌های صفحه‌ی چت ناقص‌اند (حباب/کادرِ نوشتن/پیوست)")
+need(s4.get("opened") == "screen-support", "باز کردنِ چت صفحه را عوض نکرد: %r" % s4.get("opened"))
+need("openError" not in s4, "باز کردنِ چت خطا داد: %s" % s4.get("openError"))
 # GPS شبیه‌ساز (ورامین) باید از CoreLocation و پل نیتیو به صفحه برسد؛ بدون پنجره‌ی WebKit
 SIM = (35.3335, 51.6402)
 loc = s3.get("loc")

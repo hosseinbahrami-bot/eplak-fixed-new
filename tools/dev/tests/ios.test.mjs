@@ -139,8 +139,8 @@ const depth = (s, o, c) => { let d = 0; for (const ch of s) { if (ch === o) d++;
 ok('آکولادها و پرانتزهای project.pbxproj متعادل است', depth(pbx, '{', '}') === 0 && depth(pbx, '(', ')') === 0);
 ok('شناسه‌ی بسته ir.eplak.app و حداقل iOS 14 (هر دو حالت Debug/Release)',
   (pbx.match(/PRODUCT_BUNDLE_IDENTIFIER = ir\.eplak\.app;/g) || []).length === 2 && (pbx.match(/IPHONEOS_DEPLOYMENT_TARGET = 14\.0;/g) || []).length === 2);
-ok('MARKETING_VERSION و CURRENT_PROJECT_VERSION تعریف شده (نسخه‌ی ۲.۳.۰ / ساخت ۵ — هم‌نسخه با APK)',
-  (pbx.match(/MARKETING_VERSION = 2\.3\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 5;/g) || []).length === 2
+ok('MARKETING_VERSION و CURRENT_PROJECT_VERSION تعریف شده (نسخه‌ی ۲.۴.۰ / ساخت ۶ — هم‌نسخه با APK)',
+  (pbx.match(/MARKETING_VERSION = 2\.4\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 6;/g) || []).length === 2
   && /INFOPLIST_FILE = Eplak\/Info\.plist;/.test(pbx));
 const sourcesBlock = (pbx.match(/PBXSourcesBuildPhase section \*\/([\s\S]*?)End PBXSourcesBuildPhase/) || [, ''])[1];
 const resourcesBlock = (pbx.match(/PBXResourcesBuildPhase section \*\/([\s\S]*?)End PBXResourcesBuildPhase/) || [, ''])[1];
@@ -198,20 +198,30 @@ ok('آدرس‌های neshan:// و https و tel: بیرون از اپ باز م�
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const stages = [...vc.matchAll(/static let (selfTestStage\d) = #"""\n([\s\S]*?)\n\s*"""#/g)].map((m) => ({ name: m[1], body: m[2] }));
-ok('سه اسکریپت جاوااسکریپتِ آزمون دودی در Swift هست', stages.length === 3, stages.map((s) => s.name).join(','));
+/* ترتیبِ تعریف در Swift همان ترتیبِ اجراست (۱،۲،۳،۴) — اگر کسی مرحله‌ای را جابه‌جا
+   کند، این آزمون همان‌جا می‌گیرد. */
+stages.sort((a, b) => Number(a.name.slice(-1)) - Number(b.name.slice(-1)));
+ok('چهار اسکریپتِ جاوااسکریپتِ آزمون دودی در Swift هست (چهارمی: چتِ پشتیبانی)', stages.length === 4, stages.map((s) => s.name).join(','));
 for (const s of stages) {
   let err = '';
   try { new AsyncFunction(s.body); } catch (e) { err = String(e.message || e); }
   ok(`${s.name}: جاوااسکریپتش سینتکس درست دارد`, err === '', err);
 }
-/* اجرای واقعی مرحله‌های ۱ تا ۳ روی شیء واقعیِ EplakPlaces (core/places*.js) و یک DOM کوچک؛ بقیه‌ی وب ساختگی است.
+/* اجرای واقعی مرحله‌های ۱ تا ۴ روی شیء واقعیِ EplakPlaces (core/places*.js) و یک DOM کوچک؛ بقیه‌ی وب ساختگی است.
    این‌جا دیده شد که EplakPlaces.places «تابع» است نه آرایه — خطایی که فقط در CI روی مک پیدا می‌شد. */
 function stageWindow() {
   const dom = new JSDOM('<!doctype html><html><body><div class="screen active" id="screen-login"></div>'
-    + '<div id="screen-map"><div class="cm-chip"></div><div class="cm-row"></div></div><div id="cityMapCanvas"><div class="ep-map-tiles"><img></div><div class="ep-map-markers"><i></i></div></div><div id="cityMapMeta">۱۳۴ مکان</div></body></html>',
+    + '<div id="screen-map"><div class="cm-chip"></div><div class="cm-row"></div></div><div id="cityMapCanvas"><div class="ep-map-tiles"><img></div><div class="ep-map-markers"><i></i></div></div><div id="cityMapMeta">۱۳۴ مکان</div>'
+    /* صفحه‌ی چتِ پشتیبانی + کارتِ صفحه‌ی تماس (مرحله‌ی ۴) */
+    + '<div class="screen" id="screen-contact"><div id="supportCard" role="button" onclick="openSupportChat()"><span>پشتیبانی آنلاین</span></div></div>'
+    + '<div class="screen" id="screen-support"><div id="supportHoursBanner"></div><div id="supportScroller"><div id="supportMessages"></div><div id="supportPending"></div></div>'
+    + '<form id="supportComposer"><div id="supportAttachPreview"></div><input type="file" id="supportFileInput"><textarea id="supportInput"></textarea><button id="supportSendBtn"></button><button id="supportAttachBtn"></button></form></div>'
+    + '</body></html>',
     { runScripts: 'outside-only', url: 'http://localhost/index.html' });   /* localStorage در jsdom با file: ممنوع است؛ پروتکل را همان شبیه‌ساز می‌سنجد */
   const w = dom.window;
   w.eval(read('core/places-data.js')); w.eval(read('core/places.js'));
+  /* ماژولِ واقعیِ چت (modules/support.js) — همان چیزی که در اپ بار می‌شود */
+  w.eval(read('modules/support.js'));
   w.EPLAK_API_BASE_URL = 'https://eplak.ir/eplak-fixed/api'; w.EPLAK_IOS_APP = true;
   w.showScreen = (id) => { w.document.querySelectorAll('.screen').forEach((e) => e.classList.remove('active')); const t = w.document.getElementById(id); if (t) t.classList.add('active'); };
   w.document.getElementById('screen-map').classList.add('screen');
@@ -225,11 +235,21 @@ function stageWindow() {
 const runStage = (w, body) => new w.Function('return (async function () {' + body + '\n})()')();
 {
   const t = stageWindow();
-  let r1 = null, r2 = null, r3 = null, err = '';
+  let r1 = null, r2 = null, r3 = null, r4 = null, err = '';
   try {
     r1 = JSON.parse(await runStage(t.w, stages[0].body));
     r2 = JSON.parse(await runStage(t.w, stages[1].body.replace(/setTimeout\(r, 7000\)/, 'setTimeout(r, 5)')));
     r3 = JSON.parse(await runStage(t.w, stages[2].body.replace(/setTimeout\(r, 2500\)/, 'setTimeout(r, 5)')));
+    /* مرحله‌ی ۴: چتِ پشتیبانی — شبکه ساختگی است (config/thread) تا آزمون روی مکِ CI هم بدونِ اینترنتِ هاست کار کند */
+    t.w.fetch = async (url) => {
+      const u = String(url);
+      if (/action=config/.test(u)) return { ok: true, json: async () => ({ success: true, enabled: true, open: true, hours_label: 'ساعتِ پاسخ‌گویی: ۰۷:۳۰ تا ۱۶:۳۰', agent_online: true, attachments: { images: true, files: true } }) };
+      if (/action=thread/.test(u)) return { ok: true, json: async () => ({ success: true, ticket: { id: 3, closed: false }, messages: [
+        { id: 1, sender: 'system', body: 'سلام، به پشتیبانی آنلاین ای‌پلاک خوش آمدید.', created_fa: '۱۴۰۵/۰۸/۲۵ - ساعت ۰۸:۰۰', media: null, read: true }], last_id: 1 }) };
+      return { ok: true, json: async () => ({ success: true }) };
+    };
+    t.w.getCurrentPhone = () => '09121112233';
+    r4 = JSON.parse(await runStage(t.w, stages[3].body.replace(/setTimeout\(r, 2500\)/, 'setTimeout(r, 5)')));
   } catch (e) { err = String(e && e.stack || e).slice(0, 300); }
   ok('مرحله ۱ (روی EplakPlaces واقعی): پروتکل صفحه، آدرس API، توابع، ۱۳۰+ مکان، پینگ، localStorage',
     !!r1 && r1.protocol === 'http:' && r1.apiBase === 'https://eplak.ir/eplak-fixed/api' && r1.nativeFlag === true
@@ -237,6 +257,13 @@ const runStage = (w, body) => new w.Function('return (async function () {' + bod
     && r1.placesCount >= 130 && r1.ping.status === 200 && r1.localStorage === true && r1.offlineGate === false, err || JSON.stringify(r1));
   ok('مرحله ۲: صفحه‌ی نقشه را باز می‌کند و شمارنده‌ها را برمی‌گرداند', !!r2 && r2.screen === 'screen-map' && r2.chips === 1 && r2.rows === 1 && r2.tiles === 1 && r2.markers === 1, err || JSON.stringify(r2));
   ok('مرحله ۳: محیط، موقعیت و وضعیت مسیریابی را برمی‌گرداند', !!r3 && r3.env === 'ios' && r3.loc && r3.loc.lat === 35.3335 && r3.routeStatus === 'ios', err || JSON.stringify(r3));
+  /* نکته: css در jsdom قابلِ تشخیص نیست (document.styleSheets خالی است)؛
+     بار شدنِ واقعیِ support.css فقط در شبیه‌سازِ iOS سنجیده می‌شود
+     (ios-app/ci/simulator-smoke.sh ← مرحله‌ی ۴). */
+  ok('مرحله ۴: کارتِ «پشتیبانی آنلاین» صفحه‌ی چت را باز می‌کند و ماژولِ چت بالا آمده است',
+    !!r4 && r4.card === true && r4.cardOnclick === 'openSupportChat()' && r4.screen === true
+    && r4.module === 'object' && r4.openFn === 'function' && r4.els === true
+    && r4.opened === 'screen-support' && !r4.openError, err || JSON.stringify(r4));
   t.close();
 }
 const allJs = stages.map((s) => s.body).join('\n');
@@ -353,6 +380,11 @@ console.log('— ۶) منطق سنجش آزمون دودی');
 const smoke = read('ios-app/ci/simulator-smoke.sh');
 const bashSyntax = spawnSync('bash', ['-n', p('ios-app/ci/simulator-smoke.sh')], { encoding: 'utf8' });
 ok('اسکریپت آزمون دودی سینتکس bash درست دارد', bashSyntax.status === 0, bashSyntax.stderr);
+ok('آزمون دودی مرحله‌ی ۴ (چتِ پشتیبانی) را هم می‌سنجد و برایش مهلتِ جدا دارد',
+  /wait_for selftest-4\.json 90 \|\| fail_dump 4/.test(smoke)
+  && /s4\.get\("cardOnclick"\)/.test(smoke) && /s4\.get\("opened"\)/.test(smoke)
+  && /selfTestStage4/.test(read('ios-app/Eplak/ViewController.swift'))
+  && /runSelfTestStage\(4, script: ViewController\.selfTestStage4\)/.test(read('ios-app/Eplak/ViewController.swift')));
 const py = (smoke.match(/python3 - "\$OUT" <<'PYEOF'\n([\s\S]*?)\nPYEOF\n/) || [, ''])[1];
 ok('بخش سنجش پایتون در اسکریپت هست', py.length > 500);
 const havePy = spawnSync('python3', ['--version'], { encoding: 'utf8' }).status === 0;
@@ -365,11 +397,13 @@ if (!havePy) {
     2: { stage: 2, screen: 'screen-map', chips: 10, rows: 40, tiles: 12, tilesLoaded: 9, markers: 60, externalOpens: [] },
     3: { stage: 3, env: 'ios', loc: { lat: 35.3335, lng: 51.6402, acc: 5 }, routeStatus: 'ios',
          externalOpens: ['neshan://?origin=35.333500,51.640200&destination=35.328370,51.662480&vehicle=d', 'https://nshn.ir/?origin=35.333500,51.640200&destination=35.328370,51.662480&vehicle=d'] },
+    4: { stage: 4, card: true, cardOnclick: 'openSupportChat()', screen: true, module: 'object', openFn: 'function',
+         css: true, els: true, opened: 'screen-support', bubbles: 2, banner: true, externalOpens: [] },
   };
   const evalCase = (mut) => {
     const d = fs.mkdtempSync(path.join(TMP, 'smoke-'));
     const data = JSON.parse(JSON.stringify(good)); mut(data);
-    for (const n of [1, 2, 3]) fs.writeFileSync(path.join(d, `selftest-${n}.json`), JSON.stringify(data[n]));
+    for (const n of [1, 2, 3, 4]) fs.writeFileSync(path.join(d, `selftest-${n}.json`), JSON.stringify(data[n]));
     const r = spawnSync('python3', ['-c', py, d], { encoding: 'utf8' });
     return { code: r.status, out: r.stdout + r.stderr };
   };
@@ -384,6 +418,14 @@ if (!havePy) {
     evalCase((d) => { d[3].externalOpens = ['neshan://?origin=35.328370,51.662480&destination=35.333500,51.640200&vehicle=d']; }).code === 1);
   ok('GPS شبیه‌ساز از پل نیتیو نرسد (loc خالی) ← رد می‌شود', evalCase((d) => { d[3].loc = null; }).code === 1);
   ok('پل موقعیت (GeoBridge) نصب نباشد ← رد می‌شود', evalCase((d) => { d[1].geoShim = false; }).code === 1);
+  /* مرحله‌ی ۴: «پشتیبانی آنلاین» */
+  ok('کارتِ پشتیبانی onclick نداشته باشد (هنوز تزئینی) ← رد می‌شود',
+    evalCase((d) => { d[4].cardOnclick = ''; }).code === 1);
+  ok('ماژولِ چت بار نشده باشد ← رد می‌شود', evalCase((d) => { d[4].module = 'undefined'; }).code === 1);
+  ok('باز کردنِ چت صفحه را عوض نکند ← رد می‌شود', evalCase((d) => { d[4].opened = 'screen-home'; }).code === 1);
+  ok('المان‌های صفحه‌ی چت ناقص باشند ← رد می‌شود', evalCase((d) => { d[4].els = false; }).code === 1);
+  ok('پوسته‌ی چت بار نشده باشد ← رد می‌شود', evalCase((d) => { d[4].css = false; }).code === 1);
+  ok('باز کردنِ چت خطا بدهد ← رد می‌شود', evalCase((d) => { d[4].openError = 'TypeError: x'; }).code === 1);
 }
 
 {

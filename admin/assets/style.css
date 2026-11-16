@@ -565,6 +565,7 @@ body {
     color: var(--dark-900);
     margin: 0;
     direction: ltr;
+    text-align: right;   /* کارت RTL است ⇒ عدد هم از سمتِ راست شروع شود */
 }
 .card .card-change {
     display: inline-flex;
@@ -967,8 +968,12 @@ tbody td:last-child {
 #usersTable td:nth-child(5) {
     font-family: 'Courier New', monospace;
     font-size: 14px;
+    /* شماره‌ی موبایل و کد ملی رقمِ لاتین‌اند، پس «رانِ» عددی چپ‌به‌راست
+       می‌ماند (direction:ltr) ولی ترازِ سلول باید با سرفصلِ راست‌به‌چپِ جدول
+       یکی باشد؛ پیش‌تر text-align:left بود و عدد به لبه‌ی چپِ سلول می‌چسبید
+       در حالی که سرفصلِ «موبایل» سمتِ راست بود ⇒ ستون کج دیده می‌شد. */
     direction: ltr;
-    text-align: left;
+    text-align: right;
 }
 
 /* ============================================

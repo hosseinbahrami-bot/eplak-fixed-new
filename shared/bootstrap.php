@@ -818,8 +818,42 @@ function eplakSqliteBootstrap(PDO $pdo): void {
         category VARCHAR(100) DEFAULT '',
         department VARCHAR(255) DEFAULT '',
         priority VARCHAR(20) DEFAULT 'medium',
+        channel VARCHAR(20) NOT NULL DEFAULT 'ticket',
+        last_message_at VARCHAR(30) NOT NULL DEFAULT '',
+        last_sender VARCHAR(12) NOT NULL DEFAULT '',
+        unread_citizen INTEGER NOT NULL DEFAULT 0,
+        unread_admin INTEGER NOT NULL DEFAULT 0,
+        assigned_admin_id INTEGER NOT NULL DEFAULT 0,
+        closed_at VARCHAR(30) NOT NULL DEFAULT '',
+        rating INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_tickets_channel ON tickets(channel, last_message_at)');
+
+    /* ── «پشتیبانی آنلاین»: گفتگوی زنده‌ی شهروند با تیمِ پشتیبانی ─────────────
+       هر پیام یک سطر در ticket_messages و ظرفِ گفتگو همان ردیفِ tickets است
+       (با channel='support') تا دسترسی‌ها، واحدِ مسئول، وضعیت و جست‌وجوی پنل
+       همه از همان مسیرِ تیکت‌ها کار کنند و یک سیستمِ دوم لازم نباشد.
+       client_ref «nullable» است و UNIQUE: در MySQL و SQLite هر دو چند NULL
+       مجاز است، پس پیام‌های بدونِ ref (پاسخِ دستیِ پشتیبان در پنل) به هم
+       نمی‌خورند ولی ارسالِ تکراریِ اپ (رفرش/قطعِ شبکه) یک بار شمرده می‌شود. */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS ticket_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticket_id INTEGER NOT NULL,
+        sender VARCHAR(12) NOT NULL DEFAULT 'citizen',
+        sender_name VARCHAR(120) NOT NULL DEFAULT '',
+        admin_id INTEGER NOT NULL DEFAULT 0,
+        body TEXT NOT NULL,
+        media_path VARCHAR(500) NOT NULL DEFAULT '',
+        media_kind VARCHAR(12) NOT NULL DEFAULT '',
+        media_name VARCHAR(180) NOT NULL DEFAULT '',
+        media_size INTEGER NOT NULL DEFAULT 0,
+        client_ref VARCHAR(64) NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        read_at VARCHAR(30) NULL DEFAULT NULL
+    )");
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket ON ticket_messages(ticket_id, id)');
+    try { $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS uniq_ticket_messages_ref ON ticket_messages(client_ref)'); } catch (Throwable $e) {}
 
     eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1100,6 +1134,9 @@ function eplakUsersUpsertSql(PDO $pdo, bool $keepDefaultName = false): string {
    یک پله بالا ببرید؛ بقیه‌اش خودکار انجام می‌شود.
    ============================================================================ */
 if (!defined('EPLAK_SCHEMA_VERSION')) {
+    /* + جدول ticket_messages و ستون‌های گفتگو روی tickets (کانال، آخرین پیام،
+       نخوانده‌ها، پشتیبانِ مسئول، زمانِ بستن، امتیاز) ⇒ «پشتیبانی آنلاین»:
+       shared/support.php، api/support.php، admin/support.php و modules/support.js */
     /* + جدول site_stats (آمارِ بازدیدِ سایتِ معرفی، دانلودِ APK/PWA و کلیکِ QR)
        ⇒ بخشِ «آمارِ سایت» در پنل: shared/analytics.php، api/track.php و
        admin/analytics.php */
@@ -1107,7 +1144,7 @@ if (!defined('EPLAK_SCHEMA_VERSION')) {
        چرخشی، لینک، آمار کلیک) — shared/ads.php و api/ads.php */
     /* + ستون‌های full_name/is_active/last_login_at روی admin_users و جدول admin_departments
        (مدیرانِ حوزه/معاونت) */
-    define('EPLAK_SCHEMA_VERSION', '2026-11-12.1');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
+    define('EPLAK_SCHEMA_VERSION', '2026-11-16.1');   /* + client_ref روی report_media برای ارسال «اول فایل، بعد گزارش» */   /* + شناسه‌ی یکتای درخواست (reports.client_ref) برای جلوگیری از ثبت تکراری */
 }
 
 /* تعریف جداول (همان متن CREATE TABLE) برای مقایسه با دیتابیس.
@@ -2263,8 +2300,42 @@ function eplakGetPdo(): PDO {
         category VARCHAR(100) DEFAULT '',
         department VARCHAR(255) DEFAULT '',
         priority VARCHAR(20) DEFAULT 'medium',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        channel VARCHAR(20) NOT NULL DEFAULT 'ticket',
+        last_message_at VARCHAR(30) NOT NULL DEFAULT '',
+        last_sender VARCHAR(12) NOT NULL DEFAULT '',
+        unread_citizen INT NOT NULL DEFAULT 0,
+        unread_admin INT NOT NULL DEFAULT 0,
+        assigned_admin_id INT NOT NULL DEFAULT 0,
+        closed_at VARCHAR(30) NOT NULL DEFAULT '',
+        rating TINYINT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_tickets_channel (channel, last_message_at)
     )");
+
+    /* ── «پشتیبانی آنلاین»: گفتگوی زنده‌ی شهروند با تیمِ پشتیبانی ─────────────
+       هر پیام یک سطر در ticket_messages و ظرفِ گفتگو همان ردیفِ tickets است
+       (با channel='support') تا دسترسی‌ها، واحدِ مسئول، وضعیت و جست‌وجوی پنل
+       همه از همان مسیرِ تیکت‌ها کار کنند و یک سیستمِ دوم لازم نباشد.
+       client_ref «nullable» است و UNIQUE: در MySQL و SQLite هر دو چند NULL
+       مجاز است، پس پیام‌های بدونِ ref (پاسخِ دستیِ پشتیبان در پنل) به هم
+       نمی‌خورند ولی ارسالِ تکراریِ اپ (رفرش/قطعِ شبکه) یک بار شمرده می‌شود. */
+    eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS ticket_messages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ticket_id INT NOT NULL,
+        sender VARCHAR(12) NOT NULL DEFAULT 'citizen',
+        sender_name VARCHAR(120) NOT NULL DEFAULT '',
+        admin_id INT NOT NULL DEFAULT 0,
+        body TEXT NOT NULL,
+        media_path VARCHAR(500) NOT NULL DEFAULT '',
+        media_kind VARCHAR(12) NOT NULL DEFAULT '',
+        media_name VARCHAR(180) NOT NULL DEFAULT '',
+        media_size INT NOT NULL DEFAULT 0,
+        client_ref VARCHAR(64) NULL DEFAULT NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        read_at VARCHAR(30) NULL DEFAULT NULL,
+        KEY idx_ticket_messages_ticket (ticket_id, id),
+        UNIQUE KEY uniq_ticket_messages_ref (client_ref)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     eplakCreateTable($pdo, "CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,

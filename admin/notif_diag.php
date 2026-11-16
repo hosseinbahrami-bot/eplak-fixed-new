@@ -55,7 +55,12 @@ foreach ($markers as $file => $info) {
 
 /* ---------- ۲) محیط ---------- */
 $add('نسخه‌ی PHP', PHP_VERSION);
-$add('زمان سرور', date('Y-m-d H:i:s'));
+/* زمانِ سرور «شمسی» نشان داده می‌شود (مثلِ بقیه‌ی پنل). مقدارِ خامِ میلادی هم
+   در سطرِ بعد می‌ماند، چون این صفحه ابزارِ عیب‌یابیِ «اختلافِ ساعتِ سرور و
+   دیتابیس» است و بدونِ دیدنِ مقدارِ خام نمی‌شود تشخیص داد کدام سمت ۳:۳۰ دقیقه
+   جابه‌جا است. */
+$add('زمان سرور', function_exists('eplakFaNow') ? eplakFaNow() : date('Y-m-d H:i:s'));
+$add('زمان سرور (مقدارِ خامِ PHP — فقط برایِ عیب‌یابی)', date('Y-m-d H:i:s') . ' · ' . date_default_timezone_get());
 $driver = '?';
 try {
     $driver = (function_exists('eplakIsSqlite') && eplakIsSqlite($pdo)) ? 'sqlite' : 'mysql';
