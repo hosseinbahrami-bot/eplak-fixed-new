@@ -141,6 +141,12 @@ jobs:
           check admin/includes/charts.php  'function eplakChartArea'       'نمودارهای SVGِ آمار (بدونِ کتابخانه‌ی بیرونی) در بسته هست'
           check admin/analytics.php        "eplakAdminSidebar('analytics')" 'صفحه‌ی «آمارِ سایت و دانلودها» در بسته هست'
           check shared/bootstrap.php       'site_stats'                    'جدولِ آمار در ساختارِ دیتابیس ساخته می‌شود'
+          check shared/support.php         'function eplakSupportPostMessage' 'منطقِ «پشتیبانی آنلاین» (رشته‌ی گفتگو) در بسته هست'
+          check api/support.php            'eplakSupportOpenThread'        'اندپوینتِ چتِ پشتیبانی در بسته هست'
+          check admin/support.php          "eplakAdminSidebar('support')"  'صفحه‌ی «پشتیبانی آنلاین» در پنل داخل بسته هست'
+          check modules/support.js         'eplak_support_outbox'          'ماژولِ چتِ اپ (با صفِ ارسالِ آفلاین) داخل بسته هست'
+          check shared/bootstrap.php       'ticket_messages'               'جدولِ پیام‌های گفتگو در ساختارِ دیتابیس ساخته می‌شود'
+          check uploads/support/.gitkeep   'پوشه باید روی هاست وجود داشته باشد' 'پوشه‌ی پیوست‌های چتِ پشتیبانی داخل بسته است'
 
       - name: اثر انگشت و مشخصات بسته
         run: |

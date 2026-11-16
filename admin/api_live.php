@@ -58,6 +58,22 @@ try {
     $q->execute($repParams);
     $doneCount = (int) $q->fetchColumn();
 
+    /* گفتگوهای پشتیبانی — فقط اگر مجوزش را دارد (مدیر کل / تیمِ پشتیبانی) */
+    $supportUnread = 0;
+    $supportOpen   = 0;
+    if (function_exists('eplakAdminCan') && eplakAdminCan('support')) {
+        try {
+            require_once dirname(__DIR__) . '/shared/support.php';
+            eplakSupportAgentTouch($pdo);              /* «پشتیبان آنلاین است» */
+            $supportUnread = eplakSupportUnreadTotal($pdo);
+            $q = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE channel = ? AND (closed_at IS NULL OR closed_at = '')");
+            $q->execute([EPLAK_SUPPORT_CHANNEL]);
+            $supportOpen = (int) $q->fetchColumn();
+        } catch (Throwable $e) {
+            /* جدولِ گفتگو هنوز ساخته نشده ⇒ صفر، نه خطا */
+        }
+    }
+
     echo json_encode([
         'success'       => true,
         'reports_count' => $reportsCount,
@@ -72,6 +88,10 @@ try {
             'role'        => eplakAdminRoleLabel(),
             'departments' => $eplakIsSuper ? [] : $eplakScopeNames,
         ],
+        /* «پشتیبانی آنلاین»: شمارِ گفتگوهای خوانده‌نشده تا live-pulse بتواند
+           پشتیبان را با صدا و پیامِ کوتاه خبر کند (بدونِ نیاز به WebSocket). */
+        'support_unread' => $supportUnread,
+        'support_open'   => $supportOpen,
         'timestamp'     => time(),
         'time_str'      => date('H:i:s')
     ], JSON_UNESCAPED_UNICODE);

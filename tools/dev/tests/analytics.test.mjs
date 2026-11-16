@@ -143,7 +143,7 @@ const idx = await one(`json_encode(array_map(function($r){return $r['name'];}, $
 ok('سه ایندکسِ روز/بازدیدکننده/IP ساخته شد (آمارِ یک سال هم کند نشود)',
   JSON.parse(idx).filter((n) => /idx_site_stats_(day|visitor|ip)/.test(n)).length === 3, idx);
 ok('نسخه‌ی اسکیما بالا رفته و جدول در bootstrapِ هر دو درایور هست',
-  (await one(`EPLAK_SCHEMA_VERSION`)) === '2026-11-12.1'
+  (await one(`EPLAK_SCHEMA_VERSION`)) === '2026-11-16.1'
   && (read('shared/bootstrap.php').match(/CREATE TABLE IF NOT EXISTS site_stats/g) || []).length === 2);
 ok('ستون‌های روز/ساعت جدا هستند ⇒ نمودارِ روزانه/ماهانه/سالانه با SUBSTR و بدونِ توابعِ فقط‌MySQL',
   /SUBSTR\(visit_day, 1, 7\)/.test(read('shared/analytics.php'))

@@ -8,7 +8,7 @@
 #     محتوای data/ و uploads/  ·  shared/config.php  ·  .git/  ·  .github/ (CI)
 #     backend/ (دامپ‌های بزرگ دیتابیس با داده‌ی کاربران) — به‌جز دو اسکریپت کوچک
 #     «ترمیم دستی دیتابیس» که برای هاست‌های بدون اجازه‌ی CREATE/ALTER لازم‌اند.
-#  ولی خودِ پوشه‌های data/ و uploads/{reports,news,ads,tmp} با یک فایلِ نشانه و
+#  ولی خودِ پوشه‌های data/ و uploads/{reports,news,ads,tmp,support} با یک فایلِ نشانه و
 #  نگهبانِ uploads/.htaccess داخل بسته‌اند: روی هاستِ تازه، «آپلود عکس گزارش» و
 #  «دیتابیس SQLite» بیشتر به‌خاطرِ نبودِ خودِ پوشه شکست می‌خورد تا اجازه‌ی آن.
 #
@@ -53,9 +53,11 @@ done
 STUB="$(mktemp -d)"
 trap 'rm -rf "$STUB"' EXIT
 ABS_OUT="$(pwd)/$OUT"
-mkdir -p "$STUB/uploads/reports" "$STUB/uploads/news" "$STUB/uploads/ads" "$STUB/uploads/tmp" "$STUB/data"
+# uploads/support ⇒ پیوست‌های «پشتیبانی آنلاین» (shared/support.php). بدونِ این
+# پوشه، آپلودِ عکس/فایل در چت روی هاستِ تازه با «dir_failed» شکست می‌خورد.
+mkdir -p "$STUB/uploads/reports" "$STUB/uploads/news" "$STUB/uploads/ads" "$STUB/uploads/tmp" "$STUB/uploads/support" "$STUB/data"
 cp "$STUB_SRC/uploads-htaccess" "$STUB/uploads/.htaccess"
-for d in reports news ads tmp; do cp "$STUB_SRC/gitkeep" "$STUB/uploads/$d/.gitkeep"; done
+for d in reports news ads tmp support; do cp "$STUB_SRC/gitkeep" "$STUB/uploads/$d/.gitkeep"; done
 cp "$STUB_SRC/gitkeep" "$STUB/data/.gitkeep"
 ( cd "$STUB" && zip -q -r "$ABS_OUT" uploads data )
 echo "   ✅ پوشه‌های نوشتنی (خالی) + نگهبانِ uploads/.htaccess به بسته اضافه شد"

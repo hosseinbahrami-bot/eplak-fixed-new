@@ -58,6 +58,16 @@
 #                 شمارِ واقعیِ دانلودِ APK از گیت‌هاب (کش‌شده و بدونِ شبکه در
 #                 بارگذاری)، نمودارهای SVGِ سمتِ سرور، و دسترسی: فقط مدیر کل
 #                 (مدیرِ حوزه ۴۰۳ می‌گیرد و لینک را در منو نمی‌بیند)
+#    support    → «پشتیبانی آنلاین» (چتِ مستقیمِ شهروند با پشتیبان): جدول
+#                 ticket_messages و ستون‌های گفتگو، ساعاتِ کاری و پیامِ خودکار،
+#                 api/support.php (رشته‌ی افزایشی، ارسالِ idempotent با
+#                 client_ref، صفِ آفلاین، پیوستِ عکس/ویدیو/سند با نگهبانِ
+#                 path-traversal، سقفِ نرخ، مالکیت با شماره‌ی مالک، هرگز
+#                 ۵۰۰/HTML نشدن)، سازگاری با اپِ قدیمی (tickets.reply)،
+#                 اعلانِ پاسخ به گوشی، پنل (صندوقِ مرکزی، رشته، تنظیمات،
+#                 CSRF، ۴۰۳ برایِ مدیرِ حوزه) و اپِ واقعی (jsdom: باز شدنِ
+#                 صفحه‌ی چت از کارتِ «تماس با ما»، رندرِ حباب‌ها، فرارِ XSS،
+#                 صفِ ارسالِ آفلاین و نسخه‌ی تازه‌ی APK)
 #    ios        → نسخه‌ی iOS (ios-app/): بسته‌ی وبِ داخل اپ همان مجموعه‌ی اندروید است و همه‌ی
 #                 فایل‌های index.html را دارد، Info.plist/پروژه‌ی Xcode/سورس Swift، اسکریپت
 #                 آزمون دودیِ شبیه‌ساز، ورک‌فلوهای CI، و نرفتن ios-app به بسته‌ی هاست
@@ -120,7 +130,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "syntax" ]; then
   run_step "بررسی نحوی JS"  node "$WORK/js-syntax.mjs"  "$ROOT"
 fi
 
-for t in notify notify-schema news jalali app pushcrypto fcm backend security online geo upload tiles push places placesadmin acl ads otp sms ios pwa analytics; do
+for t in notify notify-schema news jalali app pushcrypto fcm backend security online geo upload tiles push places placesadmin acl ads otp sms ios pwa analytics support; do
   if [ "$TARGET" = "all" ] || [ "$TARGET" = "$t" ]; then
     if [ -f "$WORK/$t.test.mjs" ]; then
       run_step "آزمون $t" node "$WORK/$t.test.mjs"

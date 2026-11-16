@@ -7,6 +7,7 @@
 
   var lastReportId = null;
   var lastUserId = null;
+  var lastSupportUnread = null;   /* «پشتیبانی آنلاین»: شمارِ خوانده‌نشده‌ها */
   var isInitial = true;
   var audioCtx = null;
 
@@ -118,6 +119,29 @@
     }, 6000);
   }
 
+  /* نشانِ «خوانده‌نشده» روی آیتمِ منوی پشتیبانی — بدونِ دست‌زدن به
+     eplakAdminSidebar() (که در همه‌ی صفحه‌ها مشترک است) همین‌جا اضافه می‌شود. */
+  function updateSupportBadge(count) {
+    try {
+      var link = document.querySelector('nav a[href="support.php"]');
+      if (!link) { return; }
+      var badge = link.querySelector('[data-support-badge]');
+      if (count > 0) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.setAttribute('data-support-badge', '1');
+          badge.style.cssText = 'margin-inline-start:auto;background:#ef4444;color:#fff;border-radius:999px;'
+            + 'min-width:20px;height:20px;padding:0 6px;font-size:11px;font-weight:800;'
+            + 'display:inline-flex;align-items:center;justify-content:center;';
+          link.appendChild(badge);
+        }
+        badge.textContent = String(count);
+      } else if (badge) {
+        badge.remove();
+      }
+    } catch (e) { /* بی‌صدا */ }
+  }
+
   function updateDomStats(data) {
     // Update live badge in sidebar or header
     var liveDot = document.getElementById('eplakLivePulseDot');
@@ -161,6 +185,27 @@
 
         // Prepend to reports table if currently viewing reports or dashboard
         prependReportToTable(r);
+      }
+
+      // ── پیامِ تازه در «پشتیبانی آنلاین» ──
+      // چرا با poll و نه WebSocket؟ هاستِ اشتراکی پروسه‌ی دائمی ندارد؛ همین
+      // live-pulse هر ۳٫۵ ثانیه api_live.php را می‌خواند و support_unread را
+      // برمی‌گرداند. وقتی شمار بالا برود: صدا + پیامِ کوتاه + نشانِ منو.
+      if (typeof data.support_unread !== 'undefined') {
+        var supUnread = parseInt(data.support_unread, 10) || 0;
+        updateSupportBadge(supUnread);
+        if (lastSupportUnread === null) {
+          lastSupportUnread = supUnread;
+        } else if (supUnread > lastSupportUnread) {
+          lastSupportUnread = supUnread;
+          var supMsg = supUnread === 1
+            ? 'پیامِ تازه در پشتیبانی آنلاین'
+            : (supUnread + ' پیامِ خوانده‌نشده در پشتیبانی آنلاین');
+          showAdminLiveToast(supMsg, 'report', 'support.php');
+          playChime('report');
+        } else {
+          lastSupportUnread = supUnread;
+        }
       }
 
       // ── New User Registration Detection ──
