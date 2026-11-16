@@ -319,7 +319,11 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
                     self.runSelfTestStage(2, script: ViewController.selfTestStage2) {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
                             self.runSelfTestStage(3, script: ViewController.selfTestStage3) {
-                                self.writeSelfTestFile("selftest-done.json", "{\"done\":true}")
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                                    self.runSelfTestStage(4, script: ViewController.selfTestStage4) {
+                                        self.writeSelfTestFile("selftest-done.json", "{\"done\":true}")
+                                    }
+                                }
                             }
                         }
                     }
@@ -524,6 +528,32 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     out.markers = q('#cityMapCanvas .ep-map-markers > *').length;
     const meta = document.getElementById('cityMapMeta');
     out.meta = meta ? meta.textContent.trim().slice(0, 80) : null;
+    return JSON.stringify(out);
+    """#
+
+    /// مرحله ۴: «پشتیبانی آنلاین» — کارتِ صفحه‌ی تماس باید صفحه‌ی چت را باز کند،
+    /// ماژولِ چت بار شده باشد و المان‌های صفحه (حباب‌ها، کادرِ نوشتن، پیوست) در DOM باشند.
+    /// چرا این مرحله لازم شد؟ کارتِ «پشتیبانی آنلاین» پیش‌تر فقط تزئینی بود
+    /// (cursor:pointer بدونِ onclick) و هیچ‌کس نمی‌فهمید که وصل شده یا نه.
+    private static let selfTestStage4 = #"""
+    const out = { stage: 4 };
+    out.card = !!document.getElementById('supportCard');
+    out.cardOnclick = out.card ? (document.getElementById('supportCard').getAttribute('onclick') || '') : null;
+    out.screen = !!document.getElementById('screen-support');
+    out.module = typeof window.eplakSupport;
+    out.openFn = typeof window.openSupportChat;
+    out.css = Array.prototype.some.call(document.styleSheets, function (sh) {
+      try { return sh.href && sh.href.indexOf('support.css') !== -1; } catch (e) { return false; }
+    });
+    out.els = ['supportMessages', 'supportInput', 'supportSendBtn', 'supportAttachBtn', 'supportFileInput', 'supportHoursBanner']
+      .every(function (id) { return !!document.getElementById(id); });
+    try {
+      window.openSupportChat();
+      await new Promise(function (r) { setTimeout(r, 2500); });
+      out.opened = (document.querySelector('.screen.active') || {}).id || null;
+      out.bubbles = document.querySelectorAll('#supportMessages .sup-bubble').length;
+      out.banner = (document.getElementById('supportHoursBanner') || {}).style.display !== 'none';
+    } catch (e) { out.openError = String(e); }
     return JSON.stringify(out);
     """#
 
