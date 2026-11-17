@@ -203,13 +203,13 @@ section('رشته‌های دوزبانه‌ی core/i18n.js');
 }
 
 /* ══════════ ۶) نسخه‌ی اپ ══════════ */
-section('نسخه‌ی اپ (۲.۹/۱۱)');
+section('نسخه‌ی اپ (۲.۱۰/۱۲)');
 {
   const gradle = read('android-app/app/build.gradle');
-  ok('اندروید: versionCode 11 / versionName 2.9', /versionCode 11\b/.test(gradle) && gradle.includes("versionName '2.9'"));
+  ok('اندروید: versionCode 12 / versionName 2.10', /versionCode 12\b/.test(gradle) && gradle.includes("versionName '2.10'"));
   const pbx = read('ios-app/Eplak.xcodeproj/project.pbxproj');
-  ok('iOS: MARKETING_VERSION 2.9.0 و CURRENT_PROJECT_VERSION 11 (هر دو پیکربندی)',
-    (pbx.match(/MARKETING_VERSION = 2\.9\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 11;/g) || []).length === 2);
+  ok('iOS: MARKETING_VERSION 2.10.0 و CURRENT_PROJECT_VERSION 12 (هر دو پیکربندی)',
+    (pbx.match(/MARKETING_VERSION = 2\.10\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 12;/g) || []).length === 2);
 }
 
 /* ══════════ ۷) تبِ «چت‌های پشتیبانی» در بخشِ گزارش‌ها ══════════ */

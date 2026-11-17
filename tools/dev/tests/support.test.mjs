@@ -582,10 +582,10 @@ ok('اپ برایِ «ورودِ اجباری» پیامِ راهنما می‌�
    ۶) قراردادها: نسخه، مستندات، بسته‌بندی و CI
    ══════════════════════════════════════════════════════════════════ */
 section('۶) قراردادها، نسخه‌ی اپ و مستندات');
-ok('نسخه‌ی اپ بالا رفته تا APK/IPA به‌عنوانِ «به‌روزرسانی» نصب شود (versionCode 11 / 2.9)',
-  /versionCode 11\b/.test(read('android-app/app/build.gradle')) && read('android-app/app/build.gradle').includes("versionName '2.9'")
-  && (read('ios-app/Eplak.xcodeproj/project.pbxproj').match(/MARKETING_VERSION = 2\.9\.0;/g) || []).length === 2
-  && (read('ios-app/Eplak.xcodeproj/project.pbxproj').match(/CURRENT_PROJECT_VERSION = 11;/g) || []).length === 2);
+ok('نسخه‌ی اپ بالا رفته تا APK/IPA به‌عنوانِ «به‌روزرسانی» نصب شود (versionCode 12 / 2.10)',
+  /versionCode 12\b/.test(read('android-app/app/build.gradle')) && read('android-app/app/build.gradle').includes("versionName '2.10'")
+  && (read('ios-app/Eplak.xcodeproj/project.pbxproj').match(/MARKETING_VERSION = 2\.10\.0;/g) || []).length === 2
+  && (read('ios-app/Eplak.xcodeproj/project.pbxproj').match(/CURRENT_PROJECT_VERSION = 12;/g) || []).length === 2);
 const php74 = ['shared/support.php', 'api/support.php', 'admin/support.php'];
 ok('سازگار با PHP 7.4ِ هاست (بدونِ str_contains/match/?->)',
   php74.every((f) => !/\bstr_contains\(|\bstr_starts_with\(|\bstr_ends_with\(|\bmatch\s*\(|\?->/.test(stripComments(read(f)))));
@@ -604,6 +604,48 @@ ok('پوشه‌ی پیوست‌های چت داخلِ بسته‌ی آپلود �
   && /for d in reports news ads tmp support;/.test(read('tools/build-update-package.sh')));
 ok('README بخشِ «پشتیبانی آنلاین» و لینکِ مستندش را دارد',
   has(read('README.md'), 'docs/SUPPORT_FA.md') && /پشتیبانی آنلاین/.test(read('README.md')));
+
+/* ══════════ api/version.php — «نسخه‌ی اپ و آپدیت اجباری» ══════════ */
+section('api/version.php (حداقل نسخه‌ی مجاز از app_settings)');
+{
+  /* پیش‌فرض (بدونِ هیچ تنظیمی): هیچ‌کس مسدود نیست */
+  const def = await req('GET', '/api/version.php', newJar());
+  ok('پیش‌فرض: success=true و min_version_code=0 (هیچ‌کس مسدود نیست)',
+    def.status === 200 && def.json && def.json.success === true && def.json.min_version_code === 0,
+    JSON.stringify(def.json));
+  ok('پیش‌فرض: لینکِ دانلود همان APKِ رسمیِ گیت‌هاب است',
+    def.json && String(def.json.update_url).includes('eplak-app.apk'));
+
+  /* تنظیمِ مدیر در دیتابیس ⇒ همان در پاسخ */
+  await phpRun(`eplakSetAppSetting(eplakGetPdo(), 'min_app_version_code', '13');
+    eplakSetAppSetting(eplakGetPdo(), 'latest_app_version_code', '14');
+    eplakSetAppSetting(eplakGetPdo(), 'latest_app_version_name', '2.11');
+    eplakSetAppSetting(eplakGetPdo(), 'app_update_url', 'https://example.test/new.apk');
+    eplakSetAppSetting(eplakGetPdo(), 'app_update_message', 'لطفاً آپدیت کنید.');`);
+  const set = await req('GET', '/api/version.php', newJar());
+  ok('پس از تنظیمِ مدیر، حداقل نسخه همان است که مدیر گذاشته (۱۳)',
+    set.json && set.json.min_version_code === 13, JSON.stringify(set.json));
+  ok('آخرین نسخه و نامش هم برمی‌گردد',
+    set.json && set.json.latest_version_code === 14 && set.json.latest_version_name === '2.11');
+  ok('لینکِ دانلود و پیامِ سفارشیِ مدیر برمی‌گردد',
+    set.json && set.json.update_url === 'https://example.test/new.apk' && set.json.message === 'لطفاً آپدیت کنید.');
+  ok('پاسخ JSON است و CORS دارد',
+    String(hdr(set, 'content-type')).includes('application/json')
+    && String(hdr(set, 'access-control-allow-origin')) === '*');
+
+  /* OPTIONS ⇒ 204 (پیش‌درخواستِ CORS) */
+  const opt = await req('OPTIONS', '/api/version.php', newJar());
+  ok('OPTIONS پاسخِ 204 می‌دهد', opt.status === 204, String(opt.status));
+
+  /* کدِ منفی/نامعتبر در دیتابیس ⇒ به صفر/پیش‌فرض برمی‌گردد (هرگز منفی نیست) */
+  await phpRun(`eplakSetAppSetting(eplakGetPdo(), 'min_app_version_code', '-5');
+    eplakSetAppSetting(eplakGetPdo(), 'app_update_url', 'javascript:alert(1)');`);
+  const neg = await req('GET', '/api/version.php', newJar());
+  ok('کدِ منفی به ۰ برمی‌گردد (نسخه هرگز منفی نیست)',
+    neg.json && neg.json.min_version_code === 0, JSON.stringify(neg.json));
+  ok('لینکِ غیرِ http(s) پذیرفته نمی‌شود (پیش‌فرض می‌ماند)',
+    neg.json && String(neg.json.update_url).includes('eplak-app.apk'));
+}
 
 console.log(`\nنتیجهٔ SUPPORT: ${pass} موفق، ${fail} ناموفق`);
 process.exit(fail ? 1 : 0);
