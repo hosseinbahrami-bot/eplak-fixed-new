@@ -274,6 +274,12 @@
       if (composer) { composer.style.display = 'none'; }
       return;
     }
+    /* شماره هست ⇒ کادرِ نوشتن حتماً دیده شود. اگر یک‌بار به‌اشتباه پنهان شده
+       بود (مثلاً خرابیِ موقتِ localStorage در WebView یا تخلیه‌ی حافظه‌ی
+       مرورگر در PWA)، با برگشتنِ شماره کادر هم برمی‌گردد — وگرنه کاربر تا
+       پایانِ نشست هیچ‌وقت نمی‌توانست بنویسد. */
+    var composer = el('supportComposer');
+    if (composer) { composer.style.display = ''; }
     try {
       var data = await call('thread', {
         action: 'thread', phone: phone, since: reset ? 0 : state.lastId
@@ -309,10 +315,15 @@
   function startPolling() {
     stopPolling();
     var tick = async function () {
-      if (!isScreenActive() || document.hidden) { return; }
-      await loadThread(false);
-      await flushOutbox();
-      state.delay = state.idlePolls >= 4 ? POLL_SLOW : POLL_FAST;
+      /* زنجیره‌ی تایمر هرگز نباید بشکند: اگر این تیک در حالتِ پنهان/غیرفعال
+         اجرا شود، فقط کارِش را رد می‌کند و تیکِ بعدی را زمان‌بندی می‌کند.
+         (پیش‌تر در همین‌جا return می‌شد و polling برای همیشه می‌مرد؛ بعدش
+         هیچ loadThreadای صدا زده نمی‌شد و کادرِ نوشتن هم برنمی‌گشت.) */
+      if (isScreenActive() && !document.hidden) {
+        await loadThread(false);
+        await flushOutbox();
+        state.delay = state.idlePolls >= 4 ? POLL_SLOW : POLL_FAST;
+      }
       state.timer = setTimeout(tick, state.delay);
     };
     state.timer = setTimeout(tick, state.delay);
