@@ -582,10 +582,10 @@ ok('اپ برایِ «ورودِ اجباری» پیامِ راهنما می‌�
    ۶) قراردادها: نسخه، مستندات، بسته‌بندی و CI
    ══════════════════════════════════════════════════════════════════ */
 section('۶) قراردادها، نسخه‌ی اپ و مستندات');
-ok('نسخه‌ی اپ بالا رفته تا APK/IPA به‌عنوانِ «به‌روزرسانی» نصب شود (versionCode 9 / 2.7)',
-  /versionCode 9\b/.test(read('android-app/app/build.gradle')) && read('android-app/app/build.gradle').includes("versionName '2.7'")
-  && (read('ios-app/Eplak.xcodeproj/project.pbxproj').match(/MARKETING_VERSION = 2\.7\.0;/g) || []).length === 2
-  && (read('ios-app/Eplak.xcodeproj/project.pbxproj').match(/CURRENT_PROJECT_VERSION = 9;/g) || []).length === 2);
+ok('نسخه‌ی اپ بالا رفته تا APK/IPA به‌عنوانِ «به‌روزرسانی» نصب شود (versionCode 10 / 2.8)',
+  /versionCode 10\b/.test(read('android-app/app/build.gradle')) && read('android-app/app/build.gradle').includes("versionName '2.8'")
+  && (read('ios-app/Eplak.xcodeproj/project.pbxproj').match(/MARKETING_VERSION = 2\.8\.0;/g) || []).length === 2
+  && (read('ios-app/Eplak.xcodeproj/project.pbxproj').match(/CURRENT_PROJECT_VERSION = 10;/g) || []).length === 2);
 const php74 = ['shared/support.php', 'api/support.php', 'admin/support.php'];
 ok('سازگار با PHP 7.4ِ هاست (بدونِ str_contains/match/?->)',
   php74.every((f) => !/\bstr_contains\(|\bstr_starts_with\(|\bstr_ends_with\(|\bmatch\s*\(|\?->/.test(stripComments(read(f)))));
