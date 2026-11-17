@@ -74,10 +74,11 @@ const absorb = (jar, res) => {
   }
 };
 const phpNoise = [];
-async function req(method, url, jar, form, json, extra) {
+async function req(method, url, jar, form, json, extra, rawBody) {
   const headers = Object.assign({ 'user-agent': UA_ANDROID }, extra || {});
   let body;
-  if (json !== undefined) { headers['content-type'] = 'application/json'; body = enc.encode(JSON.stringify(json)); }
+  if (rawBody !== undefined) { body = rawBody; }
+  else if (json !== undefined) { headers['content-type'] = 'application/json'; body = enc.encode(JSON.stringify(json)); }
   else if (form) { headers['content-type'] = 'application/x-www-form-urlencoded'; body = enc.encode(new URLSearchParams(Object.entries(form).map(([k, v]) => [k, String(v)])).toString()); }
   if (jar && Object.keys(jar).length) headers.cookie = Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
   const res = await handler.request({ url, method, headers, body });
@@ -402,6 +403,55 @@ ok('با پاسخِ پشتیبان، «اعلان» به گوشیِ شهروند
 const legacyReply = String(await one(`(string) $pdo->query("SELECT reply FROM tickets WHERE id = ${tid}")->fetchColumn()`));
 ok('پاسخِ پشتیبان در tickets.reply هم نشست (اپِ نسخه‌ی قدیمی هم پاسخ را می‌بیند)',
   /حل شد/.test(legacyReply), legacyReply.slice(0, 60));
+/* ── ارسالِ عکس از پنل به شهروند (multipart واقعی) ──
+   ریشه‌ی باگ: اگر آپلودِ فایل در سطحِ PHP شکست می‌خورد (مثلاً عکس بزرگ‌تر از
+   upload_max_filesizeِ هاست)، کد بی‌صدا رد می‌شد و پیام «بدونِ عکس» ارسال
+   می‌شد — ادمین فکر می‌کرد عکس رفته ولی شهروند هیچ‌وقت نمی‌دید.
+   (رشته در بخشِ ۳ بسته شده بود؛ شهروند دوباره می‌نویسد و رشته باز می‌شود.) */
+await phpRun(`eplakSupportReopen($pdo, ${tid}); echo 'reopened';`);
+const PNG_BYTES = Buffer.from(PNG_B64, 'base64');
+async function adminSendPhoto(cl, page, tidValue, token, filename, mime, bytes, extraFields) {
+  const boundary = '----EplakTest' + Math.random().toString(16).slice(2);
+  const parts = [];
+  const field = (name, value) => parts.push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+  field('_token', token);
+  field('act', 'send');
+  field('id', String(tidValue));
+  field('body', 'عکسِ رسید برایِ شما');
+  Object.entries(extraFields || {}).forEach(([k, v]) => field(k, v));
+  parts.push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="attach"; filename="${filename}"\r\nContent-Type: ${mime}\r\n\r\n`));
+  parts.push(new Uint8Array(bytes));
+  parts.push(enc.encode(`\r\n--${boundary}--\r\n`));
+  const total = parts.reduce((a, b) => a + b.length, 0);
+  const body = new Uint8Array(total);
+  let off = 0; for (const part of parts) { body.set(part, off); off += part.length; }
+  return req('POST', page, cl, null, null, { 'content-type': `multipart/form-data; boundary=${boundary}` }, body);
+}
+const threadForPhoto = await sup.get(`/admin/support.php?id=${tid}`);
+const photoToken = csrfOf(threadForPhoto.text);
+const photoRes = await adminSendPhoto(SUP, `/admin/support.php?id=${tid}`, tid, photoToken, 'resid.png', 'image/png', PNG_BYTES);
+const photoMsg = await obj(`['m'=>$pdo->query("SELECT media_path, media_kind, media_name FROM ticket_messages WHERE ticket_id = ${tid} AND sender = 'admin' AND media_path <> '' ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC)]`);
+ok('ارسالِ عکس از پنل ⇒ پیام با media ثبت می‌شود و شهروند می‌تواند دانلود کند',
+  photoRes.status === 302 && photoMsg.m && photoMsg.m.media_kind === 'image' && /resid\.png/.test(photoMsg.m.media_name || ''),
+  `${photoRes.status} ${JSON.stringify(photoMsg.m)}`);
+const citizenThread = await req('GET', `/api/support.php?action=thread&phone=${PHONE}&since=0`, newJar());
+const citizenPhoto = (citizenThread.json.messages || []).find((m) => m.sender === 'admin' && m.media && m.media.path);
+ok('عکسِ ادمین در رشته‌ی شهروند با media دیده می‌شود',
+  !!citizenPhoto && citizenPhoto.media.kind === 'image', JSON.stringify(citizenPhoto && citizenPhoto.media));
+if (citizenPhoto) {
+  const dl = await req('GET', `/api/support.php?action=file&m=${encodeURIComponent(citizenPhoto.media.path)}&phone=${PHONE}`, newJar());
+  ok('شهروند فایلِ عکسِ ادمین را دانلود می‌کند (۲۰۰ + image/png)',
+    dl.status === 200 && String(dl.headers['content-type'] || '').includes('image/png'), String(dl.status));
+}
+/* آپلودِ ناموفق در سطحِ PHP (MAX_FILE_SIZE) ⇒ خطای صریح و «هیچ» پیامی ثبت نمی‌شود */
+const failToken = csrfOf((await sup.get(`/admin/support.php?id=${tid}`)).text);
+const beforeFail = Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = ${tid} AND sender = 'admin'")->fetchColumn()`));
+const failRes = await adminSendPhoto(SUP, `/admin/support.php?id=${tid}`, tid, failToken, 'big.png', 'image/png', PNG_BYTES, { MAX_FILE_SIZE: '10' });
+const afterFail = Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = ${tid} AND sender = 'admin'")->fetchColumn()`));
+ok('آپلودِ ناموفق (بزرگ‌تر از سقف) ⇒ خطای صریح به ادمین و هیچ پیامی بدونِ عکس ارسال نمی‌شود',
+  failRes.status === 200 && /حجمِ عکس بیشتر از حدِ مجازِ سرور است/.test(failRes.text) && afterFail === beforeFail,
+  `${failRes.status} ${failRes.text.slice(0, 120)}`);
+
 const settingsPage = await sup.get('/admin/support.php?view=settings');
 ok('صفحه‌ی تنظیمات: ساعت و روزهای کاری، پاسخِ خودکار، خوش‌آمد، پاسخ‌های آماده، پیوست و سقفِ نرخ',
   settingsPage.status === 200 && has(settingsPage.text, 'data-testid="support-settings"')

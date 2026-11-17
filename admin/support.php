@@ -58,24 +58,37 @@ if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST') {
         $media = ['path' => '', 'kind' => '', 'name' => '', 'size' => 0];
 
         /* پیوستِ ارسالی از پنل: همان اعتبارسنجیِ سمتِ اپ (نوعِ واقعیِ فایل، سقفِ حجم) */
-        if (!empty($_FILES['attach']) && is_array($_FILES['attach'])
-            && (int) ($_FILES['attach']['size'] ?? 0) > 0
-            && (int) ($_FILES['attach']['error'] ?? 4) === UPLOAD_ERR_OK) {
-            $raw = @file_get_contents((string) $_FILES['attach']['tmp_name']);
-            if ($raw === false) {
-                $error = 'خواندنِ فایلِ پیوست ممکن نشد.';
+        $attach = $_FILES['attach'] ?? null;
+        if (is_array($attach) && isset($attach['error']) && (int) $attach['error'] !== UPLOAD_ERR_NO_FILE) {
+            /* فایل انتخاب شده است. اگر آپلود در سطحِ PHP شکست خورده باشد
+               (معمولاً چون حجمِ عکس از upload_max_filesizeِ هاست بزرگ‌تر است)،
+               پیش‌تر این‌جا بی‌صدا رد می‌شد و پیام «بدونِ عکس» ارسال می‌شد —
+               ادمین فکر می‌کرد عکس رفته ولی شهروند هیچ‌وقت نمی‌دید. حالا خطا
+               صریح به ادمین نشان داده می‌شود و پیام اصلاً ارسال نمی‌شود. */
+            $upErr = (int) $attach['error'];
+            if ($upErr !== UPLOAD_ERR_OK) {
+                $error = ($upErr === UPLOAD_ERR_INI_SIZE || $upErr === UPLOAD_ERR_FORM_SIZE)
+                    ? 'حجمِ عکس بیشتر از حدِ مجازِ سرور است؛ لطفاً عکسِ کوچک‌تری بفرستید.'
+                    : 'آپلودِ عکس ناموفق بود؛ لطفاً دوباره تلاش کنید.';
+            } elseif ((int) ($attach['size'] ?? 0) <= 0) {
+                $error = 'فایلِ انتخاب‌شده خالی است.';
             } else {
-                $stored = eplakSupportStoreAttachment(base64_encode($raw),
-                    (string) ($_FILES['attach']['name'] ?? ''),
-                    (string) ($_FILES['attach']['type'] ?? ''), $settings);
-                if (empty($stored['ok'])) {
-                    $hints = ['bad_type' => 'این نوع فایل مجاز نیست (فقط عکس، ویدیو و سند).',
-                              'too_large' => 'حجمِ فایل بیشتر از حدِ مجاز است.',
-                              'attachments_disabled' => 'ارسالِ پیوست غیرفعال است.'];
-                    $error = $hints[(string) $stored['error']] ?? 'ذخیره‌ی پیوست ممکن نشد.';
+                $raw = @file_get_contents((string) $attach['tmp_name']);
+                if ($raw === false) {
+                    $error = 'خواندنِ فایلِ پیوست ممکن نشد.';
                 } else {
-                    $media = ['path' => $stored['path'], 'kind' => $stored['kind'],
-                              'name' => $stored['name'], 'size' => (int) $stored['size']];
+                    $stored = eplakSupportStoreAttachment(base64_encode($raw),
+                        (string) ($attach['name'] ?? ''),
+                        (string) ($attach['type'] ?? ''), $settings);
+                    if (empty($stored['ok'])) {
+                        $hints = ['bad_type' => 'این نوع فایل مجاز نیست (فقط عکس، ویدیو و سند).',
+                                  'too_large' => 'حجمِ فایل بیشتر از حدِ مجاز است.',
+                                  'attachments_disabled' => 'ارسالِ پیوست غیرفعال است.'];
+                        $error = $hints[(string) $stored['error']] ?? 'ذخیره‌ی پیوست ممکن نشد.';
+                    } else {
+                        $media = ['path' => $stored['path'], 'kind' => $stored['kind'],
+                                  'name' => $stored['name'], 'size' => (int) $stored['size']];
+                    }
                 }
             }
         }
@@ -363,9 +376,10 @@ foreach ($allMessages['messages'] as $m):
           <div style="display:grid;gap:9px">
             <label class="btn btn-outline btn-sm" style="cursor:pointer">
               <i class="fa-solid fa-paperclip"></i> پیوست
-              <input type="file" name="attach" style="display:none"
+              <input type="file" name="attach" id="supAttach" style="display:none"
                      accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
             </label>
+            <span id="supAttachNote" style="font-size:11.5px;color:var(--dark-500)"></span>
             <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-paper-plane"></i> ارسالِ پاسخ</button>
           </div>
 <?php if ($canned): ?>
@@ -387,6 +401,48 @@ foreach ($allMessages['messages'] as $m):
         var chat = document.getElementById('supChat');
         var body = document.getElementById('supBody');
         if (!chat) { return; }
+
+        /* کوچک‌سازیِ خودکارِ عکس پیش از آپلود: عکس‌های گوشی معمولاً ۳ تا ۵
+           مگابایت‌اند و روی هاست‌های اشتراکی upload_max_filesize اغلب ۲ مگابایت
+           است — در این حالت PHP فایل را اصلاً تحویل نمی‌دهد و عکس «گم» می‌شد.
+           این‌جا عکسِ بزرگ را با canvas تا حداکثر ۱۶۰۰ پیکسل و JPEG کم می‌کنیم
+           تا همیشه زیرِ سقف بماند و به شهروند برسد. */
+        var attachInput = document.getElementById('supAttach');
+        var attachNote = document.getElementById('supAttachNote');
+        if (attachInput) {
+          attachInput.addEventListener('change', function () {
+            var file = attachInput.files && attachInput.files[0];
+            if (!file) { if (attachNote) { attachNote.textContent = ''; } return; }
+            if (attachNote) { attachNote.textContent = file.name; }
+            if (!/^image\//.test(file.type || '') || file.size <= 2 * 1024 * 1024) { return; }
+            var url = URL.createObjectURL(file);
+            var img = new Image();
+            img.onload = function () {
+              var maxDim = 1600;
+              var scale = Math.min(1, maxDim / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+              var canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+              canvas.height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+              var ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              URL.revokeObjectURL(url);
+              if (canvas.toBlob) {
+                canvas.toBlob(function (blob) {
+                  if (!blob) { return; }
+                  try {
+                    var dt = new DataTransfer();
+                    var name = String(file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+                    dt.items.add(new File([blob], name, { type: 'image/jpeg' }));
+                    attachInput.files = dt.files;
+                    if (attachNote) { attachNote.textContent = name + ' (کوچک شد: ' + Math.round(blob.size / 1024) + ' کیلوبایت)'; }
+                  } catch (e) { /* مرورگرِ قدیمی: همان فایلِ اصلی می‌رود */ }
+                }, 'image/jpeg', 0.85);
+              }
+            };
+            img.onerror = function () { URL.revokeObjectURL(url); };
+            img.src = url;
+          });
+        }
 
         /* پاسخ‌های آماده ⇒ داخلِ کادرِ نوشتن */
         Array.prototype.forEach.call(document.querySelectorAll('[data-canned]'), function (btn) {
