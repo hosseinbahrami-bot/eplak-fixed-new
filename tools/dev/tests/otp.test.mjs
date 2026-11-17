@@ -58,7 +58,7 @@ ok('ارسال مجدد پس از ۱۲۰ ثانیه در کلاینت و سرو�
   api.includes("'resend_after' => 120") &&
   api.includes('$resendWait = 120 - ($iranNow - $lastRequestAt)'));
 ok('نسخه‌های CSS و JS به‌روز شده تا اپ کش‌شده تایمر جدید را دریافت کند',
-  /style\.css\?v=93/.test(index) && /modules\/auth\.js\?v=15/.test(index));
+  /style\.css\?v=94/.test(index) && /modules\/auth\.js\?v=15/.test(index));
 ok('کد صحیح و اشتباه بازخورد سبز و قرمز متمایز دارند',
   client.includes("setOtpVisualState('valid')") && client.includes("setOtpVisualState('invalid')") &&
   css.includes('#screen-otp .otp-inputs-row.otp-valid input.otp-box') &&

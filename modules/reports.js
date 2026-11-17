@@ -3054,43 +3054,19 @@
     renderSupportList(filter);
   }
 
-  function renderSupportList(filter = activeSupportFilter) {
-    const wrap = document.getElementById('supportListWrap');
-    if (!wrap) return;
-
-    const countBadge = document.getElementById('supportCountBadge');
-    if (countBadge) countBadge.textContent = toPersianDigits(supportThreads.length);
-
-    const isEn = (window.i18n && typeof window.i18n.getLanguage === 'function')
-      ? window.i18n.getLanguage() === 'en'
-      : (window.i18n && window.i18n.currentLang === 'en');
-    const emptyMsg = isEn ? 'No support conversations yet' : 'هنوز گفتگوی پشتیبانی ندارید';
-    const openWord = isEn ? 'Open' : 'باز';
-    const closedWord = isEn ? 'Closed' : 'بسته';
-    const unreadWord = isEn ? 'Unread' : 'خوانده‌نشده';
-
-    let filtered = supportThreads;
-    if (filter === 'open') filtered = supportThreads.filter(t => !isSupportThreadClosed(t));
-    else if (filter === 'closed') filtered = supportThreads.filter(t => isSupportThreadClosed(t));
-
-    if (filtered.length === 0) {
-      wrap.innerHTML = `<div style="text-align:center; padding:30px 10px; color:var(--text-muted); font-size:13px;">${emptyMsg}</div>`;
-      return;
-    }
-
-    wrap.innerHTML = filtered.map(t => {
-      const closed = isSupportThreadClosed(t);
-      const unread = Number(t.unread_citizen || 0) > 0;
-      const displayDate = formatReportDateTime(t.last_message_at || t.created_at);
-      const statusLabel = closed ? closedWord : openWord;
-      const statusClass = closed ? 'status-done' : 'status-pending';
-      return `
+  function supportThreadItemHtml(t, labels) {
+    const closed = isSupportThreadClosed(t);
+    const unread = Number(t.unread_citizen || 0) > 0;
+    const displayDate = formatReportDateTime(t.last_message_at || t.created_at);
+    const statusLabel = closed ? labels.closedWord : labels.openWord;
+    const statusClass = closed ? 'status-done' : 'status-pending';
+    return `
         <div class="report-swipe-item" onclick="openSupportChat()">
           <div class="report-item">
             <span class="report-status ${statusClass}">${statusLabel}</span>
             <div class="report-info">
               <h4>${escapeHtml(t.title || 'پشتیبانی آنلاین')}</h4>
-              <p>${displayDate}${unread ? ` <span style="color:#ef4444; font-weight:700;">(${unreadWord})</span>` : ''}</p>
+              <p>${displayDate}${unread ? ` <span style="color:#ef4444; font-weight:700;">(${labels.unreadWord})</span>` : ''}</p>
             </div>
             <div class="report-icon-box" style="background:rgba(0,200,100,0.16); color:#34d399;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
@@ -3098,7 +3074,62 @@
           </div>
         </div>
       `;
-    }).join('');
+  }
+
+  function supportLabels() {
+    const isEn = (window.i18n && typeof window.i18n.getLanguage === 'function')
+      ? window.i18n.getLanguage() === 'en'
+      : (window.i18n && window.i18n.currentLang === 'en');
+    return {
+      isEn,
+      emptyMsg: isEn ? 'No support conversations yet' : 'هنوز گفتگوی پشتیبانی ندارید',
+      openWord: isEn ? 'Open' : 'باز',
+      closedWord: isEn ? 'Closed' : 'بسته',
+      unreadWord: isEn ? 'Unread' : 'خوانده‌نشده',
+    };
+  }
+
+  /* رندرِ فهرستِ گفتگوها در یک ظرف (پیش‌فرض: تبِ گزارش‌ها؛ برای کارتِ
+     «پیگیری درخواست» هم profileSupportListWrap پاس داده می‌شود). */
+  function renderSupportList(filter = activeSupportFilter, wrapId = 'supportListWrap') {
+    const wrap = document.getElementById(wrapId);
+    if (!wrap) return;
+
+    if (wrapId === 'supportListWrap') {
+      const countBadge = document.getElementById('supportCountBadge');
+      if (countBadge) countBadge.textContent = toPersianDigits(supportThreads.length);
+    }
+
+    const labels = supportLabels();
+
+    let filtered = supportThreads;
+    if (filter === 'open') filtered = supportThreads.filter(t => !isSupportThreadClosed(t));
+    else if (filter === 'closed') filtered = supportThreads.filter(t => isSupportThreadClosed(t));
+
+    if (filtered.length === 0) {
+      wrap.innerHTML = `<div style="text-align:center; padding:30px 10px; color:var(--text-muted); font-size:13px;">${labels.emptyMsg}</div>`;
+      return;
+    }
+
+    wrap.innerHTML = filtered.map(t => supportThreadItemHtml(t, labels)).join('');
+  }
+
+  /* ── تب‌های «پیگیری» / «چت ها» در کارتِ پیگیری درخواست (پروفایل) ── */
+  function switchProfileTrackTab(tab, btnEl) {
+    const btnTrack = document.getElementById('profileTrackTabTrack');
+    const btnChats = document.getElementById('profileTrackTabChats');
+    const paneTrack = document.getElementById('profileTrackPaneTrack');
+    const paneChats = document.getElementById('profileTrackPaneChats');
+    const isChats = tab === 'chats';
+
+    if (btnTrack) btnTrack.classList.toggle('active', !isChats);
+    if (btnChats) btnChats.classList.toggle('active', isChats);
+    if (paneTrack) paneTrack.style.display = isChats ? 'none' : 'flex';
+    if (paneChats) paneChats.style.display = isChats ? 'flex' : 'none';
+
+    if (isChats) {
+      loadSupportThreads().then(() => renderSupportList('all', 'profileSupportListWrap'));
+    }
   }
 
   function openTicketDetail(id) {
@@ -3425,6 +3456,7 @@
   window.filterUserTickets = filterUserTickets;
   window.filterSupportThreads = filterSupportThreads;
   window.renderSupportList = renderSupportList;
+  window.switchProfileTrackTab = switchProfileTrackTab;
   window.confirmDeleteTicket = confirmDeleteTicket;
   window.deleteCurrentOpenTicket = deleteCurrentOpenTicket;
   window.deleteTicketById = deleteTicketById;
