@@ -404,7 +404,7 @@ ok('کش‌باستر فایل‌های تغییر‌یافته به‌روز ش
   && /modules\/dashboard\.js\?v=19/.test(indexHtml) && /modules\/clock-lux\.js\?v=7/.test(indexHtml)
   /* «پشتیبانی آنلاین» (modules/support.js + assets/css/support.css) هم کش‌باستر
      دارد تا گوشی‌ها کدِ تازه را بگیرند و کشِ قدیمیِ بدونِ چت نماند. */
-  && /modules\/support\.js\?v=3/.test(indexHtml) && /assets\/css\/support\.css\?v=4/.test(indexHtml)
+  && /modules\/support\.js\?v=3/.test(indexHtml) && /assets\/css\/support\.css\?v=5/.test(indexHtml)
   /* «تماس با شهرداری» (modules/contact.js) هم کش‌باستر دارد تا ایمیل و آدرسِ تازه برسد. */
   && /modules\/contact\.js\?v=1/.test(indexHtml));
 

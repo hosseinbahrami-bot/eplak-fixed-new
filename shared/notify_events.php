@@ -143,6 +143,80 @@ function eplakNotifyUser(PDO $pdo, string $phone, string $title, string $body, a
 }
 
 /**
+ * فقط «پوش»ِ یک اعلانِ که از قبل در دیتابیس ثبت شده است (FCM + Web Push + ثبتِ
+ * در push_log) — بدونِ درجِ دوباره در جدول اعلان‌ها.
+ *
+ * کاربرد: جایی که پاسخ باید فوری به کاربر برگردد ولی اعلانِ گوشی (که تماسِ
+ * شبکه‌ایِ کند با گوگل/مرورگر است) نباید آن را قفل کند؛ مثلِ «ارسالِ پاسخ از
+ * پنلِ پشتیبانی». صدا زده می‌شود پس از آن‌که پاسخ (ریدایرکت) به ادمین رسید،
+ * تا ادمین منتظرِ کندیِ FCM نماند. اعلان در دیتابیس از قبل هست، پس شهروند در
+ * اپ آن را می‌بیند؛ این تابع فقط «رساندنِ فوری به گوشی» را انجام می‌دهد.
+ */
+function eplakNotifyPushOnly(PDO $pdo, int $notifId, string $phone, string $title, string $body, array $extra = []): array
+{
+    $out = ['pushed' => false, 'push' => []];
+    $phone = eplakNotifyNormalizePhone($phone);
+    if ($phone === '' || $phone === 'all' || $notifId <= 0) {
+        return $out;
+    }
+    $title = eplakNotifyTrim($title, 250);
+    $body  = eplakNotifyTrim($body, 900);
+
+    /* FCM — ارسالِ فوری به گوشی */
+    if (function_exists('eplakFcmSend')) {
+        try {
+            $payload = array_merge([
+                'id'    => (string) $notifId,
+                'url'   => 'index.html#screen-notifications',
+            ], $extra);
+            $tokens = eplakFcmTokens($pdo, [$phone]);
+            $res    = eplakFcmSend($pdo, $tokens, $title, $body, $payload, 10);
+            $summary = eplakFcmSummarize($res, count($tokens));
+            $out['push']   = $summary;
+            $out['pushed'] = $summary['sent'] > 0;
+            eplakPushLogAdd($pdo, [
+                'notification_id' => $notifId,
+                'user_phone'      => $phone,
+                'kind'            => (string) ($extra['kind'] ?? ''),
+                'code'            => (string) ($extra['code'] ?? ''),
+                'title'           => $title,
+                'channel'         => 'fcm',
+                'devices'         => $summary['devices'],
+                'sent'            => $summary['sent'],
+                'failed'          => $summary['failed'],
+                'outcome'         => $summary['outcome'],
+                'error'           => $summary['error'],
+            ]);
+        } catch (Throwable $e) {
+            error_log('[eplak-notify-push] ارسال فوری فایربیس ناموفق: ' . $e->getMessage());
+            $out['push'] = ['outcome' => 'failed', 'sent' => 0, 'error' => $e->getMessage()];
+        }
+    }
+
+    /* Web Push — اگر FCM نرفت */
+    if (empty($out['pushed']) && function_exists('eplakPushNotifyPhone')) {
+        try {
+            $push = eplakPushNotifyPhone($pdo, $phone, $title, $body, [
+                'url'  => 'index.html#screen-notifications',
+                'tag'  => 'eplak-' . ($extra['kind'] ?? 'event') . '-' . ($extra['code'] ?? $notifId),
+                'kind' => (string) ($extra['kind'] ?? ''),
+            ]);
+            if (((int) ($push['sent'] ?? 0)) > 0) {
+                $out['pushed'] = true;
+                $out['push'] = array_merge($out['push'] ?? [], [
+                    'outcome' => 'sent_web',
+                    'sent'    => (int) $push['sent'],
+                ]);
+            }
+        } catch (Throwable $e) {
+            error_log('[eplak-notify-push] پوش مرورگر ناموفق: ' . $e->getMessage());
+        }
+    }
+
+    return $out;
+}
+
+/**
  * آیا برای این شماره/کد پیگیری از قبل اعلانی ساخته شده است؟
  *
  * کاربرد: مسیر «درخواست تکراری» در api/reports.php. اگر گزارش قبلاً ساخته شده
