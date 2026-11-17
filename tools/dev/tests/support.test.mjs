@@ -670,6 +670,58 @@ ok('با برگشتِ شبکه، صف با «همان client_ref» فرستاد�
   flushed.length >= 1 && flushed.some((s) => s.body.includes(queuedRef)) && w2.eplakSupport.outboxCount() === 0,
   JSON.stringify({ flushed: flushed.length, ref: queuedRef, left: w2.eplakSupport.outboxCount() }));
 
+/* ── رگرسیونِ «ناپدید شدنِ کادرِ نوشتن بعد از چند دقیقه» ──
+   ریشه: loadThread وقتی شماره موقتاً خالی بود (خرابیِ localStorage در
+   WebView / تخلیه‌ی حافظه در PWA) کادر را پنهان می‌کرد و هیچ‌وقت برنمی‌گرداند؛
+   و تیکِ polling در حالتِ پنهان زنجیره‌ی تایمر را می‌شکست. */
+const dom3 = new JSDOM('<!doctype html><html dir="rtl"><body>' + CHAT_DOM + '</body></html>', { runScripts: 'outside-only', url: 'https://www.eplak.ir/' });
+const w3 = dom3.window;
+const store3 = {};
+Object.defineProperty(w3, 'localStorage', { value: { getItem: (k) => (k in store3 ? store3[k] : null), setItem: (k, v) => { store3[k] = String(v); }, removeItem: (k) => { delete store3[k]; } }, configurable: true });
+let phone3 = '09121112233';
+let threadCalls3 = 0;
+w3.fetch = async (url) => {
+  const u = String(url);
+  if (/action=thread/.test(u)) { threadCalls3++; return { ok: true, json: async () => ({ success: true, ticket: { id: 7, closed: false }, messages: [], last_id: 0 }) }; }
+  if (/action=config/.test(u)) return { ok: true, json: async () => ({ success: true, enabled: true, open: true, hours_label: '', agent_online: true, attachments: {} }) };
+  return { ok: true, json: async () => ({ success: true }) };
+};
+w3.getCurrentPhone = () => phone3;
+w3.eplakApiBase = () => 'https://www.eplak.ir/eplak-fixed/api';
+w3.showToast = () => {};
+w3.showScreen = () => {};
+w3.eval(supportJs);
+const composer3 = () => dom3.window.document.getElementById('supportComposer');
+w3.eplakSupport.state.delay = 20;   /* تیکِ سریع برایِ آزمون */
+await w3.eplakSupport.open();
+ok('پس از باز کردنِ چت، کادرِ نوشتن دیده می‌شود', composer3().style.display !== 'none');
+phone3 = '';                        /* خرابیِ موقتِ localStorage: شماره یک‌بار خالی */
+await w3.eplakSupport.refresh();
+ok('با خالی شدنِ موقتِ شماره، کادر پنهان و پیامِ «ابتدا وارد شوید» نشان داده می‌شود',
+  composer3().style.display === 'none');
+phone3 = '09121112233';
+await w3.eplakSupport.refresh();
+ok('با برگشتنِ شماره، کادرِ نوشتن برمی‌گردد (پیش‌تر برای همیشه پنهان می‌ماند)',
+  composer3().style.display !== 'none');
+const callsBefore = threadCalls3;
+Object.defineProperty(w3.document, 'hidden', { value: true, configurable: true });
+await new Promise((r) => setTimeout(r, 200));
+const callsHidden = threadCalls3;
+Object.defineProperty(w3.document, 'hidden', { value: false, configurable: true });
+await new Promise((r) => setTimeout(r, 200));
+ok('تیکِ polling در حالتِ پنهان کار نمی‌کند ولی زنجیره نمی‌میرد (پس از برگشتن، دوباره می‌خواند)',
+  callsHidden === callsBefore && threadCalls3 > callsHidden,
+  JSON.stringify({ before: callsBefore, hidden: callsHidden, after: threadCalls3 }));
+
+/* چیدمان: کادر همیشه چسبیده به پایین است و هرگز زیرِ تاخوردگی نمی‌رود */
+const supCss = read('assets/css/support.css');
+ok('ظرفِ بیرونیِ چت اسکرول نمی‌شود (فقط اسکرولرِ داخلی) تا کادر زیرِ تاخوردگی نرود',
+  /#screen-support \.screen-content\s*{[^}]*overflow:\s*hidden/.test(supCss));
+ok('اسکرولر min-heightِ تحمیلی ندارد تا در صفحه‌ی کوتاه چیدمان جا شود',
+  /\.sup-scroller\s*{[^}]*min-height:\s*0/.test(supCss));
+ok('کادرِ نوشتن sticky به پایین است (بیمه‌ی نهاییِ دیده شدن)',
+  /\.sup-composer\s*{[^}]*position:\s*sticky[^}]*bottom:\s*0/.test(supCss));
+
 ok('polling فقط وقتی صفحه باز است ادامه دارد و با پنهان شدن قطع می‌شود (باتری)',
   /document\.hidden/.test(supportJs) && /visibilitychange/.test(supportJs) && /stopPolling\(\)/.test(supportJs));
 ok('polling تطبیقی است: ۵ ثانیه در فعالیت و ۱۵ ثانیه در سکوت',
