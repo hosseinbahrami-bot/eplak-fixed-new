@@ -254,8 +254,8 @@ ok('api/ping.php فیلدهای نسخه را از shared/app_version.json می�
   vping.includes('app_version.json') && vping.includes("'app_version' => $appVersion"));
 ok('api/ping.php همچنان به دیتابیس وابسته نیست (حتی با دیتابیس خراب جواب می‌دهد)',
   !vping.includes('db.php') && !vping.includes('$pdo'));
-ok('api/ping.php روی خرابیِ فایل پیش‌فرضِ بی‌خطر برمی‌گرداند (min=0 یعنی هیچ‌کس مسدود نیست)',
-  vping.includes("'min_version_code'    => 0") && vping.includes('catch (Throwable'));
+ok('api/ping.php روی خرابیِ فایل پیش‌فرضِ «آخرین نسخه» برمی‌گرداند (min = کدِ آخرین نسخه)',
+  vping.includes("'min_version_code'    => 12") && vping.includes('catch (Throwable'));
 ok('api/ping.php کدِ منفی و لینکِ غیرِ http(s) را نمی‌پذیرد',
   vping.includes('max(0, (int)') && vping.includes("preg_match('#^https?://#i'"));
 ok('پنل مدیریت بخش «نسخه‌ی اپ و آپدیت اجباری» دارد',
@@ -280,6 +280,16 @@ ok('فرمِ پنل هر پنج تنظیم را در shared/app_version.json ذ�
   const pbxName = (pbx.match(/MARKETING_VERSION = ([0-9.]+);/) || [])[1];
   ok('نامِ نسخه‌ی اپ در هر سه‌جا یکی است',
     !!stateName && stateName === gradleName && pbxName === stateName + '.0', `${stateName}/${gradleName}/${pbxName}`);
+
+  /* پیش‌فرضِ «حداقل نسخه» در ping.php هم باید همان آخرین نسخه باشد تا نسخه‌های
+     قدیمی‌تر خودکار مسدود شوند (بدونِ تنظیمِ دستی در پنل). */
+  const pingPhp = read('api/ping.php');
+  const pingMin = (pingPhp.match(/'min_version_code'\s+=>\s+(\d+),/) || [])[1];
+  const pingLatest = (pingPhp.match(/'latest_version_code'\s+=>\s+(\d+),/) || [])[1];
+  const pingName = (pingPhp.match(/'latest_version_name'\s+=>\s+'([^']+)',/) || [])[1];
+  ok('پیش‌فرضِ «حداقل نسخه» در ping.php همان آخرین نسخه است (مسدودِ خودکارِ قدیمی‌ها)',
+    !!pingMin && pingMin === stateCode && pingLatest === stateCode && pingName === stateName,
+    `${pingMin}/${pingLatest}/${pingName} vs ${stateCode}/${stateName}`);
 }
 
 /* ---------- ۶-۲) اجرای واقعی نگهبان نسخه در محیط شبیه‌سازی‌شده ---------- */

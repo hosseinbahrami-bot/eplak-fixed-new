@@ -612,12 +612,14 @@ section('api/ping.php (فیلدهای نسخه از shared/app_version.json)');
   const writeVer = (obj) => fs.writeFileSync(verFile, JSON.stringify(obj));
   const clearVer = () => { try { fs.unlinkSync(verFile); } catch (e) { /* نبود */ } };
 
-  /* پیش‌فرض (بدونِ فایلِ تنظیمات): هیچ‌کس مسدود نیست */
+  /* پیش‌فرض (بدونِ فایلِ تنظیمات): «آخرین نسخه» — نسخه‌های قدیمی‌تر مسدودند */
   clearVer();
   const def = await req('GET', '/api/ping.php', newJar());
-  ok('پیش‌فرض: app_version با min_version_code=0 برمی‌گردد (هیچ‌کس مسدود نیست)',
+  ok('پیش‌فرض: app_version با min_version_code=12 برمی‌گردد (آخرین نسخه؛ قدیمی‌ها مسدودند)',
     def.status === 200 && def.json && def.json.success === true
-    && def.json.app_version && def.json.app_version.min_version_code === 0,
+    && def.json.app_version && def.json.app_version.min_version_code === 12
+    && def.json.app_version.latest_version_code === 12
+    && def.json.app_version.latest_version_name === '2.10',
     JSON.stringify(def.json));
   ok('پیش‌فرض: لینکِ دانلود همان APKِ رسمیِ گیت‌هاب است',
     def.json && def.json.app_version && String(def.json.app_version.update_url).includes('eplak-app.apk'));
@@ -651,12 +653,12 @@ section('api/ping.php (فیلدهای نسخه از shared/app_version.json)');
   ok('لینکِ غیرِ http(s) پذیرفته نمی‌شود (پیش‌فرض می‌ماند)',
     neg.json && neg.json.app_version && String(neg.json.app_version.update_url).includes('eplak-app.apk'));
 
-  /* فایلِ خراب ⇒ پیش‌فرضِ بی‌خطر و پینگ همچنان زنده */
+  /* فایلِ خراب ⇒ پیش‌فرضِ «آخرین نسخه» و پینگ همچنان زنده */
   fs.writeFileSync(verFile, '{خراب');
   const bad = await req('GET', '/api/ping.php', newJar());
-  ok('فایلِ خراب پینگ را خراب نمی‌کند (پیش‌فرضِ بی‌خطر)',
+  ok('فایلِ خراب پینگ را خراب نمی‌کند (پیش‌فرضِ آخرین نسخه)',
     bad.status === 200 && bad.json && bad.json.online === true
-    && bad.json.app_version && bad.json.app_version.min_version_code === 0, JSON.stringify(bad.json));
+    && bad.json.app_version && bad.json.app_version.min_version_code === 12, JSON.stringify(bad.json));
   clearVer();
 }
 

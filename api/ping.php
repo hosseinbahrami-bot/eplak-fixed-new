@@ -11,8 +11,10 @@
    «نسخه‌ی اپ و آپدیت اجباری» هم از همین‌جا می‌آید: اپ هنگام باز شدن همین
    پینگ را می‌زند و فیلدهای نسخه را از پاسخ می‌خواند (modules/version-guard.js).
    تنظیمات در shared/app_version.json است (پنل مدیریت می‌نویسدش) تا این آدرس
-   همچنان بدونِ دیتابیس بماند؛ اگر فایل نباشد/خراب باشد، پیش‌فرضِ بی‌خطر
-   (min=0 یعنی «هیچ‌کس مسدود نیست») برمی‌گردد.
+   همچنان بدونِ دیتابیس بماند؛ اگر فایل نباشد/خراب باشد، پیش‌فرضِ «آخرین نسخه‌ی
+   منتشرشده» برمی‌گردد (min = کدِ آخرین نسخه) تا نسخه‌های قدیمی‌تر خودکار
+   مسدود شوند و پیامِ آپدیت ببینند — بدونِ این‌که مدیر چیزی را دستی تنظیم کند.
+   مدیر می‌تواند از پنل مقدار را عوض کند (مثلاً ۰ = «هیچ‌کس مسدود نیست»).
 */
 require_once __DIR__ . '/../shared/fa_datetime.php';
 
@@ -31,10 +33,15 @@ if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'OPTIONS') {
    shared/app_version.json را پنل مدیریت می‌نویسد (admin/settings.php).
    این فایل در گیت و در بسته‌ی آپدیت نیست (مثلِ shared/config.php) تا آپدیتِ
    هاست تنظیمِ مدیر را بازنویسی نکند؛ روی هاستِ تازه هم نیست و پیش‌فرض مؤثر است. */
+/* پیش‌فرض = «آخرین نسخه‌ی منتشرشده» (۲.۱۰ / کدِ ۱۲): هر نسخه‌ی قدیمی‌تر از
+   این، پس از آپدیتِ هاست، وارد اپ نمی‌شود و پیامِ آپدیت می‌بیند.
+   ⚠️ این سه مقدار باید با APP_VERSION_CODE/APP_VERSION_NAME در core/state.js
+   (و versionCode/versionNameِ اندروید و آیفون) یکی باشند؛ با هر انتشارِ تازه
+   هر چهارجا با هم بالا می‌روند (آزمونِ online.test.mjs این را قفل می‌کند). */
 $appVersion = [
-    'min_version_code'    => 0,
-    'latest_version_code' => 0,
-    'latest_version_name' => '',
+    'min_version_code'    => 12,
+    'latest_version_code' => 12,
+    'latest_version_name' => '2.10',
     'update_url'          => 'https://github.com/hosseinbahrami-bot/eplak-fixed-new/releases/download/v2.0-eplak-update/eplak-app.apk',
     'message'             => '',
 ];
