@@ -5404,7 +5404,7 @@ body.lang-en .city-live-updated {
     top: 4px;
     bottom: 4px;
     right: 4px;
-    width: calc(50% - 6px);
+    width: calc(33.333% - 6px);
     border-radius: 12px;
     background: linear-gradient(135deg, var(--teal), var(--teal-dark));
     box-shadow: 0 4px 14px rgba(0, 201, 167, 0.45);

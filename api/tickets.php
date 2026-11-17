@@ -23,7 +23,7 @@ if ($method === 'GET') {
         eplakJsonError('شماره موبایل معتبر الزامی است', 400);
     }
     try {
-        $stmt = $pdo->prepare('SELECT id, user_phone, title, description, status, reply, category, department, priority, created_at,
+        $stmt = $pdo->prepare('SELECT id, user_phone, title, description, status, reply, category, department, priority, channel, created_at,
                                       CONCAT("TK-1403-", LPAD(id + 1000, 4, "0")) AS code
                                FROM tickets WHERE user_phone = :phone ORDER BY created_at DESC, id DESC LIMIT 200');
         $stmt->execute([':phone' => $phone]);

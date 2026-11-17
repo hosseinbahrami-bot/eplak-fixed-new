@@ -2900,6 +2900,10 @@
   window.activeTicketId = activeTicketId;
   let activeTicketFilter = 'all';
   let activeReportsMainTab = 'reports';
+  /* «چت‌های پشتیبانی»: گفتگوهای channel='support' از تیکت‌ها جدا شده‌اند و
+     فقط در تبِ سوم نمایش داده می‌شوند (api/support.php?action=threads). */
+  let supportThreads = [];
+  let activeSupportFilter = 'all';
 
   function switchReportsMainTab(section, btnEl) {
     activeReportsMainTab = section;
@@ -2910,37 +2914,33 @@
     const indicator = document.getElementById('reportsSwitcherIndicator');
     const btns = document.querySelectorAll('#reportsMainSwitcher .reports-switcher-btn');
     btns.forEach(b => b.classList.remove('active'));
+    const btnBySection = { reports: 'tabBtnReports', tickets: 'tabBtnTickets', support: 'tabBtnSupport' };
     if (btnEl) {
       btnEl.classList.add('active');
     } else {
-      const activeBtn = document.getElementById(section === 'tickets' ? 'tabBtnTickets' : 'tabBtnReports');
+      const activeBtn = document.getElementById(btnBySection[section] || 'tabBtnReports');
       if (activeBtn) activeBtn.classList.add('active');
     }
 
     if (indicator) {
-      if (section === 'tickets') {
-        indicator.style.transform = isEn ? 'translateX(100%)' : 'translateX(-100%)';
-      } else {
-        indicator.style.transform = 'translateX(0)';
-      }
+      /* سه تب: گزارش‌ها (۰)، تیکت‌ها (۱)، چت‌های پشتیبانی (۲).
+         در فارسی (RTL) نشانگر از راست به چپ می‌لغزد، در انگلیسی (LTR) برعکس. */
+      const idx = section === 'tickets' ? 1 : section === 'support' ? 2 : 0;
+      const pct = (isEn ? idx : -idx) * 100;
+      indicator.style.transform = 'translateX(' + pct + '%)';
     }
 
     const paneReports = document.getElementById('sectionReportsPane');
     const paneTickets = document.getElementById('sectionTicketsPane');
+    const paneSupport = document.getElementById('sectionSupportPane');
 
-    if (section === 'tickets') {
-      if (paneReports) paneReports.style.display = 'none';
-      if (paneTickets) {
-        paneTickets.style.display = 'flex';
-        renderUserTicketsList(activeTicketFilter);
-      }
-    } else {
-      if (paneTickets) paneTickets.style.display = 'none';
-      if (paneReports) {
-        paneReports.style.display = 'flex';
-        renderReportsList('all');
-      }
-    }
+    if (paneReports) paneReports.style.display = section === 'reports' ? 'flex' : 'none';
+    if (paneTickets) paneTickets.style.display = section === 'tickets' ? 'flex' : 'none';
+    if (paneSupport) paneSupport.style.display = section === 'support' ? 'flex' : 'none';
+
+    if (section === 'tickets') renderUserTicketsList(activeTicketFilter);
+    else if (section === 'support') refreshSupportList();
+    else renderReportsList('all');
   }
 
     function filterUserTickets(filter, btnEl) {
@@ -2954,8 +2954,10 @@
     const wrap = document.getElementById('userTicketsListWrap');
     if (!wrap) return;
 
+    /* چت‌های پشتیبانی (channel='support') این‌جا نیستند؛ تبِ جدا دارند. */
+    const visibleTickets = tickets.filter(t => t.channel !== 'support');
     const countBadge = document.getElementById('userTicketsCountBadge');
-    if (countBadge) countBadge.textContent = toPersianDigits(tickets.length);
+    if (countBadge) countBadge.textContent = toPersianDigits(visibleTickets.length);
     const repBadge = document.getElementById('reportsCountBadge');
     if (repBadge) repBadge.textContent = toPersianDigits(reports.length);
 
@@ -2965,13 +2967,13 @@
     const deleteWord = isEn ? 'Delete' : 'حذف';
     const emptyMsg = isEn ? 'No tickets found in this category' : 'تیکتی در این دسته یافت نشد';
 
-    let filtered = tickets;
+    let filtered = visibleTickets;
     if (filter === 'pending') {
-      filtered = tickets.filter(t => (!t.reply || !t.reply.trim()) && (t.status === 'pending' || !t.status));
+      filtered = visibleTickets.filter(t => (!t.reply || !t.reply.trim()) && (t.status === 'pending' || !t.status));
     } else if (filter === 'done' || filter === 'answered') {
-      filtered = tickets.filter(t => (t.reply && t.reply.trim()) || t.status === 'done' || t.status === 'answered');
+      filtered = visibleTickets.filter(t => (t.reply && t.reply.trim()) || t.status === 'done' || t.status === 'answered');
     } else if (filter === 'review' || filter === 'in_progress') {
-      filtered = tickets.filter(t => t.status === 'in_progress' || t.status === 'review');
+      filtered = visibleTickets.filter(t => t.status === 'in_progress' || t.status === 'review');
     }
 
     if (filtered.length === 0) {
@@ -3016,6 +3018,87 @@
       `;
     }).join('');
     initReportSwipe();
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     تبِ «چت‌های پشتیبانی»: فهرستِ گفتگوهای channel='support'
+     (از api/support.php?action=threads) — جدا از تیکت‌ها.
+     ════════════════════════════════════════════════════════════════════ */
+  function isSupportThreadClosed(t) {
+    return !!((t.closed_at && String(t.closed_at).trim()) || t.status === 'closed' || t.status === 'done');
+  }
+
+  async function loadSupportThreads() {
+    const phone = (typeof getCurrentPhone === 'function') ? getCurrentPhone() : '';
+    if (!phone) { supportThreads = []; return supportThreads; }
+    try {
+      const res = await fetch(`${apiBase()}/support.php?action=threads&phone=${encodeURIComponent(phone)}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error('threads fetch failed');
+      const data = await res.json();
+      supportThreads = Array.isArray(data?.threads) ? data.threads : [];
+    } catch (e) {
+      /* فهرستِ قبلی می‌ماند؛ خودِ صفحه‌ی چت خطا را گزارش می‌کند */
+    }
+    return supportThreads;
+  }
+
+  async function refreshSupportList() {
+    await loadSupportThreads();
+    renderSupportList(activeSupportFilter);
+  }
+
+  function filterSupportThreads(filter, btnEl) {
+    activeSupportFilter = filter;
+    document.querySelectorAll('#supportFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
+    if (btnEl) btnEl.classList.add('active');
+    renderSupportList(filter);
+  }
+
+  function renderSupportList(filter = activeSupportFilter) {
+    const wrap = document.getElementById('supportListWrap');
+    if (!wrap) return;
+
+    const countBadge = document.getElementById('supportCountBadge');
+    if (countBadge) countBadge.textContent = toPersianDigits(supportThreads.length);
+
+    const isEn = (window.i18n && typeof window.i18n.getLanguage === 'function')
+      ? window.i18n.getLanguage() === 'en'
+      : (window.i18n && window.i18n.currentLang === 'en');
+    const emptyMsg = isEn ? 'No support conversations yet' : 'هنوز گفتگوی پشتیبانی ندارید';
+    const openWord = isEn ? 'Open' : 'باز';
+    const closedWord = isEn ? 'Closed' : 'بسته';
+    const unreadWord = isEn ? 'Unread' : 'خوانده‌نشده';
+
+    let filtered = supportThreads;
+    if (filter === 'open') filtered = supportThreads.filter(t => !isSupportThreadClosed(t));
+    else if (filter === 'closed') filtered = supportThreads.filter(t => isSupportThreadClosed(t));
+
+    if (filtered.length === 0) {
+      wrap.innerHTML = `<div style="text-align:center; padding:30px 10px; color:var(--text-muted); font-size:13px;">${emptyMsg}</div>`;
+      return;
+    }
+
+    wrap.innerHTML = filtered.map(t => {
+      const closed = isSupportThreadClosed(t);
+      const unread = Number(t.unread_citizen || 0) > 0;
+      const displayDate = formatReportDateTime(t.last_message_at || t.created_at);
+      const statusLabel = closed ? closedWord : openWord;
+      const statusClass = closed ? 'status-done' : 'status-pending';
+      return `
+        <div class="report-swipe-item" onclick="openSupportChat()">
+          <div class="report-item">
+            <span class="report-status ${statusClass}">${statusLabel}</span>
+            <div class="report-info">
+              <h4>${escapeHtml(t.title || 'پشتیبانی آنلاین')}</h4>
+              <p>${displayDate}${unread ? ` <span style="color:#ef4444; font-weight:700;">(${unreadWord})</span>` : ''}</p>
+            </div>
+            <div class="report-icon-box" style="background:rgba(0,200,100,0.16); color:#34d399;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
   }
 
   function openTicketDetail(id) {
@@ -3182,6 +3265,7 @@
       department: item.department || '',
       priority: item.priority || 'medium',
       status: normalizeStatusValue(item.status || 'pending'),
+      channel: item.channel || '',
       reply: item.reply || '',
       user_phone: item.user_phone || '',
       created_at: created,
@@ -3339,6 +3423,8 @@
   // Window exports
   window.switchReportsMainTab = switchReportsMainTab;
   window.filterUserTickets = filterUserTickets;
+  window.filterSupportThreads = filterSupportThreads;
+  window.renderSupportList = renderSupportList;
   window.confirmDeleteTicket = confirmDeleteTicket;
   window.deleteCurrentOpenTicket = deleteCurrentOpenTicket;
   window.deleteTicketById = deleteTicketById;

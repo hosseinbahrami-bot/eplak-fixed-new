@@ -1415,6 +1415,11 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
             <span>تیکت‌های من</span>
             <span class="reports-counter-pill" id="userTicketsCountBadge">0</span>
           </button>
+          <button type="button" class="reports-switcher-btn" id="tabBtnSupport" onclick="switchReportsMainTab('support', this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            <span data-i18n="reports_tab_support">چت‌های پشتیبانی</span>
+            <span class="reports-counter-pill" id="supportCountBadge">0</span>
+          </button>
         </div>
       </div>
 
@@ -1456,6 +1461,29 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
         <div style="padding:0 16px;">
           <button class="btn-teal" onclick="startNewTicket()">
             <span>+ ثبت تیکت جدید</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ============ بخش سوم: چت‌های پشتیبانی ============
+           گفتگوهای «پشتیبانی آنلاین» (channel='support') از لیستِ تیکت‌ها جدا
+           شده‌اند و فقط همین‌جا نمایش داده می‌شوند؛ با لمس روی هر گفتگو، صفحه‌ی
+           چت باز می‌شود (modules/support.js). -->
+      <div id="sectionSupportPane" class="reports-section-pane" style="display:none; flex-direction:column; gap:12px;">
+        <!-- Filter Tabs -->
+        <div style="display:flex; gap:8px; padding:0 16px; overflow-x:auto;" id="supportFilterTabs">
+          <button class="filter-tab active" data-sfilter="all" onclick="filterSupportThreads('all', this)"><span data-i18n="support_all">همه</span></button>
+          <button class="filter-tab" data-sfilter="open" onclick="filterSupportThreads('open', this)"><span data-i18n="support_open">باز</span></button>
+          <button class="filter-tab" data-sfilter="closed" onclick="filterSupportThreads('closed', this)"><span data-i18n="support_closed">بسته</span></button>
+        </div>
+
+        <!-- Support Conversations List -->
+        <div class="reports-list" id="supportListWrap"></div>
+
+        <!-- New Conversation Button -->
+        <div style="padding:0 16px;">
+          <button class="btn-teal" onclick="openSupportChat()">
+            <span data-i18n="support_new_chat">+ شروع گفتگوی جدید</span>
           </button>
         </div>
       </div>
@@ -1751,7 +1779,7 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
           <div style="display:flex; gap:8px; align-items:center;">
             <div style="width:38px; height:38px; background:rgba(100,150,255,0.12); border-radius:10px; display:flex; align-items:center; justify-content:center;"><svg viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;"><rect x="2" y="4" width="20" height="16" rx="2" fill="#60a5fa" fill-opacity="0.2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></div>
             <div style="text-align:start;">
-              <div style="font-size:14px; font-weight:700;" data-i18n="contact_email_name">ایمیل شهرداری</div>
+              <div style="font-size:14px; font-weight:700;" data-i18n="contact_email_name">ارتباط با ما</div>
               <div style="font-size:12px; color:var(--text-muted);">info@eplak.ir</div>
               <div style="font-size:11px; color:var(--text-muted);" data-i18n="contact_email_hint">با لمس، برنامه‌ی ایمیل شما (جیمیل) باز می‌شود</div>
             </div>
@@ -3172,7 +3200,7 @@ title="شماره موبایل هویت حساب شماست و قابل تغیی
 
 <!-- ===== Core ===== -->
 <script src="core/sound.js?v=10"></script>
-<script src="core/i18n.js?v=17"></script>
+<script src="core/i18n.js?v=18"></script>
 <script src="core/state.js?v=15"></script>
 <script src="core/places-data.js?v=3"></script>
 <script src="core/places.js?v=2"></script>
@@ -3187,7 +3215,7 @@ title="شماره موبایل هویت حساب شماست و قابل تغیی
 <script src="modules/ads.js?v=1"></script>
 <script src="assets/js/ep-map.js?v=4"></script>
 <script src="assets/js/ep-camera.js?v=3"></script>
-<script src="modules/reports.js?v=30"></script>
+<script src="modules/reports.js?v=31"></script>
 <script src="modules/dashboard.js?v=19"></script>
 <script src="modules/city-map.js?v=2"></script>
 <script src="modules/profile.js?v=12"></script>
