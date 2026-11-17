@@ -769,11 +769,16 @@ ok('ظرفِ بیرونیِ چت اسکرول نمی‌شود (فقط اسکرو
   /#screen-support \.screen-content\s*{[^}]*overflow:\s*hidden/.test(supCss));
 ok('اسکرولر min-heightِ تحمیلی ندارد تا در صفحه‌ی کوتاه چیدمان جا شود',
   /\.sup-scroller\s*{[^}]*min-height:\s*0/.test(supCss));
-ok('چیدمانِ کادرِ نوشتن با flexboxِ تمیز است (بدونِ height:100% و sticky که در WebView کادر را ناپدید می‌کرد)',
-  /\.sup-composer\s*{[^}]*flex:\s*0 0 auto/.test(supCss)
-  && !/\.sup-composer\s*{[^}]*position:\s*sticky/.test(supCss)
-  && !/#screen-support \.screen-content\s*{[^}]*height:\s*100%/.test(supCss)
-  && /#screen-support \.screen-content\s*{[^}]*flex:\s*1 1 auto/.test(supCss));
+ok('کادرِ نوشتن به پایینِ صفحه میخ است (position:absolute) تا با اضافه شدنِ پیام‌ها پایین نرود',
+  /\.sup-composer\s*{[^}]*position:\s*absolute[^}]*bottom:\s*8px/.test(supCss)
+  && /#screen-support \.screen-content\s*{[^}]*position:\s*relative/.test(supCss)
+  && !/#screen-support \.screen-content\s*{[^}]*height:\s*100%/.test(supCss));
+ok('اسکرولر نوارِ اسکرولِ مشهود دارد (کاربر بفهمد پیام‌ها بالا/پایین می‌شوند)',
+  /\.sup-scroller\s*{[^}]*scrollbar-width:\s*thin/.test(supCss)
+  && /\.sup-scroller::-webkit-scrollbar\s*{[^}]*width:\s*6px/.test(supCss)
+  && /\.sup-scroller::-webkit-scrollbar-thumb/.test(supCss));
+ok('اسکرولر فضایِ پایین برای کادرِ ثابت دارد تا آخرین پیام زیرِ کادر نرود',
+  /\.sup-scroller\s*{[^}]*padding:\s*6px 2px 92px/.test(supCss));
 
 /* ── شبکه‌ی ایمنیِ کادرِ نوشتن + آیکون‌های تازه ──────────────────────────
    کاربر گزارش داده بود: «بعد از سه تا پیام، کادرِ ارسال کاملاً ناپدید می‌شود».
