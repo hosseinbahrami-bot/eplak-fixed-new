@@ -398,13 +398,15 @@ ok('کش‌باستر فایل‌های تغییر‌یافته به‌روز ش
   && /ep-map\.js\?v=4/.test(indexHtml) && /core\/router\.js\?v=15/.test(indexHtml)
   && /assets\/css\/style\.css\?v=93/.test(indexHtml)
   && /assets\/js\/icons\.js\?v=13/.test(indexHtml)
-  && /core\/state\.js\?v=15/.test(indexHtml) && /core\/i18n\.js\?v=16/.test(indexHtml)
+  && /core\/state\.js\?v=15/.test(indexHtml) && /core\/i18n\.js\?v=17/.test(indexHtml)
   && /modules\/profile\.js\?v=12/.test(indexHtml) && /modules\/services\.js\?v=13/.test(indexHtml)
   && /modules\/live\.js\?v=22/.test(indexHtml) && /modules\/city-live\.js\?v=15/.test(indexHtml)
   && /modules\/dashboard\.js\?v=19/.test(indexHtml) && /modules\/clock-lux\.js\?v=7/.test(indexHtml)
   /* «پشتیبانی آنلاین» (modules/support.js + assets/css/support.css) هم کش‌باستر
      دارد تا گوشی‌ها کدِ تازه را بگیرند و کشِ قدیمیِ بدونِ چت نماند. */
-  && /modules\/support\.js\?v=1/.test(indexHtml) && /assets\/css\/support\.css\?v=1/.test(indexHtml));
+  && /modules\/support\.js\?v=1/.test(indexHtml) && /assets\/css\/support\.css\?v=1/.test(indexHtml)
+  /* «تماس با شهرداری» (modules/contact.js) هم کش‌باستر دارد تا ایمیل و آدرسِ تازه برسد. */
+  && /modules\/contact\.js\?v=1/.test(indexHtml));
 
 /* ══════════ ۸) پایش زنده: پیش‌پرواز و سقف حجم بدنه ══════════ */
 console.log('\n=== پایش زنده (live-check) ===');

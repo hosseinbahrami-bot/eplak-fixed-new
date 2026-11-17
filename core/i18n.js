@@ -315,6 +315,10 @@
       'contact_137_name': 'سامانه ۱۳۷',
       'contact_137_time': 'پاسخگویی شبانه‌روزی',
       'contact_email_name': 'ایمیل شهرداری',
+      /* ── تماس با شهرداری: ایمیل + آدرس (modules/contact.js) ── */
+      'contact_email_hint': 'با لمس، برنامه‌ی ایمیل شما (جیمیل) باز می‌شود',
+      'contact_email_subject': 'پیام به شهرداری ورامین',
+      'contact_email_body': 'سلام،\n\n',
       'contact_support_name': 'پشتیبانی آنلاین',
       'contact_support_desc': 'چت مستقیم با پشتیبان',
       /* ── پشتیبانی آنلاین (چت) — modules/support.js ── */
@@ -337,7 +341,8 @@
       'support_thanks': 'ممنون از امتیاز شما. گفتگو بسته شد.',
       'support_rate_title': 'گفتگو بسته شد — به پشتیبانی امتیاز بدهید',
       'contact_address_name': 'آدرس شهرداری',
-      'contact_address_val2': 'ورامین، میدان شهرداری',
+      'contact_address_val2': 'ورامین، ابتدای خیابان شهید بهشتی، میدان شهرداری، روبروی فرمانداری',
+      'contact_address_hint': 'مشاهده در نقشه‌ی نشان',
       'ad_sponsored': 'تبلیغات',
       'vsc_eyebrow': 'شهر ما، خانه‌ ما',
       'vsc_mosque_title': 'مسجد جامع ورامین',
@@ -656,6 +661,10 @@
       'contact_137_name': '137 Hotline',
       'contact_137_time': '24/7 Citizen Support',
       'contact_email_name': 'Municipal Email',
+      /* ── Contact the municipality: email + address (modules/contact.js) ── */
+      'contact_email_hint': 'Tap to open your mail app (Gmail)',
+      'contact_email_subject': 'Message to Varamin Municipality',
+      'contact_email_body': 'Hello,\n\n',
       'contact_support_name': 'Online Support',
       'contact_support_desc': 'Direct chat with support',
       /* ── Online support chat — modules/support.js ── */
@@ -678,7 +687,8 @@
       'support_thanks': 'Thanks for your rating. The conversation was closed.',
       'support_rate_title': 'Conversation closed — rate our support',
       'contact_address_name': 'Municipal Address',
-      'contact_address_val2': 'Varamin, Shahrdari Square',
+      'contact_address_val2': 'Varamin, Beginning of Shahid Beheshti St., Municipality Sq., opposite the Governorate',
+      'contact_address_hint': 'View in Neshan map',
       'ad_sponsored': 'Sponsored',
       'vsc_eyebrow': 'Our City, Our Home',
       'vsc_mosque_title': 'Varamin Jameh Mosque',

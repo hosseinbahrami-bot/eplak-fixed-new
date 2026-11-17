@@ -83,6 +83,7 @@ for f in .htaccess index.html index.php setup.php sw.js manifest.json shared/boo
          assets/js/ep-map.js assets/js/ep-camera.js assets/js/icons.js \
          core/storage.js core/upload-progress.js core/router.js core/i18n.js core/state.js \
          modules/reports.js modules/live.js modules/auth.js modules/dashboard.js modules/online-guard.js \
+         modules/contact.js \
          core/places-data.js core/places.js modules/city-map.js \
          api/places.php admin/places.php shared/places_store.php \
          admin/includes/acl.php admin/admins.php \
