@@ -2823,13 +2823,14 @@
 
     const normalizedCode = code.toLowerCase().replace(/\s+/g, '');
     
-    // ۱. جستجو در تیکت‌ها
+    // ۱. جستجو در تیکت‌ها — چتِ پشتیبانی تیکت نیست؛ صفحه‌ی چت باز می‌شود
     const foundTicket = tickets.find(t => {
       const tCode = String(t.code || '').toLowerCase().replace(/\s+/g, '');
       const tTitle = String(t.title || '').toLowerCase().replace(/\s+/g, '');
       return tCode === normalizedCode || tTitle.includes(normalizedCode);
     });
     if (foundTicket) {
+      if (foundTicket.channel === 'support') { openSupportChat(); return; }
       openTicketDetail(foundTicket.id);
       return;
     }
@@ -2858,6 +2859,7 @@
           return tCode === normalizedCode || tTitle.includes(normalizedCode);
         });
         if (foundTicketAfter) {
+          if (foundTicketAfter.channel === 'support') { openSupportChat(); return; }
           openTicketDetail(foundTicketAfter.id);
           return;
         }

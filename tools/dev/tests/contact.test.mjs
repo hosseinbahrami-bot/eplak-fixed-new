@@ -203,13 +203,13 @@ section('رشته‌های دوزبانه‌ی core/i18n.js');
 }
 
 /* ══════════ ۶) نسخه‌ی اپ ══════════ */
-section('نسخه‌ی اپ (۲.۷/۹)');
+section('نسخه‌ی اپ (۲.۸/۱۰)');
 {
   const gradle = read('android-app/app/build.gradle');
-  ok('اندروید: versionCode 9 / versionName 2.7', /versionCode 9\b/.test(gradle) && gradle.includes("versionName '2.7'"));
+  ok('اندروید: versionCode 10 / versionName 2.8', /versionCode 10\b/.test(gradle) && gradle.includes("versionName '2.8'"));
   const pbx = read('ios-app/Eplak.xcodeproj/project.pbxproj');
-  ok('iOS: MARKETING_VERSION 2.7.0 و CURRENT_PROJECT_VERSION 9 (هر دو پیکربندی)',
-    (pbx.match(/MARKETING_VERSION = 2\.7\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 9;/g) || []).length === 2);
+  ok('iOS: MARKETING_VERSION 2.8.0 و CURRENT_PROJECT_VERSION 10 (هر دو پیکربندی)',
+    (pbx.match(/MARKETING_VERSION = 2\.8\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 10;/g) || []).length === 2);
 }
 
 /* ══════════ ۷) تبِ «چت‌های پشتیبانی» در بخشِ گزارش‌ها ══════════ */
@@ -263,7 +263,7 @@ section('تبِ «چت‌های پشتیبانی» (جدا از تیکت‌ها)
   ok('نشانگرِ سوییچر یک‌سومِ عرض است', styleCss.includes('width: calc(33.333% - 6px)'));
 
   /* ── کش‌باسترها ── */
-  ok('کش‌باسترِ reports.js و i18n.js به‌روز شده است', /modules\/reports\.js\?v=32/.test(html) && /core\/i18n\.js\?v=19/.test(html));
+  ok('کش‌باسترِ reports.js و i18n.js به‌روز شده است', /modules\/reports\.js\?v=33/.test(html) && /core\/i18n\.js\?v=20/.test(html));
 }
 
 /* ── اجرای عملکردیِ فهرستِ چت‌ها در jsdom با صفحه‌ی واقعیِ گزارش‌ها ── */
@@ -350,7 +350,7 @@ section('تبِ «چت ها» در پیگیری درخواست و چیدمانِ
   /* ── تب‌های کارتِ پیگیری ── */
   ok('دکمه‌ی «چت ها» در کارتِ پیگیری هست', html.includes('id="profileTrackTabChats"') && html.includes("switchProfileTrackTab('chats', this)"));
   ok('دکمه‌ی «پیگیری» در کارتِ پیگیری هست', html.includes('id="profileTrackTabTrack"') && html.includes("switchProfileTrackTab('track', this)"));
-  ok('برچسبِ «چت ها» با data-i18n است', html.includes('data-i18n="track_tab_chats">چت ها<'));
+  ok('برچسبِ «چت‌های پشتیبانی» با data-i18n است', html.includes('data-i18n="track_tab_chats">چت‌های پشتیبانی<'));
   ok('پنلِ چت‌های پیگیری (profileSupportListWrap) هست', html.includes('id="profileSupportListWrap"'));
   ok('پنلِ پیگیری (profileTrackPaneTrack) و چت‌ها (profileTrackPaneChats) هست',
     html.includes('id="profileTrackPaneTrack"') && html.includes('id="profileTrackPaneChats"'));
@@ -358,20 +358,26 @@ section('تبِ «چت ها» در پیگیری درخواست و چیدمانِ
   ok('switchProfileTrackTab در reports.js تعریف و export شده است',
     reportsJs.includes('function switchProfileTrackTab') && reportsJs.includes('window.switchProfileTrackTab = switchProfileTrackTab'));
   ok('رندرِ چت‌ها در ظرفِ پیگیری انجام می‌شود', reportsJs.includes("renderSupportList('all', 'profileSupportListWrap')"));
+  ok('جستجوی پیگیری، چتِ پشتیبانی را به صفحه‌ی چت می‌فرستد (نه جزئیاتِ تیکت)',
+    reportsJs.includes("if (foundTicket.channel === 'support') { openSupportChat(); return; }")
+    && reportsJs.includes("if (foundTicketAfter.channel === 'support') { openSupportChat(); return; }"));
   ok('برچسب‌های تبِ پیگیری در هر دو زبان',
-    i18n.includes("'track_tab_track': 'پیگیری'") && i18n.includes("'track_tab_chats': 'چت ها'")
-    && i18n.includes("'track_tab_track': 'Track'") && i18n.includes("'track_tab_chats': 'Chats'"));
+    i18n.includes("'track_tab_track': 'پیگیری'") && i18n.includes("'track_tab_chats': 'چت‌های پشتیبانی'")
+    && i18n.includes("'track_tab_track': 'Track'") && i18n.includes("'track_tab_chats': 'Support Chats'"));
   ok('استایلِ تبِ فعالِ پیگیری هست', styleCss.includes('.profile-track-tab.active'));
 
-  /* ── چیدمانِ متنِ تب‌های گزارش‌ها (سه تب باید جا شوند) ── */
-  ok('دکمه‌های سوییچر فشرده‌اند (font 12px)', /\.reports-switcher-btn \{[^}]*font-size: 12px/.test(styleCss));
-  ok('آیکونِ تب‌ها کوچک است (14px)', /\.reports-switcher-btn svg \{[^}]*width: 14px/.test(styleCss));
-  ok('شمارنده بجِ گوشه‌ای است (absolute) تا متن آزاد باشد',
-    /\.reports-counter-pill \{[^}]*position: absolute/.test(styleCss));
+  /* ── چیدمانِ متنِ تب‌های گزارش‌ها: عمودی (آیکون بالا، متن+شمارنده پایین) ── */
+  ok('دکمه‌های سوییچر عمودی‌اند (flex-direction: column)', /\.reports-switcher-btn \{[^}]*flex-direction: column/.test(styleCss));
+  ok('آیکونِ تب‌ها 18px است', /\.reports-switcher-btn svg \{[^}]*width: 18px/.test(styleCss));
+  ok('برچسبِ تب (متن+شمارنده) ظرفِ خودش را دارد', /\.reports-switcher-label \{[^}]*display: flex/.test(styleCss));
+  ok('شمارنده داخلِ خطِ برچسب است (نه absolute) تا کنارِ متن بشیند',
+    /\.reports-counter-pill \{[^}]*flex-shrink: 0/.test(styleCss) && !/\.reports-counter-pill \{[^}]*position: absolute/.test(styleCss));
   ok('متنِ تب‌ها با ellipsis کنترل می‌شود (نه برشِ ناگهانی)',
-    /\.reports-switcher-btn > span:first-of-type \{[^}]*text-overflow: ellipsis/.test(styleCss));
+    /\.reports-switcher-label > span:first-child \{[^}]*text-overflow: ellipsis/.test(styleCss));
   ok('دکمه‌ها min-width:0 دارند (جمع‌شوندگیِ درستِ flex)', /\.reports-switcher-btn \{[^}]*min-width: 0/.test(styleCss));
-  ok('کش‌باسترِ style.css به‌روز شده است', /assets\/css\/style\.css\?v=94/.test(html));
+  ok('هر سه دکمه ظرفِ برچسب دارند (متن+شمارنده کنارِ هم)',
+    (html.match(/class="reports-switcher-label"/g) || []).length === 3);
+  ok('کش‌باسترِ style.css به‌روز شده است', /assets\/css\/style\.css\?v=95/.test(html));
 }
 
 /* ── اجرای عملکردیِ تبِ «چت ها» در پیگیری (jsdom با صفحه‌ی پروفایل) ── */
