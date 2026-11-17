@@ -203,13 +203,13 @@ section('رشته‌های دوزبانه‌ی core/i18n.js');
 }
 
 /* ══════════ ۶) نسخه‌ی اپ ══════════ */
-section('نسخه‌ی اپ (۲.۶/۸)');
+section('نسخه‌ی اپ (۲.۷/۹)');
 {
   const gradle = read('android-app/app/build.gradle');
-  ok('اندروید: versionCode 8 / versionName 2.6', /versionCode 8\b/.test(gradle) && gradle.includes("versionName '2.6'"));
+  ok('اندروید: versionCode 9 / versionName 2.7', /versionCode 9\b/.test(gradle) && gradle.includes("versionName '2.7'"));
   const pbx = read('ios-app/Eplak.xcodeproj/project.pbxproj');
-  ok('iOS: MARKETING_VERSION 2.6.0 و CURRENT_PROJECT_VERSION 8 (هر دو پیکربندی)',
-    (pbx.match(/MARKETING_VERSION = 2\.6\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 8;/g) || []).length === 2);
+  ok('iOS: MARKETING_VERSION 2.7.0 و CURRENT_PROJECT_VERSION 9 (هر دو پیکربندی)',
+    (pbx.match(/MARKETING_VERSION = 2\.7\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 9;/g) || []).length === 2);
 }
 
 /* ══════════ ۷) تبِ «چت‌های پشتیبانی» در بخشِ گزارش‌ها ══════════ */
@@ -263,7 +263,7 @@ section('تبِ «چت‌های پشتیبانی» (جدا از تیکت‌ها)
   ok('نشانگرِ سوییچر یک‌سومِ عرض است', styleCss.includes('width: calc(33.333% - 6px)'));
 
   /* ── کش‌باسترها ── */
-  ok('کش‌باسترِ reports.js و i18n.js به‌روز شده است', /modules\/reports\.js\?v=31/.test(html) && /core\/i18n\.js\?v=18/.test(html));
+  ok('کش‌باسترِ reports.js و i18n.js به‌روز شده است', /modules\/reports\.js\?v=32/.test(html) && /core\/i18n\.js\?v=19/.test(html));
 }
 
 /* ── اجرای عملکردیِ فهرستِ چت‌ها در jsdom با صفحه‌ی واقعیِ گزارش‌ها ── */
@@ -335,6 +335,88 @@ section('اجرای عملکردیِ تبِ چت‌ها (jsdom)');
   ok('بازگشت به تبِ گزارش‌ها پنلِ چت‌ها را پنهان می‌کند',
     w.document.getElementById('sectionSupportPane').style.display === 'none'
     && w.document.getElementById('sectionReportsPane').style.display === 'flex');
+
+  try { w.close(); } catch (e) { /* مهم نیست */ }
+}
+
+/* ══════════ ۸) تبِ «چت ها» در کارتِ «پیگیری درخواست» + چیدمانِ تب‌ها ══════════ */
+section('تبِ «چت ها» در پیگیری درخواست و چیدمانِ متنِ تب‌ها');
+{
+  const html = read('index.html');
+  const reportsJs = read('modules/reports.js');
+  const styleCss = read('assets/css/style.css');
+  const i18n = read('core/i18n.js');
+
+  /* ── تب‌های کارتِ پیگیری ── */
+  ok('دکمه‌ی «چت ها» در کارتِ پیگیری هست', html.includes('id="profileTrackTabChats"') && html.includes("switchProfileTrackTab('chats', this)"));
+  ok('دکمه‌ی «پیگیری» در کارتِ پیگیری هست', html.includes('id="profileTrackTabTrack"') && html.includes("switchProfileTrackTab('track', this)"));
+  ok('برچسبِ «چت ها» با data-i18n است', html.includes('data-i18n="track_tab_chats">چت ها<'));
+  ok('پنلِ چت‌های پیگیری (profileSupportListWrap) هست', html.includes('id="profileSupportListWrap"'));
+  ok('پنلِ پیگیری (profileTrackPaneTrack) و چت‌ها (profileTrackPaneChats) هست',
+    html.includes('id="profileTrackPaneTrack"') && html.includes('id="profileTrackPaneChats"'));
+  ok('دکمه‌ی «شروع گفتگوی جدید» در تبِ چت‌های پیگیری هست', html.includes('onclick="openSupportChat()"') && html.includes('id="profileSupportListWrap"'));
+  ok('switchProfileTrackTab در reports.js تعریف و export شده است',
+    reportsJs.includes('function switchProfileTrackTab') && reportsJs.includes('window.switchProfileTrackTab = switchProfileTrackTab'));
+  ok('رندرِ چت‌ها در ظرفِ پیگیری انجام می‌شود', reportsJs.includes("renderSupportList('all', 'profileSupportListWrap')"));
+  ok('برچسب‌های تبِ پیگیری در هر دو زبان',
+    i18n.includes("'track_tab_track': 'پیگیری'") && i18n.includes("'track_tab_chats': 'چت ها'")
+    && i18n.includes("'track_tab_track': 'Track'") && i18n.includes("'track_tab_chats': 'Chats'"));
+  ok('استایلِ تبِ فعالِ پیگیری هست', styleCss.includes('.profile-track-tab.active'));
+
+  /* ── چیدمانِ متنِ تب‌های گزارش‌ها (سه تب باید جا شوند) ── */
+  ok('دکمه‌های سوییچر فشرده‌اند (font 12px)', /\.reports-switcher-btn \{[^}]*font-size: 12px/.test(styleCss));
+  ok('آیکونِ تب‌ها کوچک است (14px)', /\.reports-switcher-btn svg \{[^}]*width: 14px/.test(styleCss));
+  ok('شمارنده بجِ گوشه‌ای است (absolute) تا متن آزاد باشد',
+    /\.reports-counter-pill \{[^}]*position: absolute/.test(styleCss));
+  ok('متنِ تب‌ها با ellipsis کنترل می‌شود (نه برشِ ناگهانی)',
+    /\.reports-switcher-btn > span:first-of-type \{[^}]*text-overflow: ellipsis/.test(styleCss));
+  ok('دکمه‌ها min-width:0 دارند (جمع‌شوندگیِ درستِ flex)', /\.reports-switcher-btn \{[^}]*min-width: 0/.test(styleCss));
+  ok('کش‌باسترِ style.css به‌روز شده است', /assets\/css\/style\.css\?v=94/.test(html));
+}
+
+/* ── اجرای عملکردیِ تبِ «چت ها» در پیگیری (jsdom با صفحه‌ی پروفایل) ── */
+section('اجرای عملکردیِ تبِ چت‌های پیگیری (jsdom)');
+{
+  const INDEX = read('index.html');
+  const PROFILE_SCREEN = (/<!-- ============ SCREEN 4: PROFILE ============ -->([\s\S]*?)<!-- ============ SCREEN: PROFILE EDIT/.exec(INDEX) || [])[1] || '';
+  ok('صفحه‌ی پروفایل از index.html استخراج شد', PROFILE_SCREEN.length > 1000);
+
+  const THREADS = [
+    { id: 21, title: 'پشتیبانی آنلاین', status: 'open', department: 'پشتیبانی شهرداری', unread_citizen: 1, last_message_at: '2026-11-16 11:00:00', last_sender: 'admin', closed_at: '', rating: 0, created_at: '2026-11-16 10:00:00' },
+  ];
+  const vc = new VirtualConsole();
+  const dom = new JSDOM('<!DOCTYPE html><html lang="fa" dir="rtl"><body>' + PROFILE_SCREEN + '</body></html>',
+    { url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc });
+  const w = dom.window;
+  w.getCurrentPhone = () => '09120000001';
+  w.reports = [];
+  w.fetch = async () => ({ ok: true, json: async () => ({ success: true, threads: THREADS }) });
+  w.eval(read('core/state.js'));
+  w.eval(read('modules/reports.js'));
+
+  ok('switchProfileTrackTab روی window است', typeof w.switchProfileTrackTab === 'function');
+
+  /* سوییچ به تبِ چت‌ها */
+  w.switchProfileTrackTab('chats');
+  for (let i = 0; i < 40; i++) {
+    const el = w.document.getElementById('profileSupportListWrap');
+    if (el && el.querySelectorAll('.report-item').length >= 1) break;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  const wrap = w.document.getElementById('profileSupportListWrap');
+  ok('گفتگو در تبِ چت‌های پیگیری رندر شد', wrap && wrap.querySelectorAll('.report-item').length === 1);
+  ok('پنلِ چت‌ها نمایش و پنلِ پیگیری پنهان است',
+    w.document.getElementById('profileTrackPaneChats').style.display === 'flex'
+    && w.document.getElementById('profileTrackPaneTrack').style.display === 'none');
+  ok('دکمه‌ی «چت ها» active و «پیگیری» غیرفعال است',
+    w.document.getElementById('profileTrackTabChats').classList.contains('active')
+    && !w.document.getElementById('profileTrackTabTrack').classList.contains('active'));
+
+  /* بازگشت به تبِ پیگیری */
+  w.switchProfileTrackTab('track');
+  ok('بازگشت به تبِ پیگیری پنل‌ها را برمی‌گرداند',
+    w.document.getElementById('profileTrackPaneTrack').style.display === 'flex'
+    && w.document.getElementById('profileTrackPaneChats').style.display === 'none');
 
   try { w.close(); } catch (e) { /* مهم نیست */ }
 }
