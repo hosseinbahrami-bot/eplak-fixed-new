@@ -119,6 +119,20 @@ if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST') {
         $ok = eplakSupportReopen($pdo, $id);
         $notice = $ok ? 'گفتگو دوباره باز شد.' : '';
         $error  = $ok ? '' : 'بازکردنِ گفتگو ممکن نشد.';
+    } elseif ($act === 'delete' && $id > 0) {
+        /* حذفِ کاملِ گفتگو (پیام‌ها + پیوست‌ها + ردیف) — فقط channel='support' */
+        $ok = eplakSupportDeleteThread($pdo, $id);
+        if ($ok) {
+            eplakRedirect('support.php');
+            exit;
+        }
+        $error = 'حذفِ گفتگو ممکن نشد.';
+    } elseif ($act === 'delete_closed') {
+        /* پاک‌سازیِ صندوق: حذفِ همه‌ی گفتگوهای بسته‌شده */
+        $deleted = eplakSupportDeleteClosed($pdo);
+        $notice = $deleted > 0
+            ? '✅ ' . eplakChartNumFa($deleted) . ' گفتگوی بسته‌شده حذف شد.'
+            : 'گفتگوی بسته‌شده‌ای برای حذف نبود.';
     } elseif ($act === 'save_settings') {
         $saved = eplakSupportSaveSettings($pdo, $_POST);
         $settings = eplakSupportSettings($pdo);
@@ -206,6 +220,9 @@ $state  = eplakSupportIsOpen($settings, function_exists('eplakDbNowString') ? ep
     .sup-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
     .sup-list li a{display:flex;align-items:center;gap:13px;padding:14px 16px;border:1px solid var(--ch-border,var(--dark-100));border-radius:var(--radius-lg,14px);background:var(--ch-card,#fff);text-decoration:none;color:inherit}
     .sup-list li a:hover{border-color:var(--primary-400)}
+    .sup-list li{display:flex;align-items:center;gap:10px}
+    .sup-list li>a{flex:1;min-width:0}
+    .sup-list li>form{flex:0 0 auto}
     .sup-who{flex:0 0 auto;display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:var(--primary-50,#e0f2fe);color:var(--primary-600);font-size:17px}
     .sup-main{flex:1;min-width:0}
     .sup-main strong{display:block;font-size:14px;color:var(--dark-900);direction:ltr;text-align:right}
@@ -283,7 +300,13 @@ $state  = eplakSupportIsOpen($settings, function_exists('eplakDbNowString') ? ep
           </div>
           <div class="panel-actions">
             <a class="btn btn-outline btn-sm" href="support.php"><i class="fa-solid fa-inbox"></i> صندوقِ گفتگوها</a>
-            <a class="btn btn-outline btn-sm" href="ticket_detail.php?id=<?= (int) $ticket['id'] ?>"><i class="fa-solid fa-circle-info"></i> جزئیاتِ تیکت</a>
+            <form method="post" action="support.php?id=<?= (int) $ticket['id'] ?>" style="display:inline"
+                  onsubmit="return confirm('این گفتگو (همه‌ی پیام‌ها و پیوست‌ها) برای همیشه حذف می‌شود. ادامه می‌دهید؟');">
+              <?= eplakCsrfField() ?>
+              <input type="hidden" name="act" value="delete">
+              <input type="hidden" name="id" value="<?= (int) $ticket['id'] ?>">
+              <button class="btn btn-danger btn-sm" type="submit"><i class="fa-solid fa-trash"></i> حذفِ گفتگو</button>
+            </form>
 <?php if (trim((string) ($ticket['closed_at'] ?? '')) === ''): ?>
             <form method="post" action="support.php?id=<?= (int) $ticket['id'] ?>" style="display:inline">
               <?= eplakCsrfField() ?>
@@ -552,6 +575,12 @@ foreach ([6, 7, 1, 2, 3, 4, 5] as $dow): ?>
           </div>
           <div class="panel-actions">
             <a class="btn btn-outline btn-sm" href="support.php?view=settings"><i class="fa-solid fa-sliders"></i> تنظیماتِ پشتیبانی</a>
+            <form method="post" action="support.php" style="display:inline"
+                  onsubmit="return confirm('همه‌ی گفتگوهای بسته‌شده (پیام‌ها و پیوست‌ها) برای همیشه حذف می‌شوند. ادامه می‌دهید؟');">
+              <?= eplakCsrfField() ?>
+              <input type="hidden" name="act" value="delete_closed">
+              <button class="btn btn-outline btn-sm" type="submit"><i class="fa-solid fa-broom"></i> پاک‌سازیِ گفتگوهای بسته‌شده</button>
+            </form>
           </div>
         </div>
 
@@ -605,6 +634,13 @@ foreach ([6, 7, 1, 2, 3, 4, 5] as $dow): ?>
                 </span>
               </span>
             </a>
+            <form method="post" action="support.php" style="display:inline"
+                  onsubmit="return confirm('این گفتگو (همه‌ی پیام‌ها و پیوست‌ها) برای همیشه حذف می‌شود. ادامه می‌دهید؟');">
+              <?= eplakCsrfField() ?>
+              <input type="hidden" name="act" value="delete">
+              <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+              <button class="btn btn-outline btn-sm" type="submit" title="حذفِ گفتگو"><i class="fa-solid fa-trash"></i></button>
+            </form>
           </li>
 <?php endforeach; ?>
         </ul>
