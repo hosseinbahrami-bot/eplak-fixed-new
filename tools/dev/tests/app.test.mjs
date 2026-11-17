@@ -364,7 +364,7 @@ ok('برچسب وضعیت در اپ همان چهار مرحله‌ی درخوا
 ok('هر مرحله در پک آیکون حرفه‌ای، آیکون اختصاصی دارد',
   /'file-plus':/.test(iconsSrc) && /'clock':/.test(iconsSrc) && /'tools':/.test(iconsSrc) && /'check-circle':/.test(iconsSrc));
 ok('پک آیکون با نسخه‌ی تازه در اپ بارگذاری می‌شود (کش قدیمی نمایش داده نشود)',
-  /assets\/js\/icons\.js\?v=13/.test(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'))
+  /assets\/js\/icons\.js\?v=14/.test(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'))
   && /hydrateIcons/.test(iconsSrc) && /data-eplak-icon/.test(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')));
 const iconKeys = [...iconsSrc.slice(iconsSrc.indexOf('var ICONS'), iconsSrc.indexOf('var EMOJI_MAP')).matchAll(/^\s*'([^']+)':\s*'/gm)].map((m) => m[1]);
 const emojiPairs = [...iconsSrc.slice(iconsSrc.indexOf('var EMOJI_MAP')).matchAll(/^\s*'([^']+)':\s*'([^']+)'/gm)].map((m) => [m[1], m[2]]);
