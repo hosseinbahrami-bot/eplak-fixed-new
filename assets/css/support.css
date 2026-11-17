@@ -17,6 +17,7 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 #screen-support .screen-content {
+  position: relative;          /* بلوکِ مرجعِ کادرِ نوشتنِ ثابت (پایینِ صفحه) */
   display: flex;
   flex-direction: column;
   /* ارتفاعِ ظرف فقط از flex می‌آید (flex:1 1 auto) نه از ارتفاعِ درصدی:
@@ -25,10 +26,9 @@
      به نظر می‌رسد — دقیقاً همان‌که بعد از چند پیام دیده می‌شد. */
   flex: 1 1 auto;
   min-height: 0;
-  /* کادرِ نوشتن باید همیشه چسبیده به پایین بماند: ظرفِ بیرونی هرگز اسکرول
-     نمی‌شود (فقط .sup-scroller داخلی اسکرول می‌کند). وگرنه در صفحه‌های
-     کوتاه یا با کیبوردِ باز، محتوا سرریز می‌شد و کادر زیرِ تاخوردگی
-     می‌رفت — با اسکرول‌بارِ مخفی، کاربر اصلاً نمی‌فهمید باید اسکرول کند. */
+  /* ظرفِ بیرونی هرگز اسکرول نمی‌شود (فقط .sup-scroller داخلی اسکرول می‌کند) و
+     کادرِ نوشتن با position:absolute همیشه به پایینِ صفحه میخ است؛ پس هرچقدر
+     هم پیام اضافه شود، کادر پایین نمی‌رود و از دید خارج نمی‌شود. */
   overflow: hidden;
 }
 
@@ -65,8 +65,21 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 6px 2px 12px;
+  /* فضایِ پایین برای کادرِ ثابتِ نوشتن (تا آخرین پیام زیرِ کادر نرود) */
+  padding: 6px 2px 92px;
+  /* نوارِ اسکرولِ مشهود: کاربر باید بفهمد پیام‌های بیشتری بالا/پایین هست و
+     بتواند رشته را بالا و پایین کند (پیش‌تر نوار مخفی بود). */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 201, 167, .55) rgba(255, 255, 255, .06);
 }
+.sup-scroller::-webkit-scrollbar { width: 6px; }
+.sup-scroller::-webkit-scrollbar-track { background: rgba(255, 255, 255, .05); border-radius: 99px; }
+.sup-scroller::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(0, 201, 167, .75), rgba(0, 168, 142, .55));
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+.sup-scroller::-webkit-scrollbar-thumb:hover { background: rgba(0, 201, 167, .9); }
 .sup-thread {
   display: flex;
   flex-direction: column;
@@ -158,11 +171,15 @@
 
 /* ── کادرِ نوشتن ────────────────────────────────────────────────────────── */
 .sup-composer {
-  flex: 0 0 auto;
-  /* چسبیدنِ کادر به پایینِ صفحه فقط با flexbox تضمین می‌شود: اسکرولرِ داخلی
-     flex:1 است و همه‌ی فضایِ آزاد را می‌گیرد، پس کادر همیشه در پایین و در
-     دید می‌ماند — هرچقدر هم پیام اضافه شود. (چسبِ موقعیتی در WebViewی
-     اندروید گاهی کادر را جابه‌جا یا کاملاً ناپدید می‌کرد؛ حذف شد.) */
+  /* میخ به پایینِ صفحه: کادر همیشه در پایین و در دید می‌ماند و با اضافه شدنِ
+     پیام‌ها هرگز پایین نمی‌رود (مشکلِ گزارش‌شده). position:absolute نسبت به
+     .screen-content (که relative است) یعنی پایینِ دقیقِ ناحیه‌ی دید. */
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  right: 10px;
+  z-index: 30;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
   padding: 10px;
   border-radius: 20px;
   border: 1px solid var(--card-border, rgba(255,255,255,.10));
