@@ -203,13 +203,13 @@ section('رشته‌های دوزبانه‌ی core/i18n.js');
 }
 
 /* ══════════ ۶) نسخه‌ی اپ ══════════ */
-section('نسخه‌ی اپ (۲.۸/۱۰)');
+section('نسخه‌ی اپ (۲.۹/۱۱)');
 {
   const gradle = read('android-app/app/build.gradle');
-  ok('اندروید: versionCode 10 / versionName 2.8', /versionCode 10\b/.test(gradle) && gradle.includes("versionName '2.8'"));
+  ok('اندروید: versionCode 11 / versionName 2.9', /versionCode 11\b/.test(gradle) && gradle.includes("versionName '2.9'"));
   const pbx = read('ios-app/Eplak.xcodeproj/project.pbxproj');
-  ok('iOS: MARKETING_VERSION 2.8.0 و CURRENT_PROJECT_VERSION 10 (هر دو پیکربندی)',
-    (pbx.match(/MARKETING_VERSION = 2\.8\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 10;/g) || []).length === 2);
+  ok('iOS: MARKETING_VERSION 2.9.0 و CURRENT_PROJECT_VERSION 11 (هر دو پیکربندی)',
+    (pbx.match(/MARKETING_VERSION = 2\.9\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 11;/g) || []).length === 2);
 }
 
 /* ══════════ ۷) تبِ «چت‌های پشتیبانی» در بخشِ گزارش‌ها ══════════ */
@@ -263,7 +263,7 @@ section('تبِ «چت‌های پشتیبانی» (جدا از تیکت‌ها)
   ok('نشانگرِ سوییچر یک‌سومِ عرض است', styleCss.includes('width: calc(33.333% - 6px)'));
 
   /* ── کش‌باسترها ── */
-  ok('کش‌باسترِ reports.js و i18n.js به‌روز شده است', /modules\/reports\.js\?v=33/.test(html) && /core\/i18n\.js\?v=20/.test(html));
+  ok('کش‌باسترِ reports.js و i18n.js به‌روز شده است', /modules\/reports\.js\?v=34/.test(html) && /core\/i18n\.js\?v=20/.test(html));
 }
 
 /* ── اجرای عملکردیِ فهرستِ چت‌ها در jsdom با صفحه‌ی واقعیِ گزارش‌ها ── */
@@ -423,6 +423,83 @@ section('اجرای عملکردیِ تبِ چت‌های پیگیری (jsdom)')
   ok('بازگشت به تبِ پیگیری پنل‌ها را برمی‌گرداند',
     w.document.getElementById('profileTrackPaneTrack').style.display === 'flex'
     && w.document.getElementById('profileTrackPaneChats').style.display === 'none');
+
+  try { w.close(); } catch (e) { /* مهم نیست */ }
+}
+
+/* ══════════ ۹) تبِ چهارم «چت‌های پشتیبانی» در صفحه‌ی «پیگیری درخواست» ══════════ */
+section('تبِ چهارم «چت‌های پشتیبانی» در صفحه‌ی پیگیری درخواست');
+{
+  const html = read('index.html');
+  const reportsJs = read('modules/reports.js');
+
+  /* ── ساختاری ── */
+  ok('تبِ چهارم «چت‌های پشتیبانی» در #trackFilterTabs هست',
+    html.includes('data-trackfilter="chats"') && html.includes("filterTrackList('chats', this)") && html.includes('>چت‌های پشتیبانی</button>'));
+  ok('آیکونِ تبِ چت‌ها message است',
+    html.includes('data-eplak-icon="message" data-icon-size="14" class="filter-tab-icon"></span>چت‌های پشتیبانی'));
+  ok('چهار تبِ پیگیری کنارِ هم‌اند (همه/گزارش‌ها/تیکت‌ها/چت‌ها)',
+    (html.match(/data-trackfilter="/g) || []).length === 4);
+  ok('تبِ تیکت‌ها چتِ پشتیبانی را کنار می‌گذارد (چت تیکت نیست)',
+    reportsJs.includes("if (t.channel === 'support') return; // چتِ پشتیبانی تیکت نیست"));
+  ok('تبِ چت‌ها فقط چت‌های پشتیبانی را می‌آورد',
+    reportsJs.includes("if (t.channel !== 'support') return; // فقط چت‌های پشتیبانی"));
+  ok('آیتمِ چت بجِ «💬 چت» دارد (نه «تیکت»)', reportsJs.includes('>💬 چت</span>'));
+  ok('کلیک روی آیتمِ چت صفحه‌ی چت را باز می‌کند (نه جزئیاتِ تیکت)',
+    reportsJs.includes('const onClickCall = isChat ? `openSupportChat()`'));
+  ok('پیامِ حالتِ خالیِ تبِ چت‌ها مخصوصِ چت است',
+    reportsJs.includes("'در حال حاضر چت پشتیبانی برای نمایش وجود ندارد.'"));
+}
+
+/* ── اجرای عملکردیِ تب‌های صفحه‌ی پیگیری (jsdom با صفحه‌ی پیگیری) ── */
+section('اجرای عملکردیِ تب‌های صفحه‌ی پیگیری (jsdom)');
+{
+  const INDEX = read('index.html');
+  const TRACK_SCREEN = (/<!-- ============ SCREEN: TRACK REQUEST ============ -->([\s\S]*?)<!-- ============ SCREEN: NEWS LIST/.exec(INDEX) || [])[1] || '';
+  ok('صفحه‌ی پیگیری از index.html استخراج شد', TRACK_SCREEN.length > 1000);
+
+  const dom = new JSDOM('<!DOCTYPE html><html lang="fa" dir="rtl"><body>' + TRACK_SCREEN + '</body></html>',
+    { url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
+  const w = dom.window;
+  w.getCurrentPhone = () => '';
+  w.reports = [];
+  let supportOpened = 0;
+  w.openSupportChat = () => { supportOpened++; };
+  w.fetch = async () => ({ ok: true, json: async () => ({ success: true, tickets: [] }) });
+  w.eval(read('core/state.js'));
+  w.eval(read('modules/reports.js'));
+
+  ok('filterTrackList روی window است', typeof w.filterTrackList === 'function');
+
+  /* یک تیکتِ واقعی + یک چتِ پشتیبانی */
+  w.tickets.length = 0;
+  w.tickets.push(
+    { id: 't1', code: 'TK-1403-1001', title: 'درخواست آسفالت', status: 'pending', department: 'عمران', created_at: '2026-11-16 09:00:00', channel: 'ticket', reply: '' },
+    { id: 't2', code: 'TK-1403-1003', title: 'پشتیبانی آنلاین', status: 'open', department: 'پشتیبانی شهرداری', created_at: '2026-11-16 10:00:00', channel: 'support', reply: '' }
+  );
+
+  const list = () => w.document.querySelectorAll('#trackRecentList .report-item');
+  const texts = () => Array.from(list()).map(el => el.textContent);
+
+  w.filterTrackList('tickets');
+  ok('تبِ تیکت‌ها فقط تیکتِ واقعی را نشان می‌دهد (چت نیست)',
+    list().length === 1 && texts().some(t => t.includes('TK-1403-1001')) && !texts().some(t => t.includes('TK-1403-1003')));
+
+  w.filterTrackList('chats');
+  ok('تبِ چت‌ها فقط چتِ پشتیبانی را نشان می‌دهد',
+    list().length === 1 && texts().some(t => t.includes('TK-1403-1003')) && !texts().some(t => t.includes('TK-1403-1001')));
+  ok('آیتمِ چت بجِ «چت» دارد (نه «تیکت»)',
+    texts().some(t => t.includes('چت')) && !texts().some(t => t.includes('تیکت')));
+
+  w.filterTrackList('all');
+  ok('تبِ «همه موارد» هر دو را نشان می‌دهد', list().length === 2);
+
+  /* کلیک روی آیتمِ چت → صفحه‌ی چت (jsdom با outside-only هندلرِ inline را اجرا نمی‌کند؛ onclick را دستی می‌خوانیم) */
+  w.filterTrackList('chats');
+  const chatOnclick = list()[0].getAttribute('onclick') || '';
+  ok('onclickِ آیتمِ چت openSupportChat است (نه openTicketDetail)', chatOnclick === 'openSupportChat()', chatOnclick);
+  w.eval(chatOnclick);
+  ok('کلیک روی چت، صفحه‌ی چت را باز می‌کند (نه تیکت)', supportOpened === 1);
 
   try { w.close(); } catch (e) { /* مهم نیست */ }
 }

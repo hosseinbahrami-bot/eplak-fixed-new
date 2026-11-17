@@ -2689,7 +2689,13 @@
       const isEn = (window.i18n && typeof window.i18n.getLanguage === 'function')
         ? window.i18n.getLanguage() === 'en'
         : (window.i18n && window.i18n.currentLang === 'en');
-      const noItemsMsg = isEn ? 'No requests or tickets to display.' : 'در حال حاضر گزارش یا تیکتی برای پیگیری وجود ندارد.';
+      const noItemsMsg = activeTrackFilter === 'chats'
+        ? (isEn ? 'No support chats to display.' : 'در حال حاضر چت پشتیبانی برای نمایش وجود ندارد.')
+        : activeTrackFilter === 'tickets'
+          ? (isEn ? 'No tickets to display.' : 'در حال حاضر تیکتی برای نمایش وجود ندارد.')
+          : activeTrackFilter === 'reports'
+            ? (isEn ? 'No reports to display.' : 'در حال حاضر گزارشی برای نمایش وجود ندارد.')
+            : (isEn ? 'No requests or tickets to display.' : 'در حال حاضر گزارش یا تیکتی برای پیگیری وجود ندارد.');
 
       let items = [];
 
@@ -2713,6 +2719,7 @@
 
       if (activeTrackFilter === 'all' || activeTrackFilter === 'tickets') {
         tickets.forEach(t => {
+          if (t.channel === 'support') return; // چتِ پشتیبانی تیکت نیست؛ تبِ خودش را دارد
           items.push({
             type: 'ticket',
             id: t.id,
@@ -2725,6 +2732,26 @@
             dateTime: t.dateTime || formatReportDateTime(t.created_at),
             icon: 'ticket',
             iconBg: 'rgba(0,201,167,0.18)',
+            raw: t
+          });
+        });
+      }
+
+      if (activeTrackFilter === 'all' || activeTrackFilter === 'chats') {
+        tickets.forEach(t => {
+          if (t.channel !== 'support') return; // فقط چت‌های پشتیبانی
+          items.push({
+            type: 'chat',
+            id: t.id,
+            code: t.code || '—',
+            title: t.title,
+            sub: `${t.department || 'پشتیبانی شهرداری'} • ${t.dateTime || formatReportDateTime(t.created_at)}`,
+            status: t.status,
+            reply: t.reply,
+            created_at: t.created_at || '',
+            dateTime: t.dateTime || formatReportDateTime(t.created_at),
+            icon: 'message',
+            iconBg: 'rgba(168,85,247,0.18)',
             raw: t
           });
         });
@@ -2744,6 +2771,7 @@
 
       wrap.innerHTML = items.map(item => {
         const isTicket = item.type === 'ticket';
+        const isChat = item.type === 'chat';
         const hasReply = !!(isTicket && item.reply && item.reply.trim());
         let statusMeta = getStatusMeta(item.status);
         let statusLabel = statusMeta.label;
@@ -2755,11 +2783,13 @@
           }
         }
 
-        const typeBadge = isTicket
-          ? `<span style="font-size:10.5px; font-weight:800; background:rgba(0,201,167,0.15); color:var(--teal); padding:2px 7px; border-radius:8px;">🎫 تیکت</span>`
-          : `<span style="font-size:10.5px; font-weight:800; background:rgba(59,130,246,0.15); color:#3b82f6; padding:2px 7px; border-radius:8px;">📋 گزارش</span>`;
+        const typeBadge = isChat
+          ? `<span style="font-size:10.5px; font-weight:800; background:rgba(168,85,247,0.15); color:#a855f7; padding:2px 7px; border-radius:8px;">💬 چت</span>`
+          : isTicket
+            ? `<span style="font-size:10.5px; font-weight:800; background:rgba(0,201,167,0.15); color:var(--teal); padding:2px 7px; border-radius:8px;">🎫 تیکت</span>`
+            : `<span style="font-size:10.5px; font-weight:800; background:rgba(59,130,246,0.15); color:#3b82f6; padding:2px 7px; border-radius:8px;">📋 گزارش</span>`;
 
-        const onClickCall = isTicket ? `openTicketDetail('${item.id}')` : `openReportDetail('${item.id}')`;
+        const onClickCall = isChat ? `openSupportChat()` : isTicket ? `openTicketDetail('${item.id}')` : `openReportDetail('${item.id}')`;
         const hasReplyBadge = hasReply
           ? `<span style="font-size:10.5px; font-weight:700; color:#10b981; background:rgba(16,185,129,0.12); padding:2px 6px; border-radius:6px;">پاسخ شهرداری</span>`
           : '';
@@ -2779,7 +2809,7 @@
               <p style="font-size:11px; color:var(--text-muted); margin:0;">${escapeHtml(item.sub)}</p>
             </div>
             <div class="report-icon-box" style="background:${item.iconBg}; align-self:center; font-size:18px;">
-              ${window.EplakIcons ? window.EplakIcons.get(isTicket ? 'ticket' : item.icon) : (isTicket ? '🎫' : item.icon)}
+              ${window.EplakIcons ? window.EplakIcons.get(isTicket ? 'ticket' : item.icon) : (isTicket ? '🎫' : (isChat ? '💬' : item.icon))}
             </div>
           </div>
         `;

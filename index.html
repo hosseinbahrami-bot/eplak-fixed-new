@@ -2555,11 +2555,12 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
 
       <div id="trackResultBox"></div>
 
-      <!-- تب‌های فیلتر پیگیری: همه / گزارش‌ها / تیکت‌ها -->
+      <!-- تب‌های فیلتر پیگیری: همه / گزارش‌ها / تیکت‌ها / چت‌های پشتیبانی -->
       <div style="display:flex; gap:8px; overflow-x:auto; margin-top:2px;" id="trackFilterTabs">
         <button class="filter-tab active" data-trackfilter="all" onclick="filterTrackList('all', this)">همه موارد</button>
         <button class="filter-tab" data-trackfilter="reports" onclick="filterTrackList('reports', this)"><span data-eplak-icon="clipboard" data-icon-size="14" class="filter-tab-icon"></span>گزارش‌ها</button>
         <button class="filter-tab" data-trackfilter="tickets" onclick="filterTrackList('tickets', this)"><span data-eplak-icon="ticket" data-icon-size="14" class="filter-tab-icon"></span>تیکت‌ها</button>
+        <button class="filter-tab" data-trackfilter="chats" onclick="filterTrackList('chats', this)"><span data-eplak-icon="message" data-icon-size="14" class="filter-tab-icon"></span>چت‌های پشتیبانی</button>
       </div>
 
       <div class="reports-list" id="trackRecentList"></div>
@@ -3229,7 +3230,7 @@ title="شماره موبایل هویت حساب شماست و قابل تغیی
 <script src="modules/ads.js?v=1"></script>
 <script src="assets/js/ep-map.js?v=4"></script>
 <script src="assets/js/ep-camera.js?v=3"></script>
-<script src="modules/reports.js?v=33"></script>
+<script src="modules/reports.js?v=34"></script>
 <script src="modules/dashboard.js?v=19"></script>
 <script src="modules/city-map.js?v=2"></script>
 <script src="modules/profile.js?v=12"></script>
