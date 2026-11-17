@@ -393,7 +393,7 @@ ok('apk اجازه‌ی درخواست شبکه از صفحه‌ی داخلی ر
 ok('سرور، بدنه‌ی JSON را با هر نوع محتوایی می‌خواند و پیام post_max_size می‌دهد',
   /text\/plain/.test(apiReports) && /post_max_size/.test(apiReports) && /413/.test(apiReports));
 ok('کش‌باستر فایل‌های تغییر‌یافته به‌روز شده است',
-  /core\/storage\.js\?v=21/.test(indexHtml) && /modules\/reports\.js\?v=33/.test(indexHtml)
+  /core\/storage\.js\?v=21/.test(indexHtml) && /modules\/reports\.js\?v=34/.test(indexHtml)
   && /assets\/js\/ep-camera\.js\?v=3/.test(indexHtml)
   && /ep-map\.js\?v=4/.test(indexHtml) && /core\/router\.js\?v=15/.test(indexHtml)
   && /assets\/css\/style\.css\?v=95/.test(indexHtml)

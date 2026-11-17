@@ -139,8 +139,8 @@ const depth = (s, o, c) => { let d = 0; for (const ch of s) { if (ch === o) d++;
 ok('آکولادها و پرانتزهای project.pbxproj متعادل است', depth(pbx, '{', '}') === 0 && depth(pbx, '(', ')') === 0);
 ok('شناسه‌ی بسته ir.eplak.app و حداقل iOS 14 (هر دو حالت Debug/Release)',
   (pbx.match(/PRODUCT_BUNDLE_IDENTIFIER = ir\.eplak\.app;/g) || []).length === 2 && (pbx.match(/IPHONEOS_DEPLOYMENT_TARGET = 14\.0;/g) || []).length === 2);
-ok('MARKETING_VERSION و CURRENT_PROJECT_VERSION تعریف شده (نسخه‌ی ۲.۸.۰ / ساخت ۱۰ — هم‌نسخه با APK)',
-  (pbx.match(/MARKETING_VERSION = 2\.8\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 10;/g) || []).length === 2
+ok('MARKETING_VERSION و CURRENT_PROJECT_VERSION تعریف شده (نسخه‌ی ۲.۹.۰ / ساخت ۱۱ — هم‌نسخه با APK)',
+  (pbx.match(/MARKETING_VERSION = 2\.9\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 11;/g) || []).length === 2
   && /INFOPLIST_FILE = Eplak\/Info\.plist;/.test(pbx));
 const sourcesBlock = (pbx.match(/PBXSourcesBuildPhase section \*\/([\s\S]*?)End PBXSourcesBuildPhase/) || [, ''])[1];
 const resourcesBlock = (pbx.match(/PBXResourcesBuildPhase section \*\/([\s\S]*?)End PBXResourcesBuildPhase/) || [, ''])[1];
