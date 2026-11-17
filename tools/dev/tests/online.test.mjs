@@ -229,7 +229,7 @@ ok('راهنمای تنظیمات گوشی در مستندات هست (docs/NOTI
 /* ---------- ۶) آپدیت اجباری: نسخه‌های قدیمی وارد اپ نمی‌شوند ---------- */
 console.log('\n=== آپدیت اجباری (نسخه‌های قدیمی وارد اپ نمی‌شوند) ===');
 const vguard = read('modules/version-guard.js');
-const vapi = read('api/version.php');
+const vping = read('api/ping.php');
 const settingsPhp = read('admin/settings.php');
 
 ok('فایل modules/version-guard.js ساخته شده', exists('modules/version-guard.js'));
@@ -247,20 +247,23 @@ ok('مسدود بودن، جلوی کلیک/لمس/کلید کاربر را می
   vguard.includes('blockEvent') && vguard.includes("addEventListener('click', blockEvent, true)"));
 ok('پیام دقیق «نسخه‌ی اپ شما قدیمی است» در صفحه هست', idx.includes('نسخه‌ی اپ شما قدیمی است'));
 ok('دکمه‌ی دانلود لینک را در مرورگرِ گوشی باز می‌کند (پلِ بومی)', vguard.includes('AndroidApp.openUrl'));
-ok('بررسی نسخه با api/version.php انجام می‌شود', /version\.php/.test(vguard));
+ok('بررسی نسخه با api/ping.php انجام می‌شود (همان پینگی که همه‌جا هست و CORS دارد)',
+  /ping\.php/.test(vguard) && !vguard.includes('version.php'));
 ok('خرابیِ سرور کاربر را مسدود نمی‌کند (fail-open)', vguard.includes('fail-open'));
-ok('اندپوینت api/version.php وجود دارد', exists('api/version.php'));
-ok('api/version.php حداقل نسخه را از app_settings می‌خواند',
-  vapi.includes("'min_app_version_code'") && vapi.includes('eplakAppSetting'));
-ok('api/version.php روی خطا پیش‌فرضِ بی‌خطر برمی‌گرداند (min=0 یعنی هیچ‌کس مسدود نیست)',
-  vapi.includes("'min_version_code'   => 0") && vapi.includes('catch (Throwable'));
-ok('api/version.php پاسخ JSON با success می‌دهد', vapi.includes("'success'            => true"));
+ok('api/ping.php فیلدهای نسخه را از shared/app_version.json می‌خواند (بدونِ دیتابیس)',
+  vping.includes('app_version.json') && vping.includes("'app_version' => $appVersion"));
+ok('api/ping.php همچنان به دیتابیس وابسته نیست (حتی با دیتابیس خراب جواب می‌دهد)',
+  !vping.includes('db.php') && !vping.includes('$pdo'));
+ok('api/ping.php روی خرابیِ فایل پیش‌فرضِ بی‌خطر برمی‌گرداند (min=0 یعنی هیچ‌کس مسدود نیست)',
+  vping.includes("'min_version_code'    => 0") && vping.includes('catch (Throwable'));
+ok('api/ping.php کدِ منفی و لینکِ غیرِ http(s) را نمی‌پذیرد',
+  vping.includes('max(0, (int)') && vping.includes("preg_match('#^https?://#i'"));
 ok('پنل مدیریت بخش «نسخه‌ی اپ و آپدیت اجباری» دارد',
   settingsPhp.includes('save_app_version') && settingsPhp.includes('min_app_version_code')
   && settingsPhp.includes('نسخه‌ی اپ و آپدیت اجباری'));
-ok('فرمِ پنل هر پنج تنظیم را ذخیره می‌کند',
-  ['min_app_version_code', 'latest_app_version_code', 'latest_app_version_name', 'app_update_url', 'app_update_message']
-    .every((k) => settingsPhp.includes(`'${k}'`)));
+ok('فرمِ پنل هر پنج تنظیم را در shared/app_version.json ذخیره می‌کند',
+  ['min_version_code', 'latest_version_code', 'latest_version_name', 'update_url', 'message']
+    .every((k) => settingsPhp.includes(`'${k}'`)) && settingsPhp.includes('app_version.json'));
 
 /* کدِ نسخه‌ی اپ در هر سه‌جا یکی است (state.js / اندروید / آیفون) */
 {
@@ -302,7 +305,7 @@ function buildVersionSandbox(opts = {}) {
     fetch: async (url) => {
       sandbox._lastUrl = url;
       if (opts.fail) throw new Error('offline');
-      return { ok: true, json: async () => opts.payload };
+      return { ok: true, json: async () => ({ success: true, online: true, app_version: opts.payload }) };
     },
     document: {
       readyState: 'complete',
@@ -332,7 +335,7 @@ ok('نسخه‌ی قدیمی‌تر از حداقل مسدود می‌شود (پ
 ok('eplakIsUpdateBlocked() درست برمی‌گرداند', vBlocked.sandbox.eplakIsUpdateBlocked() === true);
 ok('عنوانِ پرده «نسخه‌ی اپ شما قدیمی است» است',
   vBlocked.nodes.get('eplakUpdateTitle').textContent.includes('قدیمی'));
-ok('بررسی نسخه با api/version.php انجام شده', String(vBlocked.sandbox._lastUrl).includes('/version.php'), String(vBlocked.sandbox._lastUrl));
+ok('بررسی نسخه با api/ping.php انجام شده', String(vBlocked.sandbox._lastUrl).includes('/ping.php'), String(vBlocked.sandbox._lastUrl));
 
 /* دکمه‌ی دانلود ⇒ باز کردن لینکِ APK در مرورگرِ گوشی */
 vBlocked.nodes.get('eplakUpdateDownload')._click({ preventDefault: () => {}, stopPropagation: () => {} });

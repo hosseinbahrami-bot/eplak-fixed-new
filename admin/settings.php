@@ -247,21 +247,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $messageType = 'success';
     } elseif ($action === 'save_app_version') {
         /* ── «نسخه‌ی اپ و آپدیت اجباری» ────────────────────────────────────
-           کدِ نسخه یک عددِ صحیحِ نامنفی است (همان versionCodeِ اندروید/iOS).
-           لینکِ دانلود فقط اگر http(s) باشد مؤثر است؛ در غیر این صورت
-           پیش‌فرضِ api/version.php (APKِ رسمیِ گیت‌هاب) می‌ماند. */
+           تنظیمات در shared/app_version.json ذخیره می‌شوند (نه دیتابیس) تا
+           api/ping.php — که اپ هنگام باز شدن صدا می‌زند — بدونِ لمسِ دیتابیس
+           آن‌ها را بخواند و همچنان «زنده» بماند. این فایل در گیت و در بسته‌ی
+           آپدیت نیست (مثلِ shared/config.php) تا آپدیتِ هاست تنظیمِ مدیر را
+           بازنویسی نکند. کدِ نسخه یک عددِ صحیحِ نامنفی است (همان versionCodeِ
+           اندروید/iOS) و لینکِ دانلود فقط اگر http(s) باشد مؤثر است. */
         $minCode = max(0, (int) ($_POST['min_app_version_code'] ?? 0));
         $latestCode = max(0, (int) ($_POST['latest_app_version_code'] ?? 0));
         $latestName = trim((string) ($_POST['latest_app_version_name'] ?? ''));
         $updateUrl = trim((string) ($_POST['app_update_url'] ?? ''));
         $updateMsg = trim((string) ($_POST['app_update_message'] ?? ''));
-        eplakSetAppSetting($pdo, 'min_app_version_code', (string) $minCode);
-        eplakSetAppSetting($pdo, 'latest_app_version_code', (string) $latestCode);
-        eplakSetAppSetting($pdo, 'latest_app_version_name', $latestName);
-        eplakSetAppSetting($pdo, 'app_update_url', $updateUrl);
-        eplakSetAppSetting($pdo, 'app_update_message', $updateMsg);
-        $message = '✅ تنظیماتِ نسخه‌ی اپ ذخیره شد.';
-        $messageType = 'success';
+        $versionData = [
+            'min_version_code'    => $minCode,
+            'latest_version_code' => $latestCode,
+            'latest_version_name' => $latestName,
+            'update_url'          => $updateUrl,
+            'message'             => $updateMsg,
+        ];
+        $versionFile = __DIR__ . '/../shared/app_version.json';
+        $written = @file_put_contents(
+            $versionFile,
+            json_encode($versionData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n",
+            LOCK_EX
+        );
+        if ($written === false) {
+            $message = '⚠️ ذخیره نشد: پوشه‌ی shared نوشتنی نیست. اجازه‌ی پوشه را 775 کنید و دوباره تلاش کنید.';
+            $messageType = 'danger';
+        } else {
+            $message = '✅ تنظیماتِ نسخه‌ی اپ ذخیره شد.';
+            $messageType = 'success';
+        }
     } elseif ($action === 'test_sms') {
         /* ── «ارسال پیامک آزمایشی» ───────────────────────────────────────────
            چرا این‌جا؟ ریشه‌ی بیشترِ «کد تایید نمی‌آید»ها تنظیمِ پیامک است و تا
@@ -335,14 +351,29 @@ $pushStats    = getPushStats($pdo);
 $pushErrors   = getPushLastErrors($pdo, 5);
 $vapidSubject = (string) eplakAppSetting($pdo, 'vapid_subject', '');
 
-/* ── تنظیماتِ «نسخه‌ی اپ و آپدیت اجباری» (api/version.php) ────────────────
-   پیش‌فرض‌ها دقیقاً همان‌هایی هستند که api/version.php برمی‌گرداند تا این‌جا
+/* ── تنظیماتِ «نسخه‌ی اپ و آپدیت اجباری» (shared/app_version.json) ─────────
+   پیش‌فرض‌ها دقیقاً همان‌هایی هستند که api/ping.php برمی‌گرداند تا این‌جا
    هم همان دیده شود که اپ می‌بیند. */
-$appVerMin        = (int) eplakAppSetting($pdo, 'min_app_version_code', '0');
-$appVerLatestCode = (int) eplakAppSetting($pdo, 'latest_app_version_code', '0');
-$appVerLatestName = (string) eplakAppSetting($pdo, 'latest_app_version_name', '');
-$appVerUrl        = (string) eplakAppSetting($pdo, 'app_update_url', '');
-$appVerMessage    = (string) eplakAppSetting($pdo, 'app_update_message', '');
+$appVerMin        = 0;
+$appVerLatestCode = 0;
+$appVerLatestName = '';
+$appVerUrl        = '';
+$appVerMessage    = '';
+try {
+    $appVerFile = __DIR__ . '/../shared/app_version.json';
+    if (is_file($appVerFile)) {
+        $appVerDecoded = json_decode((string) file_get_contents($appVerFile), true);
+        if (is_array($appVerDecoded)) {
+            $appVerMin        = max(0, (int) ($appVerDecoded['min_version_code'] ?? 0));
+            $appVerLatestCode = max(0, (int) ($appVerDecoded['latest_version_code'] ?? 0));
+            $appVerLatestName = trim((string) ($appVerDecoded['latest_version_name'] ?? ''));
+            $appVerUrl        = trim((string) ($appVerDecoded['update_url'] ?? ''));
+            $appVerMessage    = trim((string) ($appVerDecoded['message'] ?? ''));
+        }
+    }
+} catch (Throwable $e) {
+    /* خرابیِ فایل نباید صفحه‌ی تنظیمات را خراب کند؛ پیش‌فرض می‌ماند */
+}
 
 /* ── وضعیتِ پیامک (ملی پیامک) برای بخشِ «ارسال پیامک آزمایشی» ───────────────
    مقدارِ کلید هرگز نمایش داده نمی‌شود؛ فقط «هست/نیست» و «از کدام تنظیم خوانده

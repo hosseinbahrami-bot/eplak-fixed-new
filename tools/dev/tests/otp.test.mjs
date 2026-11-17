@@ -235,7 +235,7 @@ ok('بسته‌ی آپلود پوشه‌های نوشتنی و نگهبانِ آ
    'uploads/ads/.gitkeep', 'uploads/tmp/.gitkeep', 'data/.gitkeep']
     .every((f) => buildScript.includes(f))
     && buildScript.includes('tools/package-stubs')
-    && buildScript.includes('shared/config.php data/eplak.sqlite')
+    && buildScript.includes('shared/config.php shared/app_version.json data/eplak.sqlite')
     && buildScript.includes("^uploads/(reports|news|ads|tmp)/[0-9]{4}/")
     && gitignore.includes('uploads/') && gitignore.includes('data/')
     && gitignore.includes('shared/config.php'));

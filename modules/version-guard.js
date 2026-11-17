@@ -5,9 +5,11 @@
    باید اپ را آپدیت کنند.»
 
    چطور کار می‌کند؟
-   ۱) اپ هنگام باز شدن api/version.php را صدا می‌زند؛ سرور «حداقل نسخه‌ی مجاز»
-      (min_version_code) و «آخرین نسخه» را از جدول app_settings برمی‌گرداند
-      (تنظیم در پنل مدیریت ← تنظیمات ← «نسخه‌ی اپ و آپدیت اجباری»).
+   ۱) اپ هنگام باز شدن api/ping.php را صدا می‌زند (همان پینگی که online-guard
+      هم می‌زند؛ این آدرس روی همه‌ی هاست‌ها هست و CORS دارد)؛ سرور فیلدهای
+      «حداقل نسخه‌ی مجاز» (min_version_code) و «آخرین نسخه» را از فایلِ
+      shared/app_version.json برمی‌گرداند (تنظیم در پنل مدیریت ← تنظیمات ←
+      «نسخه‌ی اپ و آپدیت اجباری»).
    ۲) کدِ نسخه‌ی این اپ (APP_VERSION_CODE در core/state.js) با حداقل مقایسه
       می‌شود؛ اگر کمتر بود، پرده‌ی تمام‌صفحه‌ی «نسخه‌ی اپ قدیمی است» کشیده
       می‌شود: کاربر نه می‌تواند وارد اپ شود و نه چیزی را ببیند؛ فقط دکمه‌ی
@@ -204,7 +206,7 @@
       }
     } catch (e) {}
 
-    var url = apiBase() + '/version.php?_=' + Date.now();
+    var url = apiBase() + '/ping.php?_=' + Date.now();
 
     return fetch(url, {
       method: 'GET',
@@ -213,7 +215,9 @@
       headers: { 'Accept': 'application/json' }
     }).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (data) {
-        return (res.ok && data && data.success === true) ? data : null;
+        /* نسخه‌ها داخلِ app_versionِ پاسخِ پینگ‌اند (هاستِ قدیمی این فیلد را
+           ندارد ⇒ app_version نیست ⇒ fail-open) */
+        return (res.ok && data && data.success === true && data.app_version) ? data.app_version : null;
       });
     }).catch(function () {
       return null; /* آفلاین/خطا ⇒ fail-open */

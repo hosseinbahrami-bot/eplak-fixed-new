@@ -605,46 +605,59 @@ ok('پوشه‌ی پیوست‌های چت داخلِ بسته‌ی آپلود �
 ok('README بخشِ «پشتیبانی آنلاین» و لینکِ مستندش را دارد',
   has(read('README.md'), 'docs/SUPPORT_FA.md') && /پشتیبانی آنلاین/.test(read('README.md')));
 
-/* ══════════ api/version.php — «نسخه‌ی اپ و آپدیت اجباری» ══════════ */
-section('api/version.php (حداقل نسخه‌ی مجاز از app_settings)');
+/* ══════════ api/ping.php — فیلدهای «نسخه‌ی اپ و آپدیت اجباری» ══════════ */
+section('api/ping.php (فیلدهای نسخه از shared/app_version.json)');
 {
-  /* پیش‌فرض (بدونِ هیچ تنظیمی): هیچ‌کس مسدود نیست */
-  const def = await req('GET', '/api/version.php', newJar());
-  ok('پیش‌فرض: success=true و min_version_code=0 (هیچ‌کس مسدود نیست)',
-    def.status === 200 && def.json && def.json.success === true && def.json.min_version_code === 0,
+  const verFile = `${SHIM}/shared/app_version.json`;
+  const writeVer = (obj) => fs.writeFileSync(verFile, JSON.stringify(obj));
+  const clearVer = () => { try { fs.unlinkSync(verFile); } catch (e) { /* نبود */ } };
+
+  /* پیش‌فرض (بدونِ فایلِ تنظیمات): هیچ‌کس مسدود نیست */
+  clearVer();
+  const def = await req('GET', '/api/ping.php', newJar());
+  ok('پیش‌فرض: app_version با min_version_code=0 برمی‌گردد (هیچ‌کس مسدود نیست)',
+    def.status === 200 && def.json && def.json.success === true
+    && def.json.app_version && def.json.app_version.min_version_code === 0,
     JSON.stringify(def.json));
   ok('پیش‌فرض: لینکِ دانلود همان APKِ رسمیِ گیت‌هاب است',
-    def.json && String(def.json.update_url).includes('eplak-app.apk'));
+    def.json && def.json.app_version && String(def.json.app_version.update_url).includes('eplak-app.apk'));
+  ok('پینگ همچنان online=true می‌دهد (پرده‌ی آفلاین نمی‌آید)',
+    def.json && def.json.online === true);
 
-  /* تنظیمِ مدیر در دیتابیس ⇒ همان در پاسخ */
-  await phpRun(`eplakSetAppSetting(eplakGetPdo(), 'min_app_version_code', '13');
-    eplakSetAppSetting(eplakGetPdo(), 'latest_app_version_code', '14');
-    eplakSetAppSetting(eplakGetPdo(), 'latest_app_version_name', '2.11');
-    eplakSetAppSetting(eplakGetPdo(), 'app_update_url', 'https://example.test/new.apk');
-    eplakSetAppSetting(eplakGetPdo(), 'app_update_message', 'لطفاً آپدیت کنید.');`);
-  const set = await req('GET', '/api/version.php', newJar());
+  /* تنظیمِ مدیر در فایل ⇒ همان در پاسخ */
+  writeVer({ min_version_code: 13, latest_version_code: 14, latest_version_name: '2.11',
+    update_url: 'https://example.test/new.apk', message: 'لطفاً آپدیت کنید.' });
+  const set = await req('GET', '/api/ping.php', newJar());
   ok('پس از تنظیمِ مدیر، حداقل نسخه همان است که مدیر گذاشته (۱۳)',
-    set.json && set.json.min_version_code === 13, JSON.stringify(set.json));
+    set.json && set.json.app_version && set.json.app_version.min_version_code === 13, JSON.stringify(set.json));
   ok('آخرین نسخه و نامش هم برمی‌گردد',
-    set.json && set.json.latest_version_code === 14 && set.json.latest_version_name === '2.11');
+    set.json && set.json.app_version.latest_version_code === 14 && set.json.app_version.latest_version_name === '2.11');
   ok('لینکِ دانلود و پیامِ سفارشیِ مدیر برمی‌گردد',
-    set.json && set.json.update_url === 'https://example.test/new.apk' && set.json.message === 'لطفاً آپدیت کنید.');
+    set.json && set.json.app_version.update_url === 'https://example.test/new.apk'
+    && set.json.app_version.message === 'لطفاً آپدیت کنید.');
   ok('پاسخ JSON است و CORS دارد',
     String(hdr(set, 'content-type')).includes('application/json')
     && String(hdr(set, 'access-control-allow-origin')) === '*');
 
   /* OPTIONS ⇒ 204 (پیش‌درخواستِ CORS) */
-  const opt = await req('OPTIONS', '/api/version.php', newJar());
+  const opt = await req('OPTIONS', '/api/ping.php', newJar());
   ok('OPTIONS پاسخِ 204 می‌دهد', opt.status === 204, String(opt.status));
 
-  /* کدِ منفی/نامعتبر در دیتابیس ⇒ به صفر/پیش‌فرض برمی‌گردد (هرگز منفی نیست) */
-  await phpRun(`eplakSetAppSetting(eplakGetPdo(), 'min_app_version_code', '-5');
-    eplakSetAppSetting(eplakGetPdo(), 'app_update_url', 'javascript:alert(1)');`);
-  const neg = await req('GET', '/api/version.php', newJar());
+  /* کدِ منفی/لینکِ نامعتبر در فایل ⇒ به صفر/پیش‌فرض برمی‌گردد (هرگز منفی نیست) */
+  writeVer({ min_version_code: -5, latest_version_code: 14, update_url: 'javascript:alert(1)' });
+  const neg = await req('GET', '/api/ping.php', newJar());
   ok('کدِ منفی به ۰ برمی‌گردد (نسخه هرگز منفی نیست)',
-    neg.json && neg.json.min_version_code === 0, JSON.stringify(neg.json));
+    neg.json && neg.json.app_version && neg.json.app_version.min_version_code === 0, JSON.stringify(neg.json));
   ok('لینکِ غیرِ http(s) پذیرفته نمی‌شود (پیش‌فرض می‌ماند)',
-    neg.json && String(neg.json.update_url).includes('eplak-app.apk'));
+    neg.json && neg.json.app_version && String(neg.json.app_version.update_url).includes('eplak-app.apk'));
+
+  /* فایلِ خراب ⇒ پیش‌فرضِ بی‌خطر و پینگ همچنان زنده */
+  fs.writeFileSync(verFile, '{خراب');
+  const bad = await req('GET', '/api/ping.php', newJar());
+  ok('فایلِ خراب پینگ را خراب نمی‌کند (پیش‌فرضِ بی‌خطر)',
+    bad.status === 200 && bad.json && bad.json.online === true
+    && bad.json.app_version && bad.json.app_version.min_version_code === 0, JSON.stringify(bad.json));
+  clearVer();
 }
 
 console.log(`\nنتیجهٔ SUPPORT: ${pass} موفق، ${fail} ناموفق`);
