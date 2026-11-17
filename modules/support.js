@@ -237,6 +237,18 @@
       : t('support_open_hours', 'در ساعتِ کاری هستیم؛ پیام بدهید')) + ' · ' + (cfg.hours_label || '');
   }
 
+  /* نگهبانِ نهاییِ کادرِ نوشتن: هرجا شماره‌ی کاربر هست، کادر باید دیده شود.
+     اگر به‌هر‌دلیل (خرابیِ موقتِ localStorage در WebView، بازسازیِ DOM، یا
+     هر مسیرِ دیگری) کادر پنهان شده باشد، این تابع آن را برمی‌گرداند تا کاربر
+     هیچ‌وقت در میانه‌ی گفتگو «گیر» نیفتد و نتواند بنویسد. */
+  function ensureComposerVisible() {
+    if (!currentPhone()) { return; }
+    var composer = el('supportComposer');
+    if (composer && composer.style.display === 'none') {
+      composer.style.display = '';
+    }
+  }
+
   function setSending(on) {
     state.busy = !!on;
     var btn = el('supportSendBtn');
@@ -320,6 +332,7 @@
          (پیش‌تر در همین‌جا return می‌شد و polling برای همیشه می‌مرد؛ بعدش
          هیچ loadThreadای صدا زده نمی‌شد و کادرِ نوشتن هم برنمی‌گشت.) */
       if (isScreenActive() && !document.hidden) {
+        ensureComposerVisible();
         await loadThread(false);
         await flushOutbox();
         state.delay = state.idlePolls >= 4 ? POLL_SLOW : POLL_FAST;
@@ -415,6 +428,7 @@
         if (typeof res.open !== 'undefined') { renderConfig(res); }
         state.idlePolls = 0;
         state.delay = POLL_FAST;
+        ensureComposerVisible();
       } else {
         toast((res && res.hint) || t('support_send_failed', 'ارسال نشد؛ وقتی اینترنت برگشت خودکار فرستاده می‌شود.'));
       }

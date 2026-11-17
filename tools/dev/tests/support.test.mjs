@@ -769,8 +769,39 @@ ok('ظرفِ بیرونیِ چت اسکرول نمی‌شود (فقط اسکرو
   /#screen-support \.screen-content\s*{[^}]*overflow:\s*hidden/.test(supCss));
 ok('اسکرولر min-heightِ تحمیلی ندارد تا در صفحه‌ی کوتاه چیدمان جا شود',
   /\.sup-scroller\s*{[^}]*min-height:\s*0/.test(supCss));
-ok('کادرِ نوشتن sticky به پایین است (بیمه‌ی نهاییِ دیده شدن)',
-  /\.sup-composer\s*{[^}]*position:\s*sticky[^}]*bottom:\s*0/.test(supCss));
+ok('چیدمانِ کادرِ نوشتن با flexboxِ تمیز است (بدونِ height:100% و sticky که در WebView کادر را ناپدید می‌کرد)',
+  /\.sup-composer\s*{[^}]*flex:\s*0 0 auto/.test(supCss)
+  && !/\.sup-composer\s*{[^}]*position:\s*sticky/.test(supCss)
+  && !/#screen-support \.screen-content\s*{[^}]*height:\s*100%/.test(supCss)
+  && /#screen-support \.screen-content\s*{[^}]*flex:\s*1 1 auto/.test(supCss));
+
+/* ── شبکه‌ی ایمنیِ کادرِ نوشتن + آیکون‌های تازه ──────────────────────────
+   کاربر گزارش داده بود: «بعد از سه تا پیام، کادرِ ارسال کاملاً ناپدید می‌شود».
+   ریشه: چیدمانِ قبلی (ارتفاعِ درصدی + چسبِ موقعیتی) در WebViewی اندروید وقتی
+   محتوا از ارتفاع می‌گذشت، کادر را بیرون از دید می‌انداخت. رفع: flexboxِ تمیز
+   (بالا) + نگهبانِ JS که هرجا شماره هست، کادر را برمی‌گرداند. */
+ok('نگهبانِ ensureComposerVisible در JS هست و پس از ارسال و در polling صدا زده می‌شود',
+  /function ensureComposerVisible\(\)/.test(supportJs)
+  && /ensureComposerVisible\(\);\s*\n\s*state\.idlePolls = 0/.test(supportJs) === false
+  && (supportJs.match(/ensureComposerVisible\(\)/g) || []).length >= 3);
+ok('نگهبان فقط وقتی شماره هست کادر را برمی‌گرداند (کاربرِ لاگین‌نکرده پنهان می‌ماند)',
+  /function ensureComposerVisible\(\) \{\s*if \(!currentPhone\(\)\) \{ return; \}/.test(supportJs));
+
+/* آیکون‌های تازه‌ی «ارسال» و «پیوست» در پک و در دکمه‌های چت */
+const iconsJs = fs.readFileSync(path.join(ROOT, 'assets/js/icons.js'), 'utf8');
+const indexHtmlNew = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+ok('آیکونِ تازه‌ی هواپیمای کاغذی (send-plane) در پک هست',
+  /'send-plane':\s*'<svg[^']*M21\.9 2\.1/.test(iconsJs));
+ok('آیکونِ تازه‌ی سنجاق (attach-clip) در پک هست',
+  /'attach-clip':\s*'<svg[^']*M21\.4 11\.05/.test(iconsJs));
+ok('دکمه‌ی ارسال در index.html آیکونِ SVG دارد (نه ایموجی/فلش)',
+  /id="supportSendBtn"[\s\S]*?<svg[\s\S]*?M21\.9 2\.1/.test(indexHtmlNew)
+  && !/id="supportSendBtn"[^>]*>↑</.test(indexHtmlNew));
+ok('دکمه‌ی پیوست در index.html آیکونِ SVG دارد (نه ایموجیِ 📎)',
+  /id="supportAttachBtn"[\s\S]*?<svg[\s\S]*?M21\.4 11\.05/.test(indexHtmlNew)
+  && !/id="supportAttachBtn"[^>]*>📎</.test(indexHtmlNew));
+ok('اندازه‌ی SVG در دکمه‌های دایره‌ای در CSS تضمین شده',
+  /\.sup-icon-btn svg, \.sup-send-btn svg \{[^}]*width:\s*22px/.test(supCss));
 
 ok('polling فقط وقتی صفحه باز است ادامه دارد و با پنهان شدن قطع می‌شود (باتری)',
   /document\.hidden/.test(supportJs) && /visibilitychange/.test(supportJs) && /stopPolling\(\)/.test(supportJs));
