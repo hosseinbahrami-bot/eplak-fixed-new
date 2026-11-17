@@ -82,7 +82,7 @@ for f in .htaccess index.html index.php setup.php sw.js manifest.json shared/boo
          admin/version.php \
          assets/js/ep-map.js assets/js/ep-camera.js assets/js/icons.js \
          core/storage.js core/upload-progress.js core/router.js core/i18n.js core/state.js \
-         modules/reports.js modules/live.js modules/auth.js modules/dashboard.js modules/online-guard.js \
+         modules/reports.js modules/live.js modules/auth.js modules/dashboard.js modules/online-guard.js modules/version-guard.js \
          modules/contact.js \
          core/places-data.js core/places.js modules/city-map.js \
          api/places.php admin/places.php shared/places_store.php \
@@ -96,7 +96,7 @@ for f in .htaccess index.html index.php setup.php sw.js manifest.json shared/boo
   if has "$f"; then echo "   ✅ $f"; else echo "   ❌ $f گم شده!"; exit 1; fi
 done
 # داده‌ی کاربران و تنظیماتِ سرور هرگز داخل بسته نمی‌رود (پاکشان کند داده می‌رود)
-for f in shared/config.php data/eplak.sqlite; do
+for f in shared/config.php shared/app_version.json data/eplak.sqlite; do
   if has "$f"; then echo "   ❌ $f نباید داخل بسته باشد!"; exit 1; fi
 done
 # ولی «پوشه‌های نوشتنی» و «نگهبانِ uploads» باید داخل بسته باشند: روی هاستِ تازه

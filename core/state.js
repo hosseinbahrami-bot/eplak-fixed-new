@@ -5,6 +5,20 @@
      ای‌پلاک — Application State & Data
   ========================================================= */
 
+  /* ── نسخه‌ی این اپ ────────────────────────────────────────────────────
+     این دو ثابت باید با versionCode/versionNameِ اندروید
+     (android-app/app/build.gradle) و MARKETING_VERSION/CURRENT_PROJECT_VERSIONِ
+     آیفون (ios-app/Eplak.xcodeproj/project.pbxproj) یکی باشند؛ هر انتشارِ تازه
+     هر سه‌جا با هم بالا می‌رود. ماژولِ modules/version-guard.js همین کد را با
+     «حداقل نسخه‌ی مجاز»ِ سرور (api/version.php) مقایسه می‌کند تا نسخه‌های
+     قدیمی وارد اپ نشوند و پیامِ آپدیت ببینند. */
+  const APP_VERSION_CODE = 12;
+  const APP_VERSION_NAME = '2.10';
+  if (typeof window !== 'undefined') {
+    window.APP_VERSION_CODE = APP_VERSION_CODE;
+    window.APP_VERSION_NAME = APP_VERSION_NAME;
+  }
+
   /* برچسب‌های وضعیت — دقیقاً چهار مرحله‌ی روند رسیدگی:
      ثبت گزارش → در حال انتظار → در حال رسیدگی → انجام شد */
   const STATUS_LABEL = {

@@ -245,6 +245,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         eplakSetAppSetting($pdo, 'vapid_subject', $subject);
         $message = '✅ نشانی تماس اعلان‌ها ذخیره شد.';
         $messageType = 'success';
+    } elseif ($action === 'save_app_version') {
+        /* ── «نسخه‌ی اپ و آپدیت اجباری» ────────────────────────────────────
+           تنظیمات در shared/app_version.json ذخیره می‌شوند (نه دیتابیس) تا
+           api/ping.php — که اپ هنگام باز شدن صدا می‌زند — بدونِ لمسِ دیتابیس
+           آن‌ها را بخواند و همچنان «زنده» بماند. این فایل در گیت و در بسته‌ی
+           آپدیت نیست (مثلِ shared/config.php) تا آپدیتِ هاست تنظیمِ مدیر را
+           بازنویسی نکند. کدِ نسخه یک عددِ صحیحِ نامنفی است (همان versionCodeِ
+           اندروید/iOS) و لینکِ دانلود فقط اگر http(s) باشد مؤثر است. */
+        $minCode = max(0, (int) ($_POST['min_app_version_code'] ?? 0));
+        $latestCode = max(0, (int) ($_POST['latest_app_version_code'] ?? 0));
+        $latestName = trim((string) ($_POST['latest_app_version_name'] ?? ''));
+        $updateUrl = trim((string) ($_POST['app_update_url'] ?? ''));
+        $updateMsg = trim((string) ($_POST['app_update_message'] ?? ''));
+        $versionData = [
+            'min_version_code'    => $minCode,
+            'latest_version_code' => $latestCode,
+            'latest_version_name' => $latestName,
+            'update_url'          => $updateUrl,
+            'message'             => $updateMsg,
+        ];
+        $versionFile = __DIR__ . '/../shared/app_version.json';
+        $written = @file_put_contents(
+            $versionFile,
+            json_encode($versionData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n",
+            LOCK_EX
+        );
+        if ($written === false) {
+            $message = '⚠️ ذخیره نشد: پوشه‌ی shared نوشتنی نیست. اجازه‌ی پوشه را 775 کنید و دوباره تلاش کنید.';
+            $messageType = 'danger';
+        } else {
+            $message = '✅ تنظیماتِ نسخه‌ی اپ ذخیره شد.';
+            $messageType = 'success';
+        }
     } elseif ($action === 'test_sms') {
         /* ── «ارسال پیامک آزمایشی» ───────────────────────────────────────────
            چرا این‌جا؟ ریشه‌ی بیشترِ «کد تایید نمی‌آید»ها تنظیمِ پیامک است و تا
@@ -317,6 +350,30 @@ $pushPossible = eplakPushEnabled();
 $pushStats    = getPushStats($pdo);
 $pushErrors   = getPushLastErrors($pdo, 5);
 $vapidSubject = (string) eplakAppSetting($pdo, 'vapid_subject', '');
+
+/* ── تنظیماتِ «نسخه‌ی اپ و آپدیت اجباری» (shared/app_version.json) ─────────
+   پیش‌فرض‌ها دقیقاً همان‌هایی هستند که api/ping.php برمی‌گرداند تا این‌جا
+   هم همان دیده شود که اپ می‌بیند. */
+$appVerMin        = 0;
+$appVerLatestCode = 0;
+$appVerLatestName = '';
+$appVerUrl        = '';
+$appVerMessage    = '';
+try {
+    $appVerFile = __DIR__ . '/../shared/app_version.json';
+    if (is_file($appVerFile)) {
+        $appVerDecoded = json_decode((string) file_get_contents($appVerFile), true);
+        if (is_array($appVerDecoded)) {
+            $appVerMin        = max(0, (int) ($appVerDecoded['min_version_code'] ?? 0));
+            $appVerLatestCode = max(0, (int) ($appVerDecoded['latest_version_code'] ?? 0));
+            $appVerLatestName = trim((string) ($appVerDecoded['latest_version_name'] ?? ''));
+            $appVerUrl        = trim((string) ($appVerDecoded['update_url'] ?? ''));
+            $appVerMessage    = trim((string) ($appVerDecoded['message'] ?? ''));
+        }
+    }
+} catch (Throwable $e) {
+    /* خرابیِ فایل نباید صفحه‌ی تنظیمات را خراب کند؛ پیش‌فرض می‌ماند */
+}
 
 /* ── وضعیتِ پیامک (ملی پیامک) برای بخشِ «ارسال پیامک آزمایشی» ───────────────
    مقدارِ کلید هرگز نمایش داده نمی‌شود؛ فقط «هست/نیست» و «از کدام تنظیم خوانده
@@ -943,6 +1000,71 @@ $httpsOn = eplakIsHttpsRequest();
         </form>
       </section>
 
+
+      <section class="panel" id="app-version">
+        <h2><i class="fas fa-mobile-screen-button"></i> نسخه‌ی اپ و آپدیت اجباری</h2>
+        <p class="field-hint">
+          اپ هنگام باز شدن، «حداقل نسخه‌ی مجاز» را از سرور می‌خواند. اگر نسخه‌ی گوشیِ شهروند
+          <strong>پایین‌تر</strong> از این عدد باشد، وارد اپ نمی‌شود و پرده‌ی
+          «نسخه‌ی اپ قدیمی است — لطفاً به‌روزرسانی کنید» با دکمه‌ی دانلود دیده می‌شود.
+          <br>برای اجبار کاربران به آپدیت، بعد از انتشارِ نسخه‌ی تازه، «حداقل نسخه» را روی
+          <strong>کدِ همان نسخه‌ی تازه</strong> بگذارید (مثلاً اگر نسخه‌ی تازه کدِ ۱۳ دارد، حداقل را ۱۳ کنید).
+          «آخرین نسخه» فقط برای پیشنهادِ آپدیتِ اختیاری است و کسی را بیرون نمی‌اندازد.
+          <br>کدِ نسخه همان <code dir="ltr">versionCode</code> اندروید و <code dir="ltr">CURRENT_PROJECT_VERSION</code> آیفون است
+          (در فایل‌های <code dir="ltr">android-app/app/build.gradle</code> و <code dir="ltr">ios-app/Eplak.xcodeproj/project.pbxproj</code>).
+        </p>
+
+        <div class="kv-list" data-testid="app-version-state">
+          <div class="kv-row">
+            <span class="kv-key">حداقل نسخه‌ی مجاز (کد)</span>
+            <span class="kv-val"><?= (int) $appVerMin ?></span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">آخرین نسخه‌ی منتشرشده</span>
+            <span class="kv-val"><?= $appVerLatestCode > 0 ? (int) $appVerLatestCode . ($appVerLatestName !== '' ? ' (' . htmlspecialchars($appVerLatestName) . ')' : '') : '—' ?></span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">لینک دانلود نسخه‌ی تازه</span>
+            <span class="kv-val"><?= $appVerUrl !== '' ? '<span dir="ltr">' . htmlspecialchars($appVerUrl) . '</span>' : 'پیش‌فرض (APK رسمی گیت‌هاب)' ?></span>
+          </div>
+        </div>
+
+        <form method="post" class="settings-grid" style="margin-top: 16px;">
+          <?= eplakCsrfField() ?>
+          <input type="hidden" name="action" value="save_app_version">
+          <div class="form-group">
+            <label for="min_app_version_code"><i class="fas fa-ban" style="color: var(--primary-500); margin-left: 6px;"></i> حداقل نسخه‌ی مجاز (کد)</label>
+            <input class="form-control" type="number" id="min_app_version_code" name="min_app_version_code"
+                   value="<?= (int) $appVerMin ?>" min="0" step="1" inputmode="numeric">
+            <p class="field-hint">نسخه‌های پایین‌تر از این کد وارد اپ نمی‌شوند. ۰ یعنی «هیچ‌کس مسدود نیست».</p>
+          </div>
+          <div class="form-group">
+            <label for="latest_app_version_code"><i class="fas fa-arrow-up-from-bracket" style="color: var(--primary-500); margin-left: 6px;"></i> کدِ آخرین نسخه‌ی منتشرشده</label>
+            <input class="form-control" type="number" id="latest_app_version_code" name="latest_app_version_code"
+                   value="<?= (int) $appVerLatestCode ?>" min="0" step="1" inputmode="numeric">
+            <p class="field-hint">اگر کدِ گوشیِ شهروند از این عدد کمتر باشد (ولی از حداقل بالاتر)، فقط پیشنهادِ آپدیت می‌بیند.</p>
+          </div>
+          <div class="form-group">
+            <label for="latest_app_version_name"><i class="fas fa-tag" style="color: var(--primary-500); margin-left: 6px;"></i> نامِ آخرین نسخه (مثلاً 2.10)</label>
+            <input class="form-control" type="text" id="latest_app_version_name" name="latest_app_version_name"
+                   value="<?= htmlspecialchars($appVerLatestName) ?>" dir="ltr" style="text-align:left;">
+          </div>
+          <div class="form-group">
+            <label for="app_update_url"><i class="fas fa-download" style="color: var(--primary-500); margin-left: 6px;"></i> لینک دانلود نسخه‌ی تازه (APK)</label>
+            <input class="form-control" type="url" id="app_update_url" name="app_update_url"
+                   value="<?= htmlspecialchars($appVerUrl) ?>" dir="ltr" style="text-align:left;" placeholder="https://…">
+            <p class="field-hint">خالی یعنی لینکِ پیش‌فرضِ APK رسمی گیت‌هاب. فقط لینک‌های http(s) پذیرفته می‌شوند.</p>
+          </div>
+          <div class="form-group">
+            <label for="app_update_message"><i class="fas fa-message" style="color: var(--primary-500); margin-left: 6px;"></i> پیامِ سفارشیِ پرده‌ی آپدیت (اختیاری)</label>
+            <textarea class="form-control" id="app_update_message" name="app_update_message" rows="2"><?= htmlspecialchars($appVerMessage) ?></textarea>
+            <p class="field-hint">خالی یعنی پیامِ پیش‌فرضِ اپ («نسخه‌ی اپ شما قدیمی است…»).</p>
+          </div>
+          <div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> ذخیره تنظیمات نسخه</button>
+          </div>
+        </form>
+      </section>
 
       <section class="panel">
         <h2><i class="fas fa-circle-info"></i> وضعیت فنی سرور</h2>

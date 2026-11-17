@@ -226,6 +226,153 @@ ok('کادر وضعیت اعلان کلاً حذف شده (نه ادعا، نه 
 ok('راهنمای تنظیمات گوشی در مستندات هست (docs/NOTIFICATIONS_FA.md)',
   /تنظیمات گوشی ← برنامه‌ها ← ای‌پلاک ← اعلان‌ها/.test(read('docs/NOTIFICATIONS_FA.md')));
 
+/* ---------- ۶) آپدیت اجباری: نسخه‌های قدیمی وارد اپ نمی‌شوند ---------- */
+console.log('\n=== آپدیت اجباری (نسخه‌های قدیمی وارد اپ نمی‌شوند) ===');
+const vguard = read('modules/version-guard.js');
+const vping = read('api/ping.php');
+const settingsPhp = read('admin/settings.php');
+
+ok('فایل modules/version-guard.js ساخته شده', exists('modules/version-guard.js'));
+ok('در index.html بارگذاری می‌شود', /modules\/version-guard\.js\?v=1/.test(idx));
+ok('پرده‌ی آپدیت یک عنصر واقعی در صفحه است', idx.includes('id="eplakUpdateGate"'));
+ok('بنرِ «نسخه‌ی جدید» در صفحه هست', idx.includes('id="eplakUpdateBanner"'));
+ok('شناسه‌های پرده/بنر همان‌هایی هستند که اسکریپت انتظار دارد',
+  ['eplakUpdateGate', 'eplakUpdateTitle', 'eplakUpdateDesc', 'eplakUpdateDownload', 'eplakUpdateRetry',
+   'eplakUpdateBanner', 'eplakUpdateBannerTitle', 'eplakUpdateBannerBtn', 'eplakUpdateBannerClose']
+    .every((id) => idx.includes(`id="${id}"`) && vguard.includes(`'${id}'`)));
+ok('در حالت مسدود، پرده کل صفحه را می‌پوشاند و محتوای اپ پنهان می‌شود',
+  /html\.eplak-update-blocked\s+#eplakUpdateGate\s*\{[^}]*position:\s*fixed/.test(idx)
+  && /html\.eplak-update-blocked\s+\.phone-frame\s*\{[^}]*visibility:\s*hidden/.test(idx));
+ok('مسدود بودن، جلوی کلیک/لمس/کلید کاربر را می‌گیرد (دکمه‌های پرده آزادند)',
+  vguard.includes('blockEvent') && vguard.includes("addEventListener('click', blockEvent, true)"));
+ok('پیام دقیق «نسخه‌ی اپ شما قدیمی است» در صفحه هست', idx.includes('نسخه‌ی اپ شما قدیمی است'));
+ok('دکمه‌ی دانلود لینک را در مرورگرِ گوشی باز می‌کند (پلِ بومی)', vguard.includes('AndroidApp.openUrl'));
+ok('بررسی نسخه با api/ping.php انجام می‌شود (همان پینگی که همه‌جا هست و CORS دارد)',
+  /ping\.php/.test(vguard) && !vguard.includes('version.php'));
+ok('خرابیِ سرور کاربر را مسدود نمی‌کند (fail-open)', vguard.includes('fail-open'));
+ok('api/ping.php فیلدهای نسخه را از shared/app_version.json می‌خواند (بدونِ دیتابیس)',
+  vping.includes('app_version.json') && vping.includes("'app_version' => $appVersion"));
+ok('api/ping.php همچنان به دیتابیس وابسته نیست (حتی با دیتابیس خراب جواب می‌دهد)',
+  !vping.includes('db.php') && !vping.includes('$pdo'));
+ok('api/ping.php روی خرابیِ فایل پیش‌فرضِ بی‌خطر برمی‌گرداند (min=0 یعنی هیچ‌کس مسدود نیست)',
+  vping.includes("'min_version_code'    => 0") && vping.includes('catch (Throwable'));
+ok('api/ping.php کدِ منفی و لینکِ غیرِ http(s) را نمی‌پذیرد',
+  vping.includes('max(0, (int)') && vping.includes("preg_match('#^https?://#i'"));
+ok('پنل مدیریت بخش «نسخه‌ی اپ و آپدیت اجباری» دارد',
+  settingsPhp.includes('save_app_version') && settingsPhp.includes('min_app_version_code')
+  && settingsPhp.includes('نسخه‌ی اپ و آپدیت اجباری'));
+ok('فرمِ پنل هر پنج تنظیم را در shared/app_version.json ذخیره می‌کند',
+  ['min_version_code', 'latest_version_code', 'latest_version_name', 'update_url', 'message']
+    .every((k) => settingsPhp.includes(`'${k}'`)) && settingsPhp.includes('app_version.json'));
+
+/* کدِ نسخه‌ی اپ در هر سه‌جا یکی است (state.js / اندروید / آیفون) */
+{
+  const stateJs = read('core/state.js');
+  const gradle = read('android-app/app/build.gradle');
+  const pbx = read('ios-app/Eplak.xcodeproj/project.pbxproj');
+  const stateCode = (stateJs.match(/const APP_VERSION_CODE = (\d+);/) || [])[1];
+  const gradleCode = (gradle.match(/versionCode (\d+)/) || [])[1];
+  const pbxCode = (pbx.match(/CURRENT_PROJECT_VERSION = (\d+);/) || [])[1];
+  ok('کدِ نسخه‌ی اپ در هر سه‌جا یکی است (state.js / اندروید / آیفون)',
+    !!stateCode && stateCode === gradleCode && gradleCode === pbxCode, `${stateCode}/${gradleCode}/${pbxCode}`);
+  const stateName = (stateJs.match(/const APP_VERSION_NAME = '([^']+)'/) || [])[1];
+  const gradleName = (gradle.match(/versionName '([^']+)'/) || [])[1];
+  const pbxName = (pbx.match(/MARKETING_VERSION = ([0-9.]+);/) || [])[1];
+  ok('نامِ نسخه‌ی اپ در هر سه‌جا یکی است',
+    !!stateName && stateName === gradleName && pbxName === stateName + '.0', `${stateName}/${gradleName}/${pbxName}`);
+}
+
+/* ---------- ۶-۲) اجرای واقعی نگهبان نسخه در محیط شبیه‌سازی‌شده ---------- */
+console.log('\n=== اجرای واقعی نگهبان نسخه ===');
+function buildVersionSandbox(opts = {}) {
+  const classes = new Set();
+  const nodes = new Map();
+  const makeEl = (id) => ({ id, textContent: '', style: {}, dataset: {}, addEventListener(t, fn) { nodes.get(id)._click = fn; }, contains: () => false });
+  ['eplakUpdateGate', 'eplakUpdateTitle', 'eplakUpdateDesc', 'eplakUpdateDownload', 'eplakUpdateRetry',
+   'eplakUpdateBanner', 'eplakUpdateBannerTitle', 'eplakUpdateBannerBtn', 'eplakUpdateBannerClose']
+    .forEach((id) => nodes.set(id, makeEl(id)));
+
+  const sandbox = {
+    console,
+    setTimeout: () => 0,
+    clearTimeout: () => {},
+    Promise, Date, Math, JSON, String, Object, Array,
+    AbortController: undefined,
+    APP_VERSION_CODE: opts.myCode !== undefined ? opts.myCode : 12,
+    eplakApiBase: () => 'https://eplak.eplak-fixed/api',
+    AndroidApp: { openUrl: (url) => { sandbox._openedNative = url; } },
+    open: (url) => { sandbox._opened = url; return {}; },
+    fetch: async (url) => {
+      sandbox._lastUrl = url;
+      if (opts.fail) throw new Error('offline');
+      return { ok: true, json: async () => ({ success: true, online: true, app_version: opts.payload }) };
+    },
+    document: {
+      readyState: 'complete',
+      documentElement: { classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c), contains: (c) => classes.has(c) } },
+      body: { style: {} },
+      getElementById: (id) => nodes.get(id) || null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    },
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(vguard, sandbox, { filename: 'version-guard.js' });
+  return { sandbox, classes, nodes };
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 10));
+
+/* نسخه‌ی قدیمی‌تر از حداقل ⇒ پرده‌ی آپدیتِ اجباری */
+const vBlocked = buildVersionSandbox({
+  myCode: 12,
+  payload: { success: true, min_version_code: 13, latest_version_code: 13, latest_version_name: '2.11', update_url: 'https://example.test/app.apk', message: '' },
+});
+await tick();
+ok('نسخه‌ی قدیمی‌تر از حداقل مسدود می‌شود (پرده کشیده می‌شود)', vBlocked.classes.has('eplak-update-blocked'));
+ok('eplakIsUpdateBlocked() درست برمی‌گرداند', vBlocked.sandbox.eplakIsUpdateBlocked() === true);
+ok('عنوانِ پرده «نسخه‌ی اپ شما قدیمی است» است',
+  vBlocked.nodes.get('eplakUpdateTitle').textContent.includes('قدیمی'));
+ok('بررسی نسخه با api/ping.php انجام شده', String(vBlocked.sandbox._lastUrl).includes('/ping.php'), String(vBlocked.sandbox._lastUrl));
+
+/* دکمه‌ی دانلود ⇒ باز کردن لینکِ APK در مرورگرِ گوشی */
+vBlocked.nodes.get('eplakUpdateDownload')._click({ preventDefault: () => {}, stopPropagation: () => {} });
+ok('دکمه‌ی دانلود لینکِ APK را باز می‌کند', vBlocked.sandbox._openedNative === 'https://example.test/app.apk', String(vBlocked.sandbox._openedNative));
+
+/* پیامِ سفارشیِ مدیر جای متنِ پیش‌فرض می‌نشیند */
+const vCustom = buildVersionSandbox({
+  myCode: 12,
+  payload: { success: true, min_version_code: 99, latest_version_code: 99, update_url: '', message: 'لطفاً همین امروز آپدیت کنید.' },
+});
+await tick();
+ok('پیامِ سفارشیِ مدیر روی پرده نمایش داده می‌شود',
+  vCustom.nodes.get('eplakUpdateDesc').textContent === 'لطفاً همین امروز آپدیت کنید.');
+
+/* نسخه‌ی مجاز ولی قدیمی‌تر از آخرین ⇒ فقط بنر (کسی بیرون نمی‌افتد) */
+const vBanner = buildVersionSandbox({
+  myCode: 12,
+  payload: { success: true, min_version_code: 12, latest_version_code: 13, update_url: 'https://example.test/app.apk', message: '' },
+});
+await tick();
+ok('نسخه‌ی مجاز مسدود نمی‌شود', !vBanner.classes.has('eplak-update-blocked') && vBanner.sandbox.eplakIsUpdateBlocked() === false);
+ok('بنرِ «نسخه‌ی جدید» نمایش داده می‌شود', vBanner.nodes.get('eplakUpdateBanner').style.display === 'flex');
+
+/* نسخه‌ی تازه ⇒ هیچ‌چیز */
+const vOk = buildVersionSandbox({
+  myCode: 12,
+  payload: { success: true, min_version_code: 12, latest_version_code: 12, update_url: '', message: '' },
+});
+await tick();
+ok('نسخه‌ی تازه نه مسدود می‌شود و نه بنر می‌بیند',
+  !vOk.classes.has('eplak-update-blocked') && vOk.nodes.get('eplakUpdateBanner').style.display !== 'flex');
+
+/* خرابیِ سرور ⇒ fail-open (کسی بیرون نمی‌افتد) */
+const vFail = buildVersionSandbox({ myCode: 12, fail: true });
+await tick();
+ok('اگر سرور جواب ندهد، کاربر مسدود نمی‌شود (fail-open)', !vFail.classes.has('eplak-update-blocked'));
+
 console.log('\n' + '='.repeat(52));
 console.log(`ONLINE: ${pass} passed, ${fail} failed`);
 console.log('='.repeat(52));

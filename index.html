@@ -79,6 +79,51 @@ try { if (navigator.onLine === false) { document.documentElement.classList.add('
     background: #00C9A7; color: #06231d; font-weight: 800; font-size: 13px;
     font-family: inherit;
   }
+
+  /* ── پرده‌ی «نسخه‌ی اپ قدیمی است» (آپدیت اجباری، modules/version-guard.js) ── */
+  #eplakUpdateGate { display: none; }
+  html.eplak-update-blocked #eplakUpdateGate {
+    display: flex; position: fixed; inset: 0; z-index: 1000000;
+    align-items: center; justify-content: center; padding: 24px;
+    background: linear-gradient(180deg, #0d1527 0%, #16233c 100%);
+    color: #fff; text-align: center; direction: rtl;
+    font-family: Vazirmatn, Tahoma, sans-serif;
+  }
+  html.eplak-update-blocked body { overflow: hidden !important; }
+  /* وقتی آپدیت اجباری است، محتوای اپ اصلاً نمایش داده نمی‌شود */
+  html.eplak-update-blocked .phone-frame { visibility: hidden !important; }
+  #eplakUpdateGate .eplak-update-card { max-width: 330px; width: 100%; }
+  #eplakUpdateGate .eplak-update-icon { font-size: 46px; line-height: 1; margin-bottom: 14px; }
+  #eplakUpdateGate h2 { font-size: 17px; font-weight: 800; margin: 0 0 10px; }
+  #eplakUpdateGate p { font-size: 13px; line-height: 2; color: #cbd5e1; margin: 0 0 18px; }
+  #eplakUpdateDownload {
+    display: block; width: 100%; border: 0; border-radius: 12px; padding: 13px 22px; cursor: pointer;
+    background: #00C9A7; color: #06231d; font-weight: 800; font-size: 14px;
+    font-family: inherit; margin-bottom: 10px;
+  }
+  #eplakUpdateRetry {
+    display: block; width: 100%; border: 1px solid #334155; border-radius: 12px; padding: 11px 22px; cursor: pointer;
+    background: transparent; color: #cbd5e1; font-weight: 700; font-size: 12.5px;
+    font-family: inherit;
+  }
+
+  /* ── بنرِ «نسخه‌ی جدید موجود است» (پیشنهادِ آپدیتِ اختیاری) ── */
+  #eplakUpdateBanner {
+    display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 999998;
+    align-items: center; gap: 10px; padding: 10px 14px;
+    background: linear-gradient(90deg, #0d9488 0%, #00C9A7 100%);
+    color: #06231d; direction: rtl; font-family: Vazirmatn, Tahoma, sans-serif;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  }
+  #eplakUpdateBannerTitle { flex: 1; font-size: 12.5px; font-weight: 800; }
+  #eplakUpdateBannerBtn {
+    border: 0; border-radius: 9px; padding: 7px 14px; cursor: pointer;
+    background: #06231d; color: #fff; font-weight: 800; font-size: 12px; font-family: inherit;
+  }
+  #eplakUpdateBannerClose {
+    border: 0; border-radius: 9px; padding: 7px 12px; cursor: pointer;
+    background: rgba(6, 35, 29, 0.15); color: #06231d; font-weight: 700; font-size: 12px; font-family: inherit;
+  }
 </style>
 
 <script>
@@ -3213,15 +3258,34 @@ title="شماره موبایل هویت حساب شماست و قابل تغیی
   </div>
 </div>
 
+<!-- ============ پرده‌ی «نسخه‌ی اپ قدیمی است» (آپدیت اجباری؛ بیرون از قالب گوشی) ============ -->
+<div id="eplakUpdateGate" role="alert" aria-live="assertive">
+  <div class="eplak-update-card">
+    <div class="eplak-update-icon" data-eplak-icon="recycle" data-icon-size="46"></div>
+    <h2 id="eplakUpdateTitle">نسخه‌ی اپ شما قدیمی است</h2>
+    <p id="eplakUpdateDesc">برای ادامه‌ی استفاده از برنامه، لطفاً آن را به نسخه‌ی تازه به‌روزرسانی کنید.</p>
+    <button type="button" id="eplakUpdateDownload">دانلود نسخه‌ی جدید</button>
+    <button type="button" id="eplakUpdateRetry">بررسی مجدد</button>
+  </div>
+</div>
+
+<!-- ============ بنرِ «نسخه‌ی جدید موجود است» (پیشنهادِ آپدیتِ اختیاری) ============ -->
+<div id="eplakUpdateBanner" role="status">
+  <span id="eplakUpdateBannerTitle">نسخه‌ی جدیدی از اپ منتشر شده است</span>
+  <button type="button" id="eplakUpdateBannerBtn">به‌روزرسانی</button>
+  <button type="button" id="eplakUpdateBannerClose">بعداً</button>
+</div>
+
 <!-- ===== Core ===== -->
 <script src="core/sound.js?v=10"></script>
 <script src="core/i18n.js?v=20"></script>
-<script src="core/state.js?v=15"></script>
+<script src="core/state.js?v=16"></script>
 <script src="core/places-data.js?v=3"></script>
 <script src="core/places.js?v=2"></script>
 <script src="core/storage.js?v=21"></script>
 <script src="core/upload-progress.js?v=1"></script>
 <script src="modules/online-guard.js?v=1"></script>
+<script src="modules/version-guard.js?v=1"></script>
 <script src="core/router.js?v=15"></script>
 
 <!-- ===== Modules ===== -->
