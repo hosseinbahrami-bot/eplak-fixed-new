@@ -920,8 +920,8 @@ ok('صفحه‌ی «بررسی نسخه» فایل‌های تبلیغات و م
   ['shared/ads.php', 'api/ads.php', 'admin/ads.php', 'modules/ads.js', 'assets/css/ads.css', 'admin/includes/acl.php', 'admin/admins.php']
     .every((f) => read('admin/version.php').includes(`'${f}'`)));
 ok('نسخه‌ی اپ بالا رفت (APK/IPA تازه قابل تشخیص باشد)',
-  /versionCode 7\b/.test(read('android-app/app/build.gradle')) && read('android-app/app/build.gradle').includes("versionName '2.5'")
-  && (read('ios-app/Eplak.xcodeproj/project.pbxproj').match(/MARKETING_VERSION = 2\.5\.0;/g) || []).length === 2);
+  /versionCode 8\b/.test(read('android-app/app/build.gradle')) && read('android-app/app/build.gradle').includes("versionName '2.6'")
+  && (read('ios-app/Eplak.xcodeproj/project.pbxproj').match(/MARKETING_VERSION = 2\.6\.0;/g) || []).length === 2);
 ok('گریدلِ اندروید پوشه‌های وب را کامل داخل APK می‌گذارد (ماژولِ تازه خودکار می‌رود)',
   read('android-app/app/build.gradle').includes('syncWebAssets') && /modules/.test(read('android-app/app/build.gradle')));
 ok('مستنداتِ فارسیِ تبلیغات هست و به هر سه جای بنر و آمارِ کلیک اشاره می‌کند',

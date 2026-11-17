@@ -23,6 +23,7 @@
    اجرا:  bash tools/dev/run-regression.sh contact
 */
 import fs from 'fs'; import vm from 'vm'; import path from 'path';
+import { JSDOM, VirtualConsole } from 'jsdom';
 
 const ROOT = process.env.EPLAK_ROOT || path.resolve(process.cwd(), '../../..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -202,13 +203,140 @@ section('رشته‌های دوزبانه‌ی core/i18n.js');
 }
 
 /* ══════════ ۶) نسخه‌ی اپ ══════════ */
-section('نسخه‌ی اپ (۲.۵/۷)');
+section('نسخه‌ی اپ (۲.۶/۸)');
 {
   const gradle = read('android-app/app/build.gradle');
-  ok('اندروید: versionCode 7 / versionName 2.5', /versionCode 7\b/.test(gradle) && gradle.includes("versionName '2.5'"));
+  ok('اندروید: versionCode 8 / versionName 2.6', /versionCode 8\b/.test(gradle) && gradle.includes("versionName '2.6'"));
   const pbx = read('ios-app/Eplak.xcodeproj/project.pbxproj');
-  ok('iOS: MARKETING_VERSION 2.5.0 و CURRENT_PROJECT_VERSION 7 (هر دو پیکربندی)',
-    (pbx.match(/MARKETING_VERSION = 2\.5\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 7;/g) || []).length === 2);
+  ok('iOS: MARKETING_VERSION 2.6.0 و CURRENT_PROJECT_VERSION 8 (هر دو پیکربندی)',
+    (pbx.match(/MARKETING_VERSION = 2\.6\.0;/g) || []).length === 2 && (pbx.match(/CURRENT_PROJECT_VERSION = 8;/g) || []).length === 2);
+}
+
+/* ══════════ ۷) تبِ «چت‌های پشتیبانی» در بخشِ گزارش‌ها ══════════ */
+section('تبِ «چت‌های پشتیبانی» (جدا از تیکت‌ها)');
+{
+  const html = read('index.html');
+  const reportsJs = read('modules/reports.js');
+  const ticketsPhp = read('api/tickets.php');
+  const styleCss = read('assets/css/style.css');
+  const i18n = read('core/i18n.js');
+
+  /* ── عنوانِ ایمیل ── */
+  ok('عنوانِ کارتِ ایمیل «ارتباط با ما» است (فارسی)', i18n.includes("'contact_email_name': 'ارتباط با ما'"));
+  ok('عنوانِ کارتِ ایمیل «Contact Us» است (انگلیسی)', i18n.includes("'contact_email_name': 'Contact Us'"));
+  ok('متنِ جایگزینِ HTML هم «ارتباط با ما» است', html.includes('data-i18n="contact_email_name">ارتباط با ما<'));
+
+  /* ── دکمه و پنلِ تبِ سوم ── */
+  ok('دکمه‌ی سومِ سوییچر (tabBtnSupport) هست', html.includes('id="tabBtnSupport"') && html.includes("switchReportsMainTab('support', this)"));
+  ok('برچسبِ تب «چت‌های پشتیبانی» است', html.includes('data-i18n="reports_tab_support">چت‌های پشتیبانی<'));
+  ok('شمارنده‌ی تبِ چت‌ها (supportCountBadge) هست', html.includes('id="supportCountBadge"'));
+  ok('پنلِ سوم (sectionSupportPane) هست', html.includes('id="sectionSupportPane"'));
+  ok('فهرستِ گفتگوها (supportListWrap) هست', html.includes('id="supportListWrap"'));
+  ok('فیلترهای چت‌ها (همه/باز/بسته) هست', html.includes('id="supportFilterTabs"') && html.includes("filterSupportThreads('open', this)") && html.includes("filterSupportThreads('closed', this)"));
+  ok('دکمه‌ی «شروع گفتگوی جدید» صفحه‌ی چت را باز می‌کند', html.includes('onclick="openSupportChat()"') && html.includes('data-i18n="support_new_chat"'));
+  ok('سه دکمه‌ی سوییچر کنار هم‌اند (گزارش‌ها، تیکت‌ها، چت‌ها)',
+    html.indexOf('tabBtnReports') < html.indexOf('tabBtnTickets') && html.indexOf('tabBtnTickets') < html.indexOf('tabBtnSupport'));
+
+  /* ── منطقِ سوییچر و فهرست در reports.js ── */
+  ok('switchReportsMainTab بخشِ support را می‌شناسد', reportsJs.includes("section === 'support'") && reportsJs.includes("'tabBtnSupport'"));
+  ok('نشانگر برای سه تب جابه‌جا می‌شود (idx تا ۲)', reportsJs.includes("section === 'support' ? 2 : 0"));
+  ok('پنلِ چت‌ها هنگامِ سوییچ نمایش/پنهان می‌شود', reportsJs.includes("paneSupport") && reportsJs.includes("section === 'support' ? 'flex' : 'none'"));
+  ok('فهرستِ چت‌ها از api/support.php?action=threads می‌آید', reportsJs.includes("/support.php?action=threads"));
+  ok('renderSupportList و filterSupportThreads تعریف و export شده‌اند',
+    reportsJs.includes('function renderSupportList') && reportsJs.includes('function filterSupportThreads')
+    && reportsJs.includes('window.filterSupportThreads = filterSupportThreads') && reportsJs.includes('window.renderSupportList = renderSupportList'));
+  ok('لمس روی گفتگو صفحه‌ی چت را باز می‌کند', reportsJs.includes('onclick="openSupportChat()"'));
+  ok('وضعیتِ باز/بسته و خوانده‌نشده در فهرست هست', reportsJs.includes('isSupportThreadClosed') && reportsJs.includes('unread_citizen'));
+
+  /* ── تفکیکِ چت‌ها از تیکت‌ها ── */
+  ok('api/tickets.php ستونِ channel را برمی‌گرداند', /SELECT[^;]*channel/.test(ticketsPhp));
+  ok('mapTicketRow ستونِ channel را نگه می‌دارد', reportsJs.includes("channel: item.channel || ''"));
+  ok('لیستِ تیکت‌ها چت‌های پشتیبانی را کنار می‌گذارد', reportsJs.includes("t.channel !== 'support'"));
+
+  /* ── رشته‌های دوزبانه ── */
+  ok('برچسبِ تب در هر دو زبان', i18n.includes("'reports_tab_support': 'چت‌های پشتیبانی'") && i18n.includes("'reports_tab_support': 'Support Chats'"));
+  ok('رشته‌های فیلتر و دکمه در هر دو زبان',
+    i18n.includes("'support_new_chat': '+ شروع گفتگوی جدید'") && i18n.includes("'support_new_chat': '+ Start new conversation'")
+    && i18n.includes("'support_list_empty': 'هنوز گفتگوی پشتیبانی ندارید'") && i18n.includes("'support_list_empty': 'No support conversations yet'"));
+
+  /* ── عرضِ نشانگر برای سه تب ── */
+  ok('نشانگرِ سوییچر یک‌سومِ عرض است', styleCss.includes('width: calc(33.333% - 6px)'));
+
+  /* ── کش‌باسترها ── */
+  ok('کش‌باسترِ reports.js و i18n.js به‌روز شده است', /modules\/reports\.js\?v=31/.test(html) && /core\/i18n\.js\?v=18/.test(html));
+}
+
+/* ── اجرای عملکردیِ فهرستِ چت‌ها در jsdom با صفحه‌ی واقعیِ گزارش‌ها ── */
+section('اجرای عملکردیِ تبِ چت‌ها (jsdom)');
+{
+  const INDEX = read('index.html');
+  const REPORTS_SCREEN = (/<!-- ============ SCREEN 5: REPORTS LIST ============ -->([\s\S]*?)<!-- ============ SCREEN: SUPPORT CHAT/.exec(INDEX) || [])[1] || '';
+  ok('صفحه‌ی گزارش‌ها از index.html استخراج شد', REPORTS_SCREEN.length > 1000);
+
+  const THREADS = [
+    { id: 11, title: 'پشتیبانی آنلاین', status: 'open', department: 'پشتیبانی شهرداری', unread_citizen: 2, last_message_at: '2026-11-16 10:00:00', last_sender: 'admin', closed_at: '', rating: 0, created_at: '2026-11-16 09:00:00' },
+    { id: 9, title: 'پشتیبانی آنلاین', status: 'done', department: 'پشتیبانی شهرداری', unread_citizen: 0, last_message_at: '2026-11-10 12:00:00', last_sender: 'citizen', closed_at: '2026-11-10 12:30:00', rating: 5, created_at: '2026-11-10 11:00:00' },
+  ];
+  const vc = new VirtualConsole();
+  const dom = new JSDOM('<!DOCTYPE html><html lang="fa" dir="rtl"><body>' + REPORTS_SCREEN + '</body></html>',
+    { url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc });
+  const w = dom.window;
+  w.getCurrentPhone = () => '09120000001';
+  w.reports = []; /* letِ state.js در evalِ جدا دیده نمی‌شود؛ معادلِ سراسری می‌گذاریم */
+  let fetchUrl = '';
+  w.fetch = async (url) => {
+    fetchUrl = String(url);
+    return { ok: true, json: async () => ({ success: true, threads: THREADS }) };
+  };
+  w.eval(read('core/state.js'));
+  w.eval(read('modules/reports.js'));
+
+  ok('توابعِ تبِ چت‌ها روی window هستند',
+    typeof w.switchReportsMainTab === 'function' && typeof w.renderSupportList === 'function' && typeof w.filterSupportThreads === 'function');
+
+  /* سوییچ به تبِ چت‌ها: فهرست باید از threads ساخته شود */
+  const waitItems = async (n) => {
+    for (let i = 0; i < 40; i++) {
+      const el = w.document.getElementById('supportListWrap');
+      if (el && el.querySelectorAll('.report-item').length >= n) return true;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    return false;
+  };
+  await w.switchReportsMainTab('support');
+  await waitItems(2);
+  ok('فهرست از api/support.php?action=threads&phone=… خوانده شد',
+    fetchUrl.includes('/support.php?action=threads') && fetchUrl.includes('phone=09120000001'), fetchUrl);
+  const wrap = w.document.getElementById('supportListWrap');
+  const items = wrap ? wrap.querySelectorAll('.report-item') : [];
+  ok('هر دو گفتگو در فهرست رندر شدند', items.length === 2, String(items.length));
+  ok('گفتگوی باز برچسبِ «باز» و گفتگوی بسته برچسبِ «بسته» دارد',
+    wrap.innerHTML.includes('باز') && wrap.innerHTML.includes('بسته'));
+  ok('خوانده‌نشده بودنِ گفتگوی باز نشان داده می‌شود', wrap.innerHTML.includes('خوانده‌نشده'));
+  ok('شمارنده‌ی تب تعدادِ گفتگوها را نشان می‌دهد', w.document.getElementById('supportCountBadge').textContent === '۲');
+  ok('لمس روی گفتگو openSupportChat را صدا می‌زند', wrap.innerHTML.includes('onclick="openSupportChat()"'));
+  ok('پنلِ چت‌ها نمایش داده و پنل‌های دیگر پنهان‌اند',
+    w.document.getElementById('sectionSupportPane').style.display === 'flex'
+    && w.document.getElementById('sectionReportsPane').style.display === 'none'
+    && w.document.getElementById('sectionTicketsPane').style.display === 'none');
+  ok('دکمه‌ی تبِ چت‌ها active شد', w.document.getElementById('tabBtnSupport').classList.contains('active'));
+
+  /* فیلترِ «بسته»: فقط گفتگوی بسته */
+  w.filterSupportThreads('closed');
+  const closedItems = wrap.querySelectorAll('.report-item');
+  ok('فیلترِ «بسته» فقط یک گفتگو نشان می‌دهد', closedItems.length === 1, String(closedItems.length));
+
+  /* فیلترِ «باز»: فقط گفتگوی باز */
+  w.filterSupportThreads('open');
+  ok('فیلترِ «باز» فقط یک گفتگو نشان می‌دهد', wrap.querySelectorAll('.report-item').length === 1);
+
+  /* بازگشت به گزارش‌ها */
+  w.switchReportsMainTab('reports');
+  ok('بازگشت به تبِ گزارش‌ها پنلِ چت‌ها را پنهان می‌کند',
+    w.document.getElementById('sectionSupportPane').style.display === 'none'
+    && w.document.getElementById('sectionReportsPane').style.display === 'flex');
+
+  try { w.close(); } catch (e) { /* مهم نیست */ }
 }
 
 console.log('\n' + '='.repeat(52));
