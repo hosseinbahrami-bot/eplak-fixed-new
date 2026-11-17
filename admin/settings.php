@@ -352,11 +352,11 @@ $pushErrors   = getPushLastErrors($pdo, 5);
 $vapidSubject = (string) eplakAppSetting($pdo, 'vapid_subject', '');
 
 /* ── تنظیماتِ «نسخه‌ی اپ و آپدیت اجباری» (shared/app_version.json) ─────────
-   پیش‌فرض‌ها دقیقاً همان‌هایی هستند که api/ping.php برمی‌گرداند تا این‌جا
-   هم همان دیده شود که اپ می‌بیند. */
-$appVerMin        = 0;
-$appVerLatestCode = 0;
-$appVerLatestName = '';
+   پیش‌فرض‌ها دقیقاً همان‌هایی هستند که api/ping.php برمی‌گرداند (آخرین نسخه‌ی
+   منتشرشده: ۲.۱۰ / کدِ ۱۲) تا این‌جا هم همان دیده شود که اپ می‌بیند. */
+$appVerMin        = 12;
+$appVerLatestCode = 12;
+$appVerLatestName = '2.10';
 $appVerUrl        = '';
 $appVerMessage    = '';
 try {
@@ -1007,8 +1007,10 @@ $httpsOn = eplakIsHttpsRequest();
           اپ هنگام باز شدن، «حداقل نسخه‌ی مجاز» را از سرور می‌خواند. اگر نسخه‌ی گوشیِ شهروند
           <strong>پایین‌تر</strong> از این عدد باشد، وارد اپ نمی‌شود و پرده‌ی
           «نسخه‌ی اپ قدیمی است — لطفاً به‌روزرسانی کنید» با دکمه‌ی دانلود دیده می‌شود.
-          <br>برای اجبار کاربران به آپدیت، بعد از انتشارِ نسخه‌ی تازه، «حداقل نسخه» را روی
-          <strong>کدِ همان نسخه‌ی تازه</strong> بگذارید (مثلاً اگر نسخه‌ی تازه کدِ ۱۳ دارد، حداقل را ۱۳ کنید).
+          <br>پیش‌فرضِ این‌جا <strong>آخرین نسخه‌ی منتشرشده</strong> است؛ یعنی با هر انتشارِ تازه و آپدیتِ
+          هاست، نسخه‌های قدیمی‌تر <strong>خودکار</strong> مسدود می‌شوند و نیازی به تنظیمِ دستی نیست.
+          این‌جا فقط وقتی چیزی را عوض کنید که بخواهید اجبار را <strong>عقب بیندازید</strong> (مثلاً حداقل را
+          کمتر بگذارید) یا پیام/لینکِ دانلود را سفارشی کنید.
           «آخرین نسخه» فقط برای پیشنهادِ آپدیتِ اختیاری است و کسی را بیرون نمی‌اندازد.
           <br>کدِ نسخه همان <code dir="ltr">versionCode</code> اندروید و <code dir="ltr">CURRENT_PROJECT_VERSION</code> آیفون است
           (در فایل‌های <code dir="ltr">android-app/app/build.gradle</code> و <code dir="ltr">ios-app/Eplak.xcodeproj/project.pbxproj</code>).
@@ -1036,7 +1038,7 @@ $httpsOn = eplakIsHttpsRequest();
             <label for="min_app_version_code"><i class="fas fa-ban" style="color: var(--primary-500); margin-left: 6px;"></i> حداقل نسخه‌ی مجاز (کد)</label>
             <input class="form-control" type="number" id="min_app_version_code" name="min_app_version_code"
                    value="<?= (int) $appVerMin ?>" min="0" step="1" inputmode="numeric">
-            <p class="field-hint">نسخه‌های پایین‌تر از این کد وارد اپ نمی‌شوند. ۰ یعنی «هیچ‌کس مسدود نیست».</p>
+            <p class="field-hint">نسخه‌های پایین‌تر از این کد وارد اپ نمی‌شوند. پیش‌فرض = کدِ آخرین نسخه (خودکار). ۰ یعنی «هیچ‌کس مسدود نیست» (فقط برای عقب انداختنِ اجبار).</p>
           </div>
           <div class="form-group">
             <label for="latest_app_version_code"><i class="fas fa-arrow-up-from-bracket" style="color: var(--primary-500); margin-left: 6px;"></i> کدِ آخرین نسخه‌ی منتشرشده</label>
