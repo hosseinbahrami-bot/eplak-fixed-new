@@ -145,6 +145,7 @@ jobs:
           check api/support.php            'eplakSupportOpenThread'        'اندپوینتِ چتِ پشتیبانی در بسته هست'
           check admin/support.php          "eplakAdminSidebar('support')"  'صفحه‌ی «پشتیبانی آنلاین» در پنل داخل بسته هست'
           check modules/support.js         'eplak_support_outbox'          'ماژولِ چتِ اپ (با صفِ ارسالِ آفلاین) داخل بسته هست'
+          check modules/contact.js         'openMunicipalityEmail'         'ماژولِ «تماس با شهرداری» (ایمیل و آدرس در نشان) داخل بسته هست'
           check shared/bootstrap.php       'ticket_messages'               'جدولِ پیام‌های گفتگو در ساختارِ دیتابیس ساخته می‌شود'
           check uploads/support/.gitkeep   'پوشه باید روی هاست وجود داشته باشد' 'پوشه‌ی پیوست‌های چتِ پشتیبانی داخل بسته است'
 
