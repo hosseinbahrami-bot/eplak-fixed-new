@@ -785,10 +785,14 @@ ok('نسخه‌ی webp هم برای مرورگرهای پشتیبان گذاش�
 ok('alt تصویر از پنل می‌آید (دسترس‌پذیری)',
   String(slotOf('adSlotHomeTop').querySelector('img').getAttribute('alt')).length > 3);
 
-/* چرخشِ خودکار */
+/* چرخشِ خودکار — با نظرسنجی تا ۵ ثانیه (در رانرِ شلوغِ CI، setInterval ممکن است
+   دیرتر از انتظار بچرخد؛ انتظارِ ثابتِ ۷۰۰ms فلیک بود). */
 const firstIndex = w.EplakAds.slots()[0].index;
-await new Promise((r) => setTimeout(r, 700));
-const nextIndex = w.EplakAds.slots()[0].index;
+let nextIndex = firstIndex;
+for (let i = 0; i < 50 && nextIndex === firstIndex; i++) {
+  await new Promise((r) => setTimeout(r, 100));
+  nextIndex = w.EplakAds.slots()[0].index;
+}
 ok('تصویرها خودکار می‌چرخند (بدون دخالت کاربر)', nextIndex !== firstIndex, `${firstIndex} → ${nextIndex}`);
 ok('ریل با transform جابه‌جا می‌شود (انیمیشنِ GPU، نه جابه‌جایی DOM)',
   /translate3d\(-?\d+(\.\d+)?%/.test(String(slotOf('adSlotHomeTop').querySelector('.ead-track').style.transform)),
