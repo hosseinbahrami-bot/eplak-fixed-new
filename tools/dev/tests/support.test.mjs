@@ -400,6 +400,24 @@ ok('پاسخِ پشتیبان از پنل ⇒ هدایت به همان رشته 
 const notifAfter = Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM notifications WHERE user_phone = '${PHONE}'")->fetchColumn()`));
 ok('با پاسخِ پشتیبان، «اعلان» به گوشیِ شهروند هم فرستاده می‌شود (همان مسیرِ تیکت)',
   notifAfter > notifBefore, `${notifBefore} → ${notifAfter}`);
+
+/* ── سرعتِ ارسالِ ادمین: اعلانِ گوشی پاسخ را قفل نمی‌کند ──────────────────
+   کاربر گزارش داده بود «ارسالِ پیام در صفحه‌ی ادمین خیلی کند است». ریشه:
+   eplakNotifyUser تماسِ شبکه‌ایِ کندِ FCM/Web Push را همگام قبل از پاسخ صدا
+   می‌زد. رفع: ثبتِ سریع در دیتابیس + پاسخِ فوری + پوش پس از پاسخ. */
+const notifyEventsPhp = fs.readFileSync(path.join(ROOT, 'shared/notify_events.php'), 'utf8');
+const adminSupportPhp = fs.readFileSync(path.join(ROOT, 'admin/support.php'), 'utf8');
+ok('تابعِ eplakNotifyPushOnly (فقط پوش، بدونِ درجِ دوباره) تعریف شده',
+  /function eplakNotifyPushOnly\(PDO \$pdo, int \$notifId/.test(notifyEventsPhp)
+  && /eplakFcmSend\(\$pdo, \$tokens/.test(notifyEventsPhp)
+  && /eplakPushNotifyPhone\(\$pdo, \$phone/.test(notifyEventsPhp));
+ok('هندلرِ ارسالِ ادمین اعلان را در دیتابیس ثبت و پاسخ را فوری می‌دهد (بدونِ انتظار برای FCM)',
+  /eplakNotificationInsert\(\$pdo, \(string\) \$ticket\['user_phone'\]/.test(adminSupportPhp)
+  && /header\('Location: ' \. \$target\)/.test(adminSupportPhp)
+  && /fastcgi_finish_request\(\)/.test(adminSupportPhp)
+  && /eplakNotifyPushOnly\(\$pdo, \$notifId/.test(adminSupportPhp));
+ok('هندلرِ ارسالِ ادمین دیگر eplakNotifyUserِ همگام (قفل‌کننده) را قبل از پاسخ صدا نمی‌زند',
+  !/eplakNotifyUser\(\$pdo, \(string\) \$ticket\['user_phone'\]/.test(adminSupportPhp));
 const legacyReply = String(await one(`(string) $pdo->query("SELECT reply FROM tickets WHERE id = ${tid}")->fetchColumn()`));
 ok('پاسخِ پشتیبان در tickets.reply هم نشست (اپِ نسخه‌ی قدیمی هم پاسخ را می‌بیند)',
   /حل شد/.test(legacyReply), legacyReply.slice(0, 60));
@@ -778,7 +796,11 @@ ok('اسکرولر نوارِ اسکرولِ مشهود دارد (کاربر ب�
   && /\.sup-scroller::-webkit-scrollbar\s*{[^}]*width:\s*6px/.test(supCss)
   && /\.sup-scroller::-webkit-scrollbar-thumb/.test(supCss));
 ok('اسکرولر فضایِ پایین برای کادرِ ثابت دارد تا آخرین پیام زیرِ کادر نرود',
-  /\.sup-scroller\s*{[^}]*padding:\s*6px 2px 92px/.test(supCss));
+  /\.sup-scroller\s*{[^}]*padding:\s*6px 2px 96px/.test(supCss));
+ok('اسکرولر مبنای صفر دارد (flex:1) تا در WebView واقعاً اسکرول کند و پیام‌ها زیرِ کادر نروند',
+  /\.sup-scroller\s*{[^}]*flex:\s*1;/.test(supCss)
+  && /\.sup-scroller\s*{[^}]*min-height:\s*0/.test(supCss)
+  && /\.sup-scroller\s*{[^}]*overflow-y:\s*auto/.test(supCss));
 
 /* ── شبکه‌ی ایمنیِ کادرِ نوشتن + آیکون‌های تازه ──────────────────────────
    کاربر گزارش داده بود: «بعد از سه تا پیام، کادرِ ارسال کاملاً ناپدید می‌شود».

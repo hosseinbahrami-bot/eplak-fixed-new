@@ -105,19 +105,52 @@ if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST') {
                 if (empty($posted['ok'])) {
                     $error = 'ارسالِ پاسخ ممکن نشد (' . htmlspecialchars((string) $posted['error'], ENT_QUOTES, 'UTF-8') . ').';
                 } else {
-                    /* اعلان به گوشیِ شهروند — همان مسیرِ پاسخِ تیکت (DB + FCM + Web Push) */
+                    /* اعلان به گوشیِ شهروند — همان مسیرِ پاسخِ تیکت.
+                       نکته‌ی سرعت: «ثبت در دیتابیس» سریع است ولی «رساندنِ فوری به
+                       گوشی» (FCM + Web Push) تماسِ شبکه‌ایِ کند با گوگل/مرورگر است
+                       و اگر همگام صدا زده شود، ارسالِ ادمین ده‌ها ثانیه قفل می‌شود
+                       (گزارشِ کاربر: «ارسال خیلی کند است»). پس این‌جا فقط اعلان را
+                       در دیتابیس ثبت می‌کنیم (شهروند در اپ می‌بیند)، پاسخِ فوری
+                       (ریدایرکت) به ادمین می‌دهیم، و پوشِ گوشی را «پس از پاسخ» در
+                       پس‌زمینه انجام می‌دهیم تا ادمین منتظر نماند. */
                     $excerpt = trim($body) !== '' ? $body : 'پیوستِ تازه دریافت کردید';
-                    if (function_exists('eplakNotifyUser')) {
+                    $notifBody = function_exists('eplakNotifyTrim') ? eplakNotifyTrim($excerpt, 180) : $excerpt;
+                    $notifId = 0;
+                    if (function_exists('eplakNotificationInsert')) {
                         try {
-                            eplakNotifyUser($pdo, (string) $ticket['user_phone'],
-                                'پاسخِ پشتیبانی ای‌پلاک',
-                                function_exists('eplakNotifyTrim') ? eplakNotifyTrim($excerpt, 180) : $excerpt);
+                            $ins = eplakNotificationInsert($pdo, (string) $ticket['user_phone'],
+                                'پاسخِ پشتیبانی ای‌پلاک', $notifBody);
+                            $notifId = (int) ($ins['id'] ?? 0);
                         } catch (Throwable $e) {
-                            /* اعلان نرسید، ولی پیام ثبت شده است */
+                            /* ثبتِ اعلان ناموفق بود، ولی پیام ثبت شده است */
                         }
                     }
                     eplakSupportMarkRead($pdo, $id, 'admin');
-                    eplakRedirect('support.php?id=' . $id);
+
+                    /* پاسخِ فوری به ادمین (همان نشانیِ eplakRedirect) */
+                    $target = '/admin/support.php?id=' . $id;
+                    $target = eplakUrl($target);
+                    if (eplakSessionInUrlNeeded()) {
+                        $sep = (strpos($target, '?') === false) ? '?' : '&';
+                        $target .= $sep . rawurlencode((string) session_name()) . '=' . rawurlencode((string) session_id());
+                    }
+                    header('Location: ' . $target);
+                    /* پاسخ را همین حالا به ادمین بفرست؛ ادامه (پوشِ گوشی) در پس‌زمینه */
+                    if (function_exists('fastcgi_finish_request')) {
+                        fastcgi_finish_request();
+                    } else {
+                        ignore_user_abort(true);
+                    }
+
+                    /* اعلانِ فوری به گوشی (FCM + Web Push) — پس از پاسخِ ادمین */
+                    if ($notifId > 0 && function_exists('eplakNotifyPushOnly')) {
+                        try {
+                            eplakNotifyPushOnly($pdo, $notifId, (string) $ticket['user_phone'],
+                                'پاسخِ پشتیبانی ای‌پلاک', $excerpt);
+                        } catch (Throwable $e) {
+                            /* اعلانِ گوشی نرسید، ولی پیام و اعلانِ دیتابیس ثبت شده‌اند */
+                        }
+                    }
                     exit;
                 }
             }
