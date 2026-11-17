@@ -869,3 +869,89 @@ function eplakSupportReopen(PDO $pdo, int $ticketId): bool
         return false;
     }
 }
+
+/**
+ * حذفِ کاملِ یک گفتگوی پشتیبانی: پیام‌ها + فایل‌های پیوست + ردیفِ گفتگو.
+ * فقط روی ردیف‌های channel='support' کار می‌کند؛ تیکتِ واقعی هرگز این‌جا حذف
+ * نمی‌شود (حذفِ تیکت از مسیرِ خودش در admin/actions.php است).
+ *
+ * @return bool true اگر گفتگو حذف شد
+ */
+function eplakSupportDeleteThread(PDO $pdo, int $ticketId): bool
+{
+    if ($ticketId <= 0 || !eplakSupportHasChannel($pdo)) {
+        return false;
+    }
+
+    $st = $pdo->prepare('SELECT id, channel FROM tickets WHERE id = ? LIMIT 1');
+    $st->execute([$ticketId]);
+    $ticket = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$ticket || (string) ($ticket['channel'] ?? '') !== 'support') {
+        return false;
+    }
+
+    /* مسیرِ فایل‌های پیوست پیش از حذفِ ردیف‌ها جمع می‌شود (بعدش دیگر معلوم نیست) */
+    $paths = [];
+    if (eplakSupportReady($pdo)) {
+        try {
+            $stm = $pdo->prepare('SELECT media_path FROM ' . EPLAK_SUPPORT_TABLE
+                . " WHERE ticket_id = ? AND media_path IS NOT NULL AND media_path <> ''");
+            $stm->execute([$ticketId]);
+            foreach ($stm->fetchAll(PDO::FETCH_COLUMN) as $rel) {
+                $full = eplakSupportAttachmentPath((string) $rel);
+                if ($full !== null) {
+                    $paths[] = $full;
+                }
+            }
+        } catch (Throwable $e) {
+            /* نبودِ جدولِ پیام نباید جلوی حذفِ گفتگو را بگیرد */
+        }
+    }
+
+    try {
+        $pdo->beginTransaction();
+        if (eplakSupportReady($pdo)) {
+            $pdo->prepare('DELETE FROM ' . EPLAK_SUPPORT_TABLE . ' WHERE ticket_id = ?')->execute([$ticketId]);
+        }
+        $pdo->prepare('DELETE FROM tickets WHERE id = ?')->execute([$ticketId]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[eplak][support] delete failed: ' . $e->getMessage());
+        return false;
+    }
+
+    foreach ($paths as $full) {
+        @unlink($full);
+    }
+    return true;
+}
+
+/**
+ * حذفِ همه‌ی گفتگوهای «بسته‌شده» (پاک‌سازیِ صندوق). فقط channel='support' و
+ * closed_at پر.
+ *
+ * @return int شمارِ گفتگوهای حذف‌شده
+ */
+function eplakSupportDeleteClosed(PDO $pdo): int
+{
+    if (!eplakSupportHasChannel($pdo)) {
+        return 0;
+    }
+    try {
+        $st = $pdo->prepare("SELECT id FROM tickets WHERE channel = 'support' AND closed_at IS NOT NULL AND closed_at <> ''");
+        $st->execute();
+        $ids = $st->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Throwable $e) {
+        return 0;
+    }
+    $deleted = 0;
+    foreach ($ids as $id) {
+        if (eplakSupportDeleteThread($pdo, (int) $id)) {
+            $deleted++;
+        }
+    }
+    return $deleted;
+}

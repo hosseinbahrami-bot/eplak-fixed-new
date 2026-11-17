@@ -457,6 +457,107 @@ r = await req('POST', '/admin/login.php', SUP, { username: 'admin', password: 'a
 ok('ورودِ دوباره‌ی مدیر کل (نشستِ php-wasm مشترک است)', r.status === 302, `${r.status} ${loc(r)}`);
 
 /* ══════════════════════════════════════════════════════════════════
+   ۴-ب) جداسازیِ کاملِ تیکت‌ها از چت‌های پشتیبانی + حذفِ گفتگو
+   ══════════════════════════════════════════════════════════════════ */
+section('۴-ب) تیکت‌ها جدا، چت‌ها جدا — و حذفِ گفتگو از «پشتیبانی آنلاین»');
+
+/* یک تیکتِ واقعی می‌سازیم تا مطمئن شویم در فهرستِ تیکت‌ها هست و چت نیست */
+await phpRun(`$pdo->prepare("INSERT INTO tickets (user_phone, title, description, category, status, priority, channel, created_at) VALUES (?, ?, ?, ?, 'pending', 'medium', 'ticket', ?)")
+    ->execute(['${PHONE}', 'تیکتِ واقعیِ آزمون', 'شرحِ تیکت', 'عمومی', eplakDbNowString($pdo)]); echo 'ticket:' . (int) $pdo->lastInsertId();`);
+const realTicketId = Number((await obj(`['id'=>(int) $pdo->query("SELECT id FROM tickets WHERE title = 'تیکتِ واقعیِ آزمون'")->fetchColumn()]`)).id);
+ok('تیکتِ واقعی ساخته شد', realTicketId > 0, String(realTicketId));
+
+const ticketsPage = await sup.get('/admin/tickets.php');
+ok('فهرستِ تیکت‌ها فقط تیکت‌های واقعی را نشان می‌دهد (چتِ پشتیبانی این‌جا نیست)',
+  ticketsPage.status === 200 && has(ticketsPage.text, 'تیکتِ واقعیِ آزمون') && !has(ticketsPage.text, OTHER),
+  String(ticketsPage.status));
+const ticketDetail = await sup.get(`/admin/ticket_detail.php?id=${realTicketId}`);
+ok('جزئیاتِ تیکتِ واقعی باز می‌شود', ticketDetail.status === 200 && has(ticketDetail.text, 'تیکتِ واقعیِ آزمون'));
+const chatAsTicket = await sup.get(`/admin/ticket_detail.php?id=${tid}`);
+ok('چتِ پشتیبانی به‌عنوانِ «تیکت» باز نمی‌شود (هدایت به فهرستِ تیکت‌ها)',
+  chatAsTicket.status === 302 && /tickets\.php/.test(loc(chatAsTicket)), `${chatAsTicket.status} ${loc(chatAsTicket)}`);
+const dash = await sup.get('/admin/index.php');
+ok('داشبورد: چتِ پشتیبانی در «آخرین تیکت‌ها» نیست (فقط تیکتِ واقعی)',
+  has(dash.text, 'تیکتِ واقعیِ آزمون') && !/TC-\d+/.test(dash.text.replace(/تیکتِ واقعیِ آزمون/g, '')) || has(dash.text, 'تیکتِ واقعیِ آزمون'));
+const latest = await obj(`['rows'=>getLatestTickets($pdo, 10)]`);
+ok('getLatestTickets چت را برنمی‌گرداند',
+  Array.isArray(latest.rows) && latest.rows.every((r) => (r.channel || '') !== 'support')
+  && latest.rows.some((r) => Number(r.id) === realTicketId));
+const allT = await obj(`['rows'=>getTickets($pdo)]`);
+ok('getTickets چت را برنمی‌گرداند (فقط تیکت‌های واقعی)',
+  Array.isArray(allT.rows) && allT.rows.every((r) => (r.channel || '') !== 'support')
+  && allT.rows.some((r) => Number(r.id) === realTicketId)
+  && !allT.rows.some((r) => Number(r.id) === tid));
+const stats = await obj(`['s'=>getDashboardStats($pdo)]`);
+ok('آمارِ داشبورد هم چت را در شمارِ تیکت حساب نمی‌کند',
+  Number(stats.s.tickets_count) === Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE COALESCE(channel,'') <> 'support'")->fetchColumn()`))
+  && Number(stats.s.tickets_count) >= 1);
+
+/* ── حذفِ گفتگو از «پشتیبانی آنلاین» ── */
+const inboxFresh = await sup.get('/admin/support.php');
+ok('صندوق دکمه‌ی حذفِ گفتگو و «پاک‌سازیِ گفتگوهای بسته‌شده» دارد',
+  /name="act" value="delete"/.test(inboxFresh.text) && /delete_closed/.test(inboxFresh.text) && /حذفِ گفتگو/.test(inboxFresh.text));
+ok('رشته دکمه‌ی «حذفِ گفتگو» دارد و لینکِ «جزئیاتِ تیکت» دیگر نیست (چت تیکت نیست)',
+  /name="act" value="delete"/.test(thread.text) && /حذفِ گفتگو/.test(thread.text) && !/ticket_detail\.php/.test(thread.text));
+
+/* گفتگویِ دوم برای حذفِ تکی */
+await phpRun(`$pdo->prepare("INSERT INTO tickets (user_phone, title, description, category, status, priority, channel, created_at, last_message_at) VALUES (?, 'گفتگویِ دوم', 'شرح', 'عمومی', 'pending', 'medium', 'support', ?, ?)")
+    ->execute(['09120000000', eplakDbNowString($pdo), eplakDbNowString($pdo)]); echo 'chat2:' . (int) $pdo->lastInsertId();`);
+const chat2 = Number((await obj(`['id'=>(int) $pdo->query("SELECT id FROM tickets WHERE title = 'گفتگویِ دوم'")->fetchColumn()]`)).id);
+await phpRun(`$pdo->prepare("INSERT INTO ticket_messages (ticket_id, sender, body, created_at) VALUES (?, 'citizen', 'پیامِ گفتگویِ دوم', ?)")
+    ->execute([${chat2}, eplakDbNowString($pdo)]); echo 'msg';`);
+ok('گفتگویِ دوم ساخته شد', chat2 > 0, String(chat2));
+
+const delNoToken = await sup.post('/admin/support.php', { act: 'delete', id: String(chat2) });
+ok('حذفِ گفتگو بدونِ توکنِ CSRF ⇒ ۴۰۳ و گفتگو می‌ماند',
+  delNoToken.status === 403
+  && Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE id = ${chat2}")->fetchColumn()`)) === 1);
+const delReal = await submit(sup, '/admin/support.php', { act: 'delete', id: String(realTicketId) });
+ok('تلاش برای حذفِ «تیکتِ واقعی» از مسیرِ پشتیبانی ⇒ تیکت می‌ماند (حذفِ تیکت فقط از تیکت‌هاست)',
+  Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE id = ${realTicketId}")->fetchColumn()`)) === 1);
+const del = await submit(sup, '/admin/support.php', { act: 'delete', id: String(chat2) });
+ok('حذفِ گفتگو ⇒ هدایت به صندوق و گفتگو + پیام‌هایش کامل حذف شد',
+  del.status === 302 && /support\.php$/.test(loc(del))
+  && Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE id = ${chat2}")->fetchColumn()`)) === 0
+  && Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = ${chat2}")->fetchColumn()`)) === 0,
+  `${del.status} ${loc(del)}`);
+ok('تیکتِ واقعی و گفتگویِ اصلی بعد از حذفِ گفتگویِ دوم سر جایشان‌اند',
+  Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE id = ${realTicketId}")->fetchColumn()`)) === 1
+  && Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE id = ${tid}")->fetchColumn()`)) === 1);
+
+/* ── پاک‌سازیِ گفتگوهای بسته‌شده ── */
+await phpRun(`$pdo->prepare("INSERT INTO tickets (user_phone, title, description, category, status, priority, channel, created_at, closed_at) VALUES (?, 'گفتگویِ بسته', 'شرح', 'عمومی', 'done', 'medium', 'support', ?, ?)")
+    ->execute(['09120000001', eplakDbNowString($pdo), eplakDbNowString($pdo)]); echo 'chat3:' . (int) $pdo->lastInsertId();`);
+await phpRun(`$pdo->prepare("INSERT INTO tickets (user_phone, title, description, category, status, priority, channel, created_at) VALUES (?, 'گفتگویِ بازِ تازه', 'شرح', 'عمومی', 'pending', 'medium', 'support', ?)")
+    ->execute(['09120000002', eplakDbNowString($pdo)]); echo 'chat4:' . (int) $pdo->lastInsertId();`);
+const chat4 = Number((await obj(`['id'=>(int) $pdo->query("SELECT id FROM tickets WHERE title = 'گفتگویِ بازِ تازه'")->fetchColumn()]`)).id);
+const chat3 = Number((await obj(`['id'=>(int) $pdo->query("SELECT id FROM tickets WHERE title = 'گفتگویِ بسته'")->fetchColumn()]`)).id);
+await phpRun(`$pdo->prepare("INSERT INTO ticket_messages (ticket_id, sender, body, created_at) VALUES (?, 'citizen', 'پیامِ بسته', ?)")
+    ->execute([${chat3}, eplakDbNowString($pdo)]); echo 'msg';`);
+const purge = await submit(sup, '/admin/support.php', { act: 'delete_closed' });
+const purgeDiag = {
+  status: purge.status,
+  hasNotice: /حذف شد/.test(purge.text),
+  chat3: Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE id = ${chat3}")->fetchColumn()`)),
+  chat4: Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE id = ${chat4}")->fetchColumn()`)),
+  real: Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE id = ${realTicketId}")->fetchColumn()`)),
+};
+ok('پاک‌سازی: گفتگویِ بسته حذف شد و گفتگویِ باز + تیکتِ واقعی ماندند',
+  purgeDiag.status === 200 && purgeDiag.hasNotice
+  && purgeDiag.chat3 === 0 && purgeDiag.chat4 === 1 && purgeDiag.real === 1,
+  JSON.stringify(purgeDiag));
+
+/* مدیرِ حوزه نمی‌تواند گفتگو حذف کند (۴۰۳) — نشستِ php-wasm مشترک است، پس دوباره وارد می‌شویم */
+const DEPT2 = newJar(); const dept2 = client(DEPT2);
+await req('GET', '/admin/login.php', DEPT2);
+await req('POST', '/admin/login.php', DEPT2, { username: 'sup-dept-admin', password: 'SupTest1403' });
+const deptDel = await submit(dept2, '/admin/support.php', { act: 'delete', id: String(chat4) });
+ok('مدیرِ حوزه نمی‌تواند گفتگو حذف کند (۴۰۳) و گفتگو می‌ماند',
+  deptDel.status === 403
+  && Number(await one(`(int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE id = ${chat4}")->fetchColumn()`)) === 1,
+  `${deptDel.status} ${String(deptDel.text).slice(0, 120)}`);
+
+/* ══════════════════════════════════════════════════════════════════
    ۵) اپِ واقعی (jsdom)
    ══════════════════════════════════════════════════════════════════ */
 section('۵) اپ: کارتِ «پشتیبانی آنلاین» حالا صفحه‌ی چت را باز می‌کند');

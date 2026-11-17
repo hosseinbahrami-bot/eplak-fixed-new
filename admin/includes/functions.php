@@ -8,10 +8,10 @@ require_once dirname(__DIR__, 2) . '/shared/webpush.php';
 function getDashboardStats(PDO $pdo): array {
     $reportsCount = $pdo->query('SELECT COUNT(*) as count FROM reports')->fetch();
     $usersCount = $pdo->query('SELECT COUNT(*) as count FROM users')->fetch();
-    $ticketsCount = $pdo->query('SELECT COUNT(*) as count FROM tickets')->fetch();
+    $ticketsCount = $pdo->query('SELECT COUNT(*) as count FROM tickets WHERE 1=1' . eplakNonSupportTicketsWhere($pdo))->fetch();
     $pendingReportsCount = $pdo->query("SELECT COUNT(*) as count FROM reports WHERE status = 'pending'")->fetch();
     $doneReportsCount = $pdo->query("SELECT COUNT(*) as count FROM reports WHERE status = 'done'")->fetch();
-    $pendingTicketsCount = $pdo->query("SELECT COUNT(*) as count FROM tickets WHERE status = 'pending'")->fetch();
+    $pendingTicketsCount = $pdo->query("SELECT COUNT(*) as count FROM tickets WHERE status = 'pending'" . eplakNonSupportTicketsWhere($pdo))->fetch();
 
     $newsCount = 0;
     try {
@@ -49,7 +49,7 @@ function getLatestReports(PDO $pdo, int $limit = 5): array {
 }
 
 function getLatestTickets(PDO $pdo, int $limit = 5): array {
-    $stmt = $pdo->prepare('SELECT *, CONCAT("TC-", LPAD(id + 1000, 4, "0")) AS code FROM tickets ORDER BY created_at DESC LIMIT :limit');
+    $stmt = $pdo->prepare('SELECT *, CONCAT("TC-", LPAD(id + 1000, 4, "0")) AS code FROM tickets WHERE 1=1' . eplakNonSupportTicketsWhere($pdo) . ' ORDER BY created_at DESC LIMIT :limit');
     $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
     $stmt->execute();
     return $stmt->fetchAll();
@@ -595,8 +595,23 @@ function getReportsByUser(PDO $pdo, string $userPhone): array {
     return $stmt->fetchAll();
 }
 
+/**
+ * شرطِ «فقط تیکت‌های واقعی» برای کوئری‌های جدول tickets.
+ * تیکت‌ها و چت‌های پشتیبانی کاملاً جدا هستند: چت‌ها (channel='support') فقط در
+ * «پشتیبانی آنلاین» (admin/support.php) دیده می‌شوند و هرگز در فهرستِ تیکت‌ها
+ * (و آمارِ تیکت‌ها) نمی‌آیند. اگر ستونِ channel هنوز روی دیتابیس نیست، هیچ
+ * فیلتری اضافه نمی‌شود تا کوئری نشکند.
+ */
+function eplakNonSupportTicketsWhere(PDO $pdo): string
+{
+    if (function_exists('eplakTableHasColumn') && eplakTableHasColumn($pdo, 'tickets', 'channel')) {
+        return " AND COALESCE(channel, '') <> 'support'";
+    }
+    return '';
+}
+
 function getTickets(PDO $pdo, string $statusFilter = 'all', string $search = ''): array {
-    $query = 'SELECT * FROM tickets WHERE 1=1';
+    $query = 'SELECT * FROM tickets WHERE 1=1' . eplakNonSupportTicketsWhere($pdo);
     $params = [];
 
     if ($statusFilter !== 'all') {
@@ -747,9 +762,37 @@ function deleteUser(PDO $pdo, int $id): void {
 }
 
 function deleteTicket(PDO $pdo, int $id): void {
+    /* پیام‌ها و پیوست‌هایِ این تیکت هم پاک می‌شوند (اگر جدولِ پیام باشد).
+       تیکتِ واقعی هرگز channel='support' ندارد؛ حذفِ چت‌ها از admin/support.php است. */
+    $paths = [];
+    try {
+        $stm = $pdo->prepare("SELECT media_path FROM ticket_messages WHERE ticket_id = :id AND media_path IS NOT NULL AND media_path <> ''");
+        $stm->bindValue(':id', $id, PDO::PARAM_INT);
+        $stm->execute();
+        foreach ($stm->fetchAll(PDO::FETCH_COLUMN) as $rel) {
+            $rel = trim((string) $rel);
+            if ($rel === '') {
+                continue;
+            }
+            $full = realpath(dirname(__DIR__, 2) . '/uploads/' . ltrim($rel, '/'));
+            if ($full !== false && is_file($full)) {
+                $paths[] = $full;
+            }
+        }
+    } catch (Throwable $e) {
+        /* نبودِ جدولِ پیام نباید جلوی حذفِ تیکت را بگیرد */
+    }
+    try {
+        $pdo->prepare('DELETE FROM ticket_messages WHERE ticket_id = :id')
+            ->execute([':id' => $id]);
+    } catch (Throwable $e) {
+    }
     $stmt = $pdo->prepare('DELETE FROM tickets WHERE id = :id');
     $stmt->bindValue(':id', $id, PDO::PARAM_INT);
     $stmt->execute();
+    foreach ($paths as $full) {
+        @unlink($full);
+    }
 }
 
 /* ============================================================
@@ -1689,11 +1732,16 @@ function getScopedReportById(PDO $pdo, int $id, array $scope): ?array
     return eplakScopeAllowsRow($row, $scope) ? $row : null;
 }
 
-/** یک تیکت فقط اگر در دامنه‌ی مدیر باشد (همان قاعده‌ی عدم افشا) */
+/** یک تیکت فقط اگر در دامنه‌ی مدیر باشد (همان قاعده‌ی عدم افشا).
+ *  چتِ پشتیبانی (channel='support') تیکت نیست و این‌جا «پیدا نشد» برمی‌گردد تا
+ *  در جزئیات/ویرایش/حذفِ تیکت باز نشود؛ جای چت‌ها «پشتیبانی آنلاین» است. */
 function getScopedTicketById(PDO $pdo, int $id, array $scope): ?array
 {
     $row = getTicketById($pdo, $id);
     if (!is_array($row)) {
+        return null;
+    }
+    if (trim((string) ($row['channel'] ?? '')) === 'support') {
         return null;
     }
     return eplakScopeAllowsRow($row, $scope) ? $row : null;
